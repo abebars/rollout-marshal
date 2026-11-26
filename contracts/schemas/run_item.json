@@ -80,10 +80,16 @@
       "pattern": "^runs/r[a-z]*[0-9]{4,12}/report\\.md$"
     },
     "history": {
+      "description": "Appended on every transition. The first entry is always the start transition, (none) to PLANNED.",
       "type": "array",
       "minItems": 1,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/history_first"
+        }
+      ],
       "items": {
-        "$ref": "#/$defs/history_entry"
+        "$ref": "#/$defs/history_later"
       }
     },
     "pending": {
@@ -170,6 +176,36 @@
         },
         "reason": {
           "type": "string"
+        }
+      }
+    },
+    "history_first": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/history_entry"
+        }
+      ],
+      "properties": {
+        "from": {
+          "const": null
+        },
+        "to": {
+          "const": "PLANNED"
+        },
+        "actor": {
+          "const": "engineer"
+        }
+      }
+    },
+    "history_later": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/history_entry"
+        }
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/state"
         }
       }
     }

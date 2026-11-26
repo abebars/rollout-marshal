@@ -1071,3 +1071,148 @@ def test_every_fenced_block_and_multi_line_span_has_a_check():
     assert fenced == {5: 1, 7: 1}
     starts = sorted(s.split(None, 1)[0] for n in range(2, 12) for s in multi_line_spans(section(n)))
     assert starts == sorted(["{run_id,", '{"run_id":', '{"ready":', "V"])
+
+
+def test_rule_constants_match_their_design_sentences():
+    """Booleans, maps and rule sets the value checks cannot tie to a label."""
+    prose = re.sub(r"\s+", " ", DESIGN)
+    on_off = "enabled" if names.KILL_SWITCH_DEFAULT_ENABLED else "disabled"
+    assert f"`{names.KILL_SWITCH_FEATURE}`, default {on_off}" in prose
+    assert f"`{names.KILL_SWITCH_FEATURE}` (boolean kill switch, default {on_off})" in prose
+    assert (
+        f"`{names.DEFAULT_MODEL_FEATURE}` (string value, `{names.DEFAULT_MODEL_VALUES[0]}` or "
+        f"`{names.DEFAULT_MODEL_VALUES[1]}`, default `{names.DEFAULT_MODEL_DEFAULT}`)" in prose
+    )
+    assert names.PERMANENT_FEATURE_DEFINITIONS == {
+        names.KILL_SWITCH_FEATURE: {"type": "boolean", "default": True},
+        names.DEFAULT_MODEL_FEATURE: {"type": "string", "default": names.VARIANT_CURRENT},
+    }
+    kwargs = ", ".join(f"`{k}={v}`" for k, v in names.FLAGSMITH_CLIENT_OPTIONS.items())
+    assert f"remote evaluation, {kwargs}" in prose
+    definitions = "; ".join(
+        f"`{metric}` = {d['aggregation']} of `{d['event']}`"
+        + (" (primary)" if metric == names.PRIMARY_METRIC else "")
+        for metric, d in names.METRIC_DEFINITIONS.items()
+    )
+    assert definitions in prose
+    aggregations = names.METRIC_AGGREGATIONS_AVAILABLE
+    assert (
+        f"Available metric aggregations are {', '.join(aggregations[:-1])} and {aggregations[-1]}."
+        in prose
+    )
+    assert "`mean_cost_micro_usd` is not higher than the current arm's" in prose
+    assert names.GUARDRAIL_MAX_COST_RATIO == 1.0
+    legal = " and ".join(f"`{s}`" for s in names.CHECK_LEGAL_STATES)
+    assert f"**`check` is legal in {legal} only**" in prose
+    noop = names.ALARM_NOOP_STATES
+    assert f"**An alarm in `{noop[0]}`, `{noop[1]}` or `{noop[2]}` is a no-op.**" in prose
+    errs = names.ACTIONS_WITH_LEGALITY_ERRORS
+    assert (
+        f"Only `{errs[0]}`, `{errs[1]}`, `{errs[2]}` and `{errs[3]}` return an error when not "
+        "legal in the current state" in prose
+    )
+    cli = ", ".join(f"`{a}`" for a in names.CLI_ACTIONS)
+    assert f"| `{names.CLI_NAME}` CLI (`cli/`) | {cli} |" in DESIGN
+    models = {role: ticks(m)[0] for role, m, _ in table_rows(section(3), "| Role |")}
+    assert names.MODEL_BY_VARIANT == {
+        names.VARIANT_CURRENT: models["Current arm (control)"],
+        names.VARIANT_CHEAPER: models["Cheaper arm (treatment)"],
+    }
+    diagram = "\n".join(fenced_blocks(5))
+    assert (
+        f"{names.ROUTER_FUNCTION} -> (sync invoke) {names.ANSWER_CURRENT_FUNCTION} | "
+        f"{names.ANSWER_CHEAPER_FUNCTION} -> Bedrock" in diagram
+    )
+    assert names.ANSWER_FUNCTION_BY_VARIANT == {
+        v: f"rm-answer-{v}" for v in (names.VARIANT_CURRENT, names.VARIANT_CHEAPER)
+    }
+    assert (
+        f"organisation {names.FLAGSMITH_ORGANISATION_ID}, project "
+        f'"{names.FLAGSMITH_PROJECT_NAME}" (ID `{names.FLAGSMITH_PROJECT_ID}`), environment '
+        f'"{names.FLAGSMITH_ENVIRONMENT_NAME}"' in prose
+    )
+    assert f"Free: {names.FLAGSMITH_MONTHLY_REQUEST_LIMIT:,} API requests a month" in prose
+    assert f"| Timebox | {names.TASK_TIMEBOX_MINUTES} minutes per task" in DESIGN
+    assert f"Timebox: {names.FIS_TIMEBOX_MINUTES // 60} hours." in prose
+    assert f"not working after {names.GATEWAY_FALLBACK_AFTER_MINUTES} minutes of task 1.3" in prose
+    assert f"environment flags (cached {names.DEFAULT_MODEL_CACHE_SECONDS} seconds)" in prose
+    assert f"The router caches the pointer for {names.POINTER_CACHE_SECONDS} seconds" in prose
+    assert f"API Gateway's {names.API_GATEWAY_TIMEOUT_SECONDS} second limit" in prose
+    assert f"({names.QUESTIONS_COUNT} support questions" in prose
+    assert f"one multivariate option with key `{names.TREATMENT_OPTION_KEY}` and value " in prose
+    assert f"value `{names.TREATMENT_OPTION_VALUE}`, at {names.TREATMENT_PERCENT} percent" in prose
+    assert f"the feature's own value, `{names.CONTROL_VALUE}`" in prose
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"action": "start", "prompt": "x", "actor": "engineer", "run_id": "r202611271530"},
+        {"action": "approve", "run_id": "r202611271530", "actor": "engineer", "force": True},
+        {
+            "action": "alarm",
+            "alarm_name": "rm-cheaper-latency-p95",
+            "alarm_state": "ALARM",
+            "at": "2026-11-27T15:42:00Z",
+            "region": "us-east-1",
+        },
+        {"action": "status", "run_id": "r202611271530", "verbose": True},
+    ],
+)
+def test_extra_keys_are_rejected_on_every_payload(payload):
+    invalid("invoke", payload)
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        [
+            {
+                "at": "2026-11-27T15:30:05Z",
+                "from": "RUNNING",
+                "to": "PLANNED",
+                "actor": "engineer",
+                "reason": "start",
+            }
+        ],
+        [
+            {
+                "at": "2026-11-27T15:30:05Z",
+                "from": None,
+                "to": "RUNNING",
+                "actor": "engineer",
+                "reason": "start",
+            }
+        ],
+        [
+            {
+                "at": "2026-11-27T15:30:05Z",
+                "from": None,
+                "to": "PLANNED",
+                "actor": "engineer",
+                "reason": "start",
+            },
+            {
+                "at": "2026-11-27T15:31:00Z",
+                "from": None,
+                "to": "RUNNING",
+                "actor": "engineer",
+                "reason": "approve",
+            },
+        ],
+    ],
+)
+def test_history_starts_with_the_start_transition_only(history):
+    invalid("run_item", run_item(history=history))
+
+
+def test_history_with_later_transitions_validates():
+    first = run_item()["history"][0]
+    later = {
+        "at": "2026-11-27T15:31:00Z",
+        "from": "PLANNED",
+        "to": "RUNNING",
+        "actor": "engineer",
+        "reason": "approve",
+    }
+    valid("run_item", run_item(state="RUNNING", history=[first, later]))
