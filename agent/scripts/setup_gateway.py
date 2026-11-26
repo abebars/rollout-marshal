@@ -394,8 +394,15 @@ class Setup:
             )
         want = credential_configuration(provider_arn)[0]
         found = (target.get("credentialProviderConfigurations") or [{}])[0]
-        want_key = want["credentialProvider"]["apiKeyCredentialProvider"]
-        found_key = (found.get("credentialProvider") or {}).get("apiKeyCredentialProvider") or {}
+        want_key = dict(want["credentialProvider"]["apiKeyCredentialProvider"])
+        found_key = dict(
+            (found.get("credentialProvider") or {}).get("apiKeyCredentialProvider") or {}
+        )
+        # The service stores the prefix trimmed: "Api-Key " comes back as "Api-Key"
+        # (seen on the first create, task 1.3 evidence), so compare it trimmed.
+        for key in (want_key, found_key):
+            if isinstance(key.get("credentialPrefix"), str):
+                key["credentialPrefix"] = key["credentialPrefix"].strip()
         differs = found.get("credentialProviderType") != want["credentialProviderType"] or any(
             found_key.get(field) != value for field, value in want_key.items()
         )

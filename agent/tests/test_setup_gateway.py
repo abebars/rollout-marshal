@@ -407,6 +407,23 @@ def test_found_role_with_another_trust_policy_stops():
         stubs.assert_done()
 
 
+def test_found_target_with_the_prefix_stored_trimmed_counts_as_the_same():
+    # On the first create, Api-Key with its trailing space came back as "Api-Key".
+    clients = _clients()
+    with Stubs(clients) as stubs:
+        _caller(stubs)
+        _provider_found(stubs)
+        _role_found(stubs)
+        _put_role_policy(stubs)
+        _gateway_listed(stubs)
+        _get_gateway(stubs)
+        _targets_listed(stubs)
+        _get_target(stubs, prefix=names.GATEWAY_API_KEY_PREFIX.strip())
+        summary, _ = _run(clients)
+        stubs.assert_done()
+    assert summary["created"] == []
+
+
 def test_found_target_with_another_prefix_stops():
     clients = _clients()
     with Stubs(clients) as stubs:
