@@ -1809,7 +1809,8 @@ PINNED_RULE_SENTENCES = (
     # section 7, section 4 and section 9
     "Legality is judged after the `RUN_ACTIVE` check and before anything pending: an action the "
     "table does not allow from the run's state returns `ILLEGAL_IN_STATE` whatever is pending.",
-    "The message names the pending target, its age and `marshal check <run_id>`.",
+    "The message names the pending target, its age and `marshal check <run_id>` (for a `PLANNED` "
+    "run with no pointer: the run was reset; start a new one).",
     "After a claim, every effect failure, and a commit that fails other than by a lost race, is "
     "`EFFECT_FAILED`.",
     "still ends it, unless a launch is pending on it; such a run stays `PLANNED` and, with no "
@@ -1822,6 +1823,8 @@ PINNED_RULE_SENTENCES = (
     "that every plan and apply uses; the lead copies it into each worktree it creates.",
     "and do not invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is emitted",
     "a missing flag or a failed read means off",
+    "**One run at a time.** `start` is refused while the pointer exists, that is, while a run is "
+    "active.",
 )
 
 
@@ -1878,6 +1881,7 @@ def test_other_files_repeat_the_rules():
         "`decline` still ends it unless a launch is pending on it",
         "has not been ended, and the alarm is not in ALARM",
         "while another action's transition is still pending",
+        "`marshal start` is sent while a run is active (the pointer exists)",
     ):
         assert line in spec, line
     config = (ROOT / "openspec/config.yaml").read_text()

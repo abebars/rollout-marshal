@@ -112,7 +112,7 @@ that is not legal in the run's current state without side effects.
 - **THEN** exactly one transition is applied
 
 #### Scenario: Second run while one is active
-- **WHEN** `marshal start` is sent while a run is in a non-terminal state
+- **WHEN** `marshal start` is sent while a run is active (the pointer exists)
 - **THEN** the response carries error `RUN_ACTIVE` and no run is created
 
 #### Scenario: Engineer stops a run

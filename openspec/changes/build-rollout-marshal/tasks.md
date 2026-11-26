@@ -185,8 +185,9 @@ their tasks name, not against each other.
     `evidence/1.4-results-sample.json`, read during 1.2, records which of
     lift, credible interval and win probability Flagsmith returns, and in
     what units; 2.2's results mapping starts from it. 1.4 times the Admin
-    API calls (start, refresh, results) and checks `rm-flagsmith-admin`'s
-    30-second timeout against them.
+    API refresh and results calls and checks `rm-flagsmith-admin`'s
+    30-second timeout against them; the start call is timed by 2.2's live
+    test, which starts an experiment anyway.
   - Pass: `make test` green; no such row left open. If the sample has no
     lift and no credible interval, the **Human** decides at Gate 1: keep a
     promote path, or accept that every clean run recommends hold.
@@ -333,7 +334,8 @@ their tasks name, not against each other.
     error on `start` returns `UPSTREAM_FAILED` and creates nothing; a
     failed launch ran `set_tick(True)` first, and a `tick`, or separately a
     `check`, completes it with one history entry; a `tick` right after
-    `EFFECT_FAILED` resumes at once (the claim was released); `start`,
+    `EFFECT_FAILED` resumes at once (the claim was released); a commit
+    that fails other than by a lost race returns `EFFECT_FAILED`; `start`,
     `decline`, `start` within one minute returns `BAD_REQUEST`;
     `status` returns the run without changing it; an unknown `run_id`
     returns `NOT_FOUND`; `decline` of a `PLANNED` run touches nothing in

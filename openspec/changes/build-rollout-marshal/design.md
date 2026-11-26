@@ -305,8 +305,8 @@ Terminal states: `PROMOTED`, `HELD`, `ABORTED`.
 
 Rules that hold everywhere:
 
-- **One run at a time.** `start` is refused while any run is in a
-  non-terminal state. The pointer is written at `PLANNED` with the
+- **One run at a time.** `start` is refused while the pointer exists,
+  that is, while a run is active. The pointer is written at `PLANNED` with the
   condition `attribute_not_exists(pk)`, so a second `start` fails on it.
   The terminal commit deletes the pointer in the same transaction
   (`clear_active`), on condition it is absent or names this run.
@@ -487,7 +487,8 @@ pending: an action the table does not allow from the run's state returns
 - `TRANSITION_PENDING`: an engineer action lost its claim or commit to
   another invocation, or another transition is pending that it may not
   take over. The message names the pending target, its age and
-  `marshal check <run_id>`.
+  `marshal check <run_id>` (for a `PLANNED` run with no pointer: the run
+  was reset; start a new one).
 - `UPSTREAM_FAILED`: a Bedrock, AWS or Flagsmith call failed before any
   claim, so nothing changed. After a claim, every effect failure, and a
   commit that fails other than by a lost race, is `EFFECT_FAILED`.
