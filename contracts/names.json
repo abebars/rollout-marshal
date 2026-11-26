@@ -393,9 +393,9 @@
   "QUESTIONS_COUNT": 30,
   "QUESTIONS_FILE": "app/questions.json",
   "RECOMMENDATIONS": [
+    "hold, re-run",
     "promote",
-    "hold",
-    "hold, re-run"
+    "hold"
   ],
   "RECOMMEND_HOLD": "hold",
   "RECOMMEND_HOLD_RERUN": "hold, re-run",
@@ -628,6 +628,7 @@
   "TREATMENT_OPTION_KEY": "cheaper",
   "TREATMENT_OPTION_VALUE": "cheaper",
   "TREATMENT_PERCENT": 50,
+  "UTC_TIMESTAMP_FORMAT": "%Y-%m-%dT%H:%M:%S.%fZ",
   "VARIANTS": [
     "current",
     "cheaper"

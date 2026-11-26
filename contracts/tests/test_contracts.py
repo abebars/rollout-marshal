@@ -11,6 +11,7 @@ import json
 import re
 import subprocess
 import sys
+import uuid
 from datetime import UTC, datetime, timedelta, timezone
 from functools import cache
 from pathlib import Path
@@ -116,20 +117,21 @@ def design_error_codes() -> list[str]:
 SNAKE_KEY = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*_?(?:<run_id>)?$")
 
 
-def design_feature_keys() -> set[str]:
+def design_feature_keys() -> list[str]:
     """Code spans that the prose just before them calls a feature, plus the
     bulleted list of permanent features."""
-    keys = set()
+    keys: dict[str, None] = {}  # an ordered set: first appearance in design.md
     for n in range(3, 10):
         text = section(n)
         for span, before in code_spans(text):
             if "_" in span and SNAKE_KEY.match(span) and "feature" in before[-60:].lower():
-                keys.add(span)
+                keys[span] = None
         parts = blocks(text)
         for i, block in enumerate(parts):
             if "permanent feature" in block.lower() and i + 1 < len(parts):
-                keys.update(re.findall(r"^- `([^`]+)`", parts[i + 1], flags=re.M))
-    return keys
+                for key in re.findall(r"^- `([^`]+)`", parts[i + 1], flags=re.M):
+                    keys[key] = None
+    return list(keys)
 
 
 def test_states_match_design():
@@ -151,7 +153,7 @@ def test_error_codes_match_design():
 
 
 def test_feature_keys_match_design():
-    assert design_feature_keys() == set(names.FEATURE_KEYS)
+    assert tuple(design_feature_keys()) == names.FEATURE_KEYS
     for key in names.FEATURE_KEYS:
         assert f"`{key}`" in DESIGN
 
@@ -310,6 +312,7 @@ OTHER_SOURCES = {
     "contracts/schemas/judge_payload.json": "section 7: contracts/schemas/ plus judge_payload",
     "notBreaching": "CloudWatch's value for section 5's 'missing data treated as not breaching'",
     -0.05: "section 6: 'at or above minus 5 percent', as a fraction",
+    "%Y-%m-%dT%H:%M:%S.%fZ": "the one stored form of section 6's ISO 8601 UTC *_at values",
     1.1: "section 6: 'at most 110 percent', as a ratio",
     35000: "CLAUDE.md: 'Flagsmith request usage passes 35,000'",
     60000000: "CLAUDE.md: 'AnswerCostMicroUsd passes 60,000,000'",
@@ -522,7 +525,7 @@ def test_fis_matches_design():
     prose = re.sub(r"\s+", " ", section(9))
     assert f"template `{names.FIS_TEMPLATE}`" in prose
     assert f"action `{names.FIS_ACTION}` on `{names.FIS_TARGET_FUNCTION}`" in prose
-    assert f"{names.FIS_INVOCATION_PERCENTAGE} percent of invocations" in prose
+    assert f"`, {names.FIS_INVOCATION_PERCENTAGE} percent of invocations," in prose
     assert f"added delay {names.FIS_DELAY_MS} ms" in prose
     assert f"duration {names.FIS_DURATION_MINUTES} minutes" in prose
     assert f"`{names.FIS_SLOW_POLL_ENV}={names.FIS_SLOW_POLL_SECONDS}`" in prose
@@ -549,7 +552,7 @@ def test_load_plans_match_design():
     assert answers == [p.users * p.questions for p in expected]
     prose = re.sub(r"\s+", " ", section(11))
     assert f"= {names.ANSWER_BUDGET:,} answers" in prose
-    assert f"before exceeding {names.ANSWER_HARD_STOP:,}" in prose
+    assert f"before exceeding {names.ANSWER_HARD_STOP:,}." in prose
     assert f"At most {names.LOAD_MAX_CONCURRENCY} concurrent requests" in prose
     assert (
         names.LOAD_SMOKE.users * names.LOAD_SMOKE.questions
@@ -571,7 +574,12 @@ def test_numbers_in_design_rules():
     assert (
         "at or above minus 5 percent" in prose and names.PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER == -0.05
     )
-    assert f"every {names.TICK_INTERVAL_MINUTES} minutes" in prose
+    assert (
+        f"EventBridge Scheduler, every {names.TICK_INTERVAL_MINUTES} minutes, enabled only" in prose
+    )
+    assert f'metadata={{"{names.EXPOSURE_METADATA_KEY}": flag.experiment.id}}' in prose, (
+        "exposure metadata key"
+    )
     assert f"at {names.TREATMENT_PERCENT} percent" in prose
     assert f"`{names.ANSWER_THINKING_EFFORT}` through" in prose
     assert f"Answers (both arms): `maxTokens` {names.ANSWER_MAX_TOKENS}," in prose
@@ -877,15 +885,15 @@ def run_item(**overrides):
         "plan": plan(),
         "history": [
             {
-                "at": "2026-11-27T15:30:05Z",
+                "at": "2026-11-27T15:30:05.000000Z",
                 "from": None,
                 "to": "PLANNED",
                 "actor": "engineer",
                 "reason": "start",
             }
         ],
-        "created_at": "2026-11-27T15:30:05Z",
-        "updated_at": "2026-11-27T15:30:05.123456+00:00",
+        "created_at": "2026-11-27T15:30:05.000000Z",
+        "updated_at": "2026-11-27T15:30:05.123456Z",
     }
     return {**base, **overrides}
 
@@ -899,11 +907,11 @@ def test_run_items_validate():
             feature_key="assistant_model_r202611271530",
             experiment_id=4321,
             metric_ids={"helpful_rate": 1, "mean_latency_ms": 2, "mean_cost_micro_usd": 3},
-            incident={"started_at": "2026-11-27T15:52:00Z", "alarm_name": names.ALARM_NAME},
+            incident={"started_at": "2026-11-27T15:52:00.000000Z", "alarm_name": names.ALARM_NAME},
             pending="AWAITING_RESUME",
-            pending_at="2026-11-27T15:58:00Z",
-            first_running_at="2026-11-27T15:35:00Z",
-            last_refresh_at="2026-11-27T15:50:00Z",
+            pending_at="2026-11-27T15:58:00.000000Z",
+            first_running_at="2026-11-27T15:35:00.000000Z",
+            last_refresh_at="2026-11-27T15:50:00.000000Z",
             report_key="runs/r202611271530/report.md",
         ),
     )
@@ -919,11 +927,13 @@ def test_run_items_validate():
         {"created_at": "2026-11-27"},
         {"created_at": "2026-13-45T25:61:61Z"},
         {"created_at": "2026-11-27T15:30:05+0000"},
+        {"created_at": "2026-11-27T15:30:05Z"},
+        {"created_at": "2026-11-27T15:30:05.123456+00:00"},
         {"history": []},
         {
             "history": [
                 {
-                    "at": "2026-11-27T15:30:05Z",
+                    "at": "2026-11-27T15:30:05.000000Z",
                     "from": None,
                     "to": "PLANNED",
                     "actor": "human",
@@ -932,7 +942,7 @@ def test_run_items_validate():
             ]
         },
         {"metric_ids": {"accuracy": 1}},
-        {"incident": {"started_at": "2026-11-27T15:52:00Z"}},
+        {"incident": {"started_at": "2026-11-27T15:52:00.000000Z"}},
         {"feature_key": "assistant_model_rspike"},
         {"experiment_id": "4321"},
         {"plan": plan(split={"current": 70, "cheaper": 30})},
@@ -986,6 +996,38 @@ def test_results_validate():
         {"variations": {"current": {}}},
         {"helpful_lift_ci_lower": "-5%"},
         {"win_probability": 0.9},
+        {
+            "variations": {
+                "current": {
+                    "identities": 75,
+                    "helpful_rate": 1.5,
+                    "mean_latency_ms": 1.0,
+                    "mean_cost_micro_usd": 1.0,
+                },
+                "cheaper": {
+                    "identities": 75,
+                    "helpful_rate": 0.9,
+                    "mean_latency_ms": 1.0,
+                    "mean_cost_micro_usd": 1.0,
+                },
+            }
+        },
+        {
+            "variations": {
+                "current": {
+                    "identities": 75,
+                    "helpful_rate": -0.1,
+                    "mean_latency_ms": 1.0,
+                    "mean_cost_micro_usd": 1.0,
+                },
+                "cheaper": {
+                    "identities": 75,
+                    "helpful_rate": 0.9,
+                    "mean_latency_ms": 1.0,
+                    "mean_cost_micro_usd": 1.0,
+                },
+            }
+        },
     ],
 )
 def test_bad_results_are_rejected(overrides):
@@ -1045,7 +1087,7 @@ def test_schema_constants_match_names():
 
 def test_commit_may_leave_pending_at_behind():
     """design.md section 6 step 3 removes pending only."""
-    valid("run_item", run_item(pending_at="2026-11-27T15:58:00Z"))
+    valid("run_item", run_item(pending_at="2026-11-27T15:58:00.000000Z"))
 
 
 @pytest.mark.parametrize(
@@ -1170,7 +1212,7 @@ def test_extra_keys_are_rejected_on_every_payload(payload):
     [
         [
             {
-                "at": "2026-11-27T15:30:05Z",
+                "at": "2026-11-27T15:30:05.000000Z",
                 "from": None,
                 "to": "PLANNED",
                 "actor": "agent",
@@ -1179,7 +1221,7 @@ def test_extra_keys_are_rejected_on_every_payload(payload):
         ],
         [
             {
-                "at": "2026-11-27T15:30:05Z",
+                "at": "2026-11-27T15:30:05.000000Z",
                 "from": "RUNNING",
                 "to": "PLANNED",
                 "actor": "engineer",
@@ -1188,7 +1230,7 @@ def test_extra_keys_are_rejected_on_every_payload(payload):
         ],
         [
             {
-                "at": "2026-11-27T15:30:05Z",
+                "at": "2026-11-27T15:30:05.000000Z",
                 "from": None,
                 "to": "RUNNING",
                 "actor": "engineer",
@@ -1197,14 +1239,14 @@ def test_extra_keys_are_rejected_on_every_payload(payload):
         ],
         [
             {
-                "at": "2026-11-27T15:30:05Z",
+                "at": "2026-11-27T15:30:05.000000Z",
                 "from": None,
                 "to": "PLANNED",
                 "actor": "engineer",
                 "reason": "start",
             },
             {
-                "at": "2026-11-27T15:31:00Z",
+                "at": "2026-11-27T15:31:00.000000Z",
                 "from": None,
                 "to": "RUNNING",
                 "actor": "engineer",
@@ -1257,7 +1299,7 @@ def test_constants_holding_booleans_or_none_are_pinned():
 def test_history_with_later_transitions_validates():
     first = run_item()["history"][0]
     later = {
-        "at": "2026-11-27T15:31:00Z",
+        "at": "2026-11-27T15:31:00.000000Z",
         "from": "PLANNED",
         "to": "RUNNING",
         "actor": "engineer",
@@ -1291,8 +1333,10 @@ def test_list_constants_match_their_design_lists():
         r"Recommendation rule \(in code, not in the prompt\): (.*?) Flagsmith's", prose
     )
     recommended = re.findall(r"recommend `([^`]+)`", rule.group(1))
-    assert len(recommended) == len(names.RECOMMENDATIONS)
-    assert set(recommended) == set(names.RECOMMENDATIONS)
+    assert tuple(recommended) == names.RECOMMENDATIONS  # order is the rule: first match wins
+    assert f"An incident happened during the run: recommend `{names.RECOMMEND_HOLD_RERUN}`" in prose
+    rule_schema = contracts.load_schema("plan")["properties"]["recommendation_rule"]
+    assert rule_schema["properties"]["after_incident"]["const"] == names.RECOMMEND_HOLD_RERUN
     schemas = re.search(r"Schemas in `contracts/schemas/`: (.*?)\.", prose).group(1)
     assert tuple(ticks(schemas)) == names.SCHEMA_NAMES
     assert names.SCHEMA_FILES == {n: f"{names.SCHEMA_DIR}{n}.json" for n in names.SCHEMA_NAMES}
@@ -1375,3 +1419,286 @@ def test_every_collection_constant_names_the_test_that_ties_it():
     }
     assert sorted(collections - set(TIED_BY)) == [], "add each new collection to TIED_BY"
     assert sorted(set(TIED_BY) - collections) == [], "remove TIED_BY entries names.py dropped"
+
+
+# ---------------------------------------------------------------------------
+# Final hardening (1.1 review panel)
+# ---------------------------------------------------------------------------
+def test_awaiting_rule_holds_for_every_state():
+    for state in [None, *names.STATES]:
+        for awaiting in [None, *names.AWAITING_VALUES]:
+            payload = response(state=state, awaiting=awaiting)
+            check = valid if awaiting == names.awaiting_for(state) else invalid
+            check("response", payload)
+
+
+def test_model_id_follows_served_for_every_variant():
+    for served in names.VARIANTS:
+        for model in (names.MODEL_CURRENT, names.MODEL_CHEAPER):
+            payload = judge_payload(served=served, model_id=model)
+            check = valid if model == names.MODEL_BY_VARIANT[served] else invalid
+            check("judge_payload", payload)
+
+
+def test_required_lists_are_pinned():
+    def every_field_required(node, path):
+        if node.get("type") == "object" and "properties" in node:
+            assert set(node["required"]) == set(node["properties"]), path
+            for key, child in node["properties"].items():
+                every_field_required(child, f"{path}.{key}")
+
+    every_field_required(contracts.load_schema("plan"), "plan")
+    run = contracts.load_schema("run_item")
+    written_at_start = ["pk", "run_id", "state", "prompt", "plan", "history"]
+    assert run["required"] == [*written_at_start, "created_at", "updated_at"]
+    assert run["properties"]["incident"]["required"] == ["started_at", "alarm_name"]
+    assert run["$defs"]["history_entry"]["required"] == list(names.HISTORY_FIELDS)
+    invoke = contracts.load_schema("invoke")
+    for payload in design_payloads():
+        action = payload["action"]
+        branch = next(
+            b
+            for b in invoke["oneOf"]
+            if action
+            in b["properties"]["action"].get("enum", [b["properties"]["action"].get("const")])
+        )
+        if action == names.ACTION_STATUS:
+            status_line = next(
+                line for line in "\n".join(fenced_blocks(7)).splitlines() if '"status"' in line
+            )
+            optional = "omitted" in status_line  # "<id or omitted for the active run>"
+            assert branch["required"] == (["action"] if optional else ["action", "run_id"])
+            assert set(branch["properties"]) == {"action", "run_id"}
+        else:
+            assert branch["required"] == list(payload), action
+            assert set(branch["properties"]) == set(payload), action
+
+
+def test_every_schema_copy_of_a_name_matches_names():
+    body = names.RUN_ID_PATTERN[1:-1]
+    invoke = contracts.load_schema("invoke")
+    run = contracts.load_schema("run_item")
+    judge = contracts.load_schema("judge_payload")
+    resp = contracts.load_schema("response")
+    assert run["$defs"]["run_id"]["pattern"] == names.RUN_ID_PATTERN
+    assert judge["properties"]["run_id"]["pattern"] == names.RUN_ID_PATTERN
+    assert resp["properties"]["run_id"]["oneOf"][1]["pattern"] == names.RUN_ID_PATTERN
+    assert run["properties"]["pk"]["pattern"] == f"^{names.RUN_PK_PREFIX}{body}$"
+    assert (
+        run["properties"]["feature_key"]["pattern"] == f"^{names.EXPERIMENT_FEATURE_PREFIX}{body}$"
+    )
+    report = names.REPORT_KEY_TEMPLATE.replace(".", "\\.").replace("<run_id>", body)
+    assert run["properties"]["report_key"]["pattern"] == f"^{report}$"
+    assert run["$defs"]["history_entry"]["properties"]["from"]["enum"] == [None, *names.STATES]
+    assert run["properties"]["pending"] == {"$ref": "#/$defs/state"}
+    assert run["properties"]["incident"]["properties"]["alarm_name"]["const"] == names.ALARM_NAME
+    assert judge["properties"]["assigned"]["enum"] == list(names.VARIANTS)
+    assert judge["properties"]["served"]["enum"] == list(names.VARIANTS)
+    branches = {
+        tuple(b["properties"]["action"].get("enum", [b["properties"]["action"].get("const")])): b
+        for b in invoke["oneOf"]
+    }
+    engineer_actions = (names.ACTION_APPROVE, names.ACTION_DECLINE, names.ACTION_CHECK)
+    assert set(branches) == {
+        (names.ACTION_START,),
+        engineer_actions,
+        (names.ACTION_STATUS,),
+        (names.ACTION_ALARM,),
+        (names.ACTION_TICK,),
+    }
+    for key in [(names.ACTION_START,), engineer_actions]:
+        assert branches[key]["properties"]["actor"] == {"const": names.ACTOR_ENGINEER}
+    alarm = branches[(names.ACTION_ALARM,)]["properties"]
+    assert alarm["alarm_name"] == {"const": names.ALARM_NAME}
+    assert alarm["alarm_state"] == {"const": names.ALARM_STATE_ALARM}
+
+
+def test_every_object_rejects_unlisted_keys():
+    def walk(node, path):
+        if isinstance(node, dict):
+            if node.get("type") == "object" and "propertyNames" not in node:
+                assert node.get("additionalProperties") is False, path
+            for key, child in node.items():
+                walk(child, f"{path}.{key}")
+        elif isinstance(node, list):
+            for i, child in enumerate(node):
+                walk(child, f"{path}[{i}]")
+
+    for name in names.SCHEMA_NAMES:
+        walk(contracts.load_schema(name), name)
+    shapes = {
+        ("judge_payload", None): names.JUDGE_PAYLOAD_FIELDS,
+        ("response", None): names.RESPONSE_FIELDS,
+        ("results", None): names.RESULTS_FIELDS,
+    }
+    for (name, _), fields in shapes.items():
+        assert set(contracts.load_schema(name)["properties"]) == set(fields), name
+    variation = contracts.load_schema("results")["$defs"]["variation"]["properties"]
+    assert set(variation) == set(names.VARIATION_FIELDS)
+    error = contracts.load_schema("response")["properties"]["error"]["oneOf"][1]["properties"]
+    assert set(error) == set(names.ERROR_FIELDS)
+
+
+DESIGN_TYPE = {"str": "string", "int": "integer", "float": "number", "bool": "boolean"}
+
+
+def declared_types(text: str) -> set[str]:
+    kinds = set()
+    for part in (p.strip() for p in text.split("|")):
+        if part == "null":
+            kinds.add("null")
+        elif part in DESIGN_TYPE:
+            kinds.add(DESIGN_TYPE[part])
+        elif part.startswith('"'):
+            kinds.add("string")
+        elif part.startswith("{") or part == "V":
+            kinds.add("object")
+    return kinds
+
+
+def schema_types(node: dict, root: dict) -> set[str]:
+    if "$ref" in node:
+        return schema_types(root["$defs"][node["$ref"].split("/")[-1]], root)
+    if "oneOf" in node:
+        return set().union(*(schema_types(n, root) for n in node["oneOf"]))
+    if "enum" in node:
+        py = {str: "string", bool: "boolean", int: "integer", float: "number"}
+        return {"null" if v is None else py[type(v)] for v in node["enum"]}
+    kind = node["type"]
+    return {kind} if isinstance(kind, str) else set(kind)
+
+
+def design_field_types(span: str) -> dict[str, set[str]]:
+    flat = re.sub(r"\s+", " ", span)
+    pairs = re.findall(r'"(\w+)": (.*?)(?=, "\w+":|\}\s*$|\}\}$)', flat)
+    return {field: declared_types(kind) for field, kind in pairs}
+
+
+def test_field_types_match_design():
+    spans = multi_line_spans(section(7))
+    response_span = next(s for s in spans if s.startswith('{"run_id"'))
+    results_span = next(s for s in spans if s.startswith('{"ready"'))
+    variation_span = next(s for s in spans if s.startswith("V = ")).removeprefix("V = ")
+    resp = contracts.load_schema("response")
+    res = contracts.load_schema("results")
+    for span, schema, props, fields in [
+        (response_span, resp, resp["properties"], names.RESPONSE_FIELDS),
+        (results_span, res, res["properties"], names.RESULTS_FIELDS),
+        (variation_span, res, res["$defs"]["variation"]["properties"], names.VARIATION_FIELDS),
+    ]:
+        declared = design_field_types(span)
+        for field in fields:
+            assert declared[field] == schema_types(props[field], schema), field
+
+
+def test_helpers_reject_bad_input():
+    eastern = timezone(timedelta(hours=-5))
+    assert (
+        names.scratch_run_id("smoke", datetime(2026, 11, 27, 4, 12, tzinfo=eastern)) == "rsmoke0912"
+    )
+    with pytest.raises(ValueError):
+        names.scratch_run_id("smoke", datetime(2026, 11, 27, 4, 12))
+    for bad in ("not a run", "rspike", "r202611271530\n"):
+        for helper in (names.run_pk, names.report_key, names.experiment_feature_key):
+            with pytest.raises(ValueError):
+                helper(bad)
+    assert not names.is_identity("user-001\n")
+    session = names.new_session_id()
+    assert uuid.UUID(session.removeprefix(names.SESSION_ID_PREFIX)).version == 4
+    assert len(session) == len(names.SESSION_ID_PREFIX) + 36
+
+
+def test_utc_iso_writes_one_sortable_form():
+    eastern = timezone(timedelta(hours=-5))
+    forms = [
+        datetime(2026, 11, 27, 10, 30, 5, tzinfo=eastern),
+        "2026-11-27T15:30:05Z",
+        "2026-11-27T15:30:05.000+0000",
+        "2026-11-27T15:30:05+00:00",
+    ]
+    assert {names.utc_iso(f) for f in forms} == {"2026-11-27T15:30:05.000000Z"}
+    later = names.utc_iso("2026-11-27T15:30:05.5Z")
+    assert names.utc_iso(forms[1]) < later
+    assert re.fullmatch(
+        contracts.load_schema("run_item")["$defs"]["utc"]["pattern"], names.utc_iso()
+    )
+    with pytest.raises(ValueError):
+        names.utc_iso("2026-11-27T15:30:05")
+    stored = names.utc_iso("2019-10-02T17:04:40.989+0000")  # an alarm's at, as CloudWatch sends it
+    valid(
+        "run_item",
+        run_item(
+            state="ROLLED_BACK", incident={"started_at": stored, "alarm_name": names.ALARM_NAME}
+        ),
+    )
+
+
+def test_names_json_content():
+    data = json.loads((ROOT / "contracts/names.json").read_text())
+    public = {a for a in vars(names) if a.isupper() and not a.startswith("_")}
+    assert set(data) == public
+    assert data["ALARM_THRESHOLD_MS"] == 10000
+    assert data["TRANSITIONS"][0] == {
+        "source": None,
+        "target": "PLANNED",
+        "triggers": ["start"],
+        "actor": "engineer",
+    }
+    assert data["LOAD_FULL"] == {"users": 150, "questions": 10}
+    assert data["RECOMMENDATIONS"] == list(names.RECOMMENDATIONS)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"action": "tick", "actor": "engineer"},
+        {
+            "action": "alarm",
+            "alarm_name": "rm-cheaper-latency-p95",
+            "alarm_state": "ALARM",
+            "at": "2026-11-27T15:42:00Z",
+            "actor": "agent",
+        },
+    ],
+)
+def test_actor_is_rejected_where_design_has_none(payload):
+    invalid("invoke", payload)
+
+
+def test_alarm_at_accepts_microseconds():
+    valid(
+        "invoke",
+        {
+            "action": "alarm",
+            "alarm_name": names.ALARM_NAME,
+            "alarm_state": "ALARM",
+            "at": "2026-11-27T15:42:00.123456+00:00",
+        },
+    )
+
+
+def test_dynamo_helpers_convert_every_level():
+    from decimal import Decimal
+
+    nested = {"a": [0.1, {"b": [0.3, 2]}], "c": 3, "d": True, "e": "x", "f": None}
+    stored = dynamo.to_dynamo(nested)
+    assert stored == {
+        "a": [Decimal("0.1"), {"b": [Decimal("0.3"), 2]}],
+        "c": 3,
+        "d": True,
+        "e": "x",
+        "f": None,
+    }
+    assert type(stored["a"][0]) is Decimal and type(stored["a"][1]["b"][0]) is Decimal
+    assert type(stored["d"]) is bool
+    back = dynamo.from_dynamo(
+        {
+            "a": [Decimal("0.1"), {"b": [Decimal("0.3"), Decimal("2")]}],
+            "c": Decimal("3"),
+            "g": Decimal("1.0"),
+            "s": {Decimal("4")},
+        }
+    )
+    assert back == {"a": [0.1, {"b": [0.3, 2]}], "c": 3, "g": 1, "s": {4}}
+    assert type(back["a"][0]) is float and type(back["a"][1]["b"][0]) is float
+    assert type(back["a"][1]["b"][1]) is int and type(back["g"]) is int  # whole numbers are int

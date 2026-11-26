@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/run_item.json",
   "title": "Run item",
-  "description": "A run in table rm-runs, pk RUN#<run_id> (design.md section 6), as Python holds it: write it through contracts.dynamo.to_dynamo and read it back through contracts.dynamo.from_dynamo (whole numbers become int, fractions float). Every *_at value is ISO 8601 UTC. history[0] is the start transition, with from null. history actor is the table's Actor column for that transition, not the payload's actor. A commit removes pending (design.md section 6, step 3); pending_at may stay behind.",
+  "description": "A run in table rm-runs, pk RUN#<run_id> (design.md section 6), as Python holds it: write it through contracts.dynamo.to_dynamo and read it back through contracts.dynamo.from_dynamo (whole numbers become int, fractions float). Every *_at value is ISO 8601 UTC in one form, written with contracts.names.utc_iso(). history[0] is the start transition, with from null. history actor is the table's Actor column for that transition, not the payload's actor. A commit removes pending (design.md section 6, step 3); pending_at may stay behind.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -134,9 +134,9 @@
       ]
     },
     "utc": {
-      "description": "ISO 8601 UTC, e.g. 2026-11-27T15:32:00Z or 2026-11-27T15:32:00.123456+00:00.",
+      "description": "ISO 8601 UTC in the one stored form, e.g. 2026-11-27T15:30:05.123456Z, as contracts.names.utc_iso() writes it, so values sort as strings. Convert an alarm payload's at with utc_iso(at) before storing it.",
       "type": "string",
-      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?(Z|\\+00:00)$"
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{6}Z$"
     },
     "history_entry": {
       "type": "object",

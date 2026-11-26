@@ -45,6 +45,10 @@ MODEL_JUDGE = "us.anthropic.claude-haiku-5-5"
 MODEL_AGENT = "us.anthropic.claude-sonnet-5"  # plan, incident note, report prose
 DATA_RETENTION_MODE = "aws_review"  # needed by MODEL_CURRENT in us-east-1
 BEDROCK_RUNTIME_SERVICE = "bedrock-runtime"  # every call uses its Converse API
+# The model-native names, word for word from design.md section 3 and CLAUDE.md. The
+# Converse API spells them `temperature` and `topP` inside inferenceConfig (top_k goes only
+# in additionalModelRequestFields), so a guard must check both spellings. Adding the
+# Converse spellings here is a contract change.
 FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "top_k")
 
 ANSWER_MAX_TOKENS = 2000  # caps thinking plus text
@@ -343,7 +347,8 @@ GUARDRAIL_MAX_COST_RATIO = 1.00
 RECOMMEND_PROMOTE = "promote"
 RECOMMEND_HOLD = "hold"
 RECOMMEND_HOLD_RERUN = "hold, re-run"  # after any incident
-RECOMMENDATIONS = (RECOMMEND_PROMOTE, RECOMMEND_HOLD, RECOMMEND_HOLD_RERUN)
+# In the order design.md section 6 applies them: the first that matches wins.
+RECOMMENDATIONS = (RECOMMEND_HOLD_RERUN, RECOMMEND_PROMOTE, RECOMMEND_HOLD)
 PROMOTE_MIN_PROB_NOT_WORSE = 0.95
 # Fallback when prob_cheaper_not_worse is null: the lower bound of the credible
 # interval for the lift on helpful_rate is at or above minus 5 percent. Encoded
@@ -491,7 +496,7 @@ _IDENTITY_RE = re.compile(IDENTITY_PATTERN)
 
 def is_run_id(value: str) -> bool:
     """True when value matches RUN_ID_PATTERN."""
-    return bool(_RUN_ID_RE.match(value))
+    return bool(_RUN_ID_RE.fullmatch(value))
 
 
 def _require_run_id(run_id: str) -> str:
@@ -541,7 +546,26 @@ def identity(n: int) -> str:
 
 
 def is_identity(value: str) -> bool:
-    return bool(_IDENTITY_RE.match(value))
+    return bool(_IDENTITY_RE.fullmatch(value))
+
+
+UTC_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"  # the one stored form of every *_at value
+
+
+def utc_iso(value: datetime | str | None = None) -> str:
+    """ISO 8601 UTC in the one stored form, e.g. 2026-11-27T15:30:05.123456Z.
+
+    Every *_at value in a run item is written through this, so values sort correctly as
+    strings. It takes an aware datetime, an ISO 8601 string with an offset (Z, +HH:MM or
+    the +HHMM that CloudWatch alarm events use), or None for now.
+    """
+    if value is None:
+        moment = datetime.now(_UTC)
+    elif isinstance(value, str):
+        moment = datetime.fromisoformat(value)
+    else:
+        moment = value
+    return _utc(moment).strftime(UTC_TIMESTAMP_FORMAT)
 
 
 def new_session_id() -> str:
