@@ -52,6 +52,14 @@ TIMEOUT_SECONDS = 30
 SPIKE_FEATURE_KEY = re.compile(
     re.escape(names.EXPERIMENT_FEATURE_PREFIX + names.RUN_ID_PREFIX + "spike") + r"[0-9]{4}"
 )
+# The spike metric (tasks.md 1.3), equal to agent/spike/agent.py's (a unit test checks).
+# The MCP server cannot create it: its create_metric drops "definition" (task 1.3 evidence),
+# so the human approved this one Admin API create on 2026-11-26.
+SPIKE_METRIC = "spike_mcp_metric"
+SPIKE_EVENT = "spike_event"
+METRIC_DESCRIPTION = "Task 1.3 spike: mean of spike_event, higher is better."
+METRIC_DIRECTION_UP = "up"  # Flagsmith's spelling of "higher is better" (its OpenAPI spec)
+METRIC_DEFINITION_VERSION = 1
 
 
 class Refused(RuntimeError):
@@ -174,6 +182,45 @@ class AdminApi:
         after = self.status(experiment_id)
         return {"feature": name, "start": started, "after": after["body"]}
 
+    def ensure_spike_metric(self) -> dict:
+        """Get or create spike_mcp_metric, the mean of spike_event, higher is better.
+
+        A found metric must match on aggregation, direction and (when the API returns it)
+        event; otherwise this stops for the human, and nothing is changed.
+        """
+        base = f"/api/v1/environments/{self.development()['key']}/experiment-metrics/"
+        listed = self.send("GET", f"{base}?q={SPIKE_METRIC}")
+        results = listed["body"].get("results", []) if isinstance(listed["body"], dict) else []
+        found = [m for m in results if m.get("name") == SPIKE_METRIC]
+        if found:
+            metric = found[0]
+            want = {"aggregation": names.METRIC_AGGREGATION, "direction": METRIC_DIRECTION_UP}
+            problems = [
+                f"{field} {metric.get(field)!r} (want {value!r})"
+                for field, value in want.items()
+                if metric.get(field) != value
+            ]
+            definition = metric.get("definition")
+            if isinstance(definition, dict) and definition.get("event") != SPIKE_EVENT:
+                problems.append(f"event {definition.get('event')!r} (want {SPIKE_EVENT!r})")
+            if problems:
+                raise Refused(f"metric {SPIKE_METRIC} exists but differs: " + "; ".join(problems))
+            return {"created": False, "metric": metric}
+        created = self.send(
+            "POST",
+            base,
+            {
+                "name": SPIKE_METRIC,
+                "description": METRIC_DESCRIPTION,
+                "aggregation": names.METRIC_AGGREGATION,
+                "direction": METRIC_DIRECTION_UP,
+                "definition": {"version": METRIC_DEFINITION_VERSION, "event": SPIKE_EVENT},
+            },
+        )
+        if created["status"] != 201:
+            raise Refused(f"creating {SPIKE_METRIC} answered HTTP {created['status']}")
+        return {"created": True, "metric": created["body"]}
+
     def refresh_results(self, experiment_id: int) -> dict:
         return self.send("POST", self.experiment_path(experiment_id, "results/refresh/"))
 
@@ -228,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_parser(command).add_argument("experiment_id", type=int)
     sub.add_parser("get").add_argument("path")
     sub.add_parser("swagger").add_argument("word", nargs="?")
+    sub.add_parser("ensure-metric")  # get or create spike_mcp_metric only
     args = parser.parse_args(argv)
     try:
         if args.command == "swagger":
@@ -247,6 +295,8 @@ def main(argv: list[str] | None = None) -> int:
             }.get(args.command)
             if action is not None:
                 action(args.experiment_id)
+            elif args.command == "ensure-metric":
+                api.ensure_spike_metric()
             else:
                 api.get(args.path)
     except Refused as exc:

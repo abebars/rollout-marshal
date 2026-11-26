@@ -21,14 +21,24 @@ HYPOTHESIS = "cheaper does not lower spike_mcp_metric"
 
 
 class Recorder:
-    def __init__(self, feature_name=SPIKE_KEY, status="created"):
+    def __init__(self, feature_name=SPIKE_KEY, status="created", metrics=()):
         self.feature_name = feature_name
         self.status = status
+        self.metrics = list(metrics)
         self.requests: list[httpx.Request] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
+        if path == f"/api/v1/environments/{ENV_KEY}/experiment-metrics/":
+            if request.method == "GET":
+                q = request.url.params.get("q")
+                found = [m for m in self.metrics if q is None or q in m["name"]]
+                return httpx.Response(200, json={"count": len(found), "results": found})
+            body = json.loads(request.content)
+            created = {"id": 777, **body}
+            self.metrics.append(created)
+            return httpx.Response(201, json=created)
         if path == "/api/v1/environments/" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -187,6 +197,45 @@ def test_spike_key_rule_matches_the_agents(key):
     from agent.spike import agent as spike
 
     assert bool(admin_api.SPIKE_FEATURE_KEY.fullmatch(key)) == spike.is_spike_feature_key(key)
+
+
+METRIC_BODY = {
+    "name": "spike_mcp_metric",
+    "description": "Task 1.3 spike: mean of spike_event, higher is better.",
+    "aggregation": "mean",
+    "direction": "up",
+    "definition": {"version": 1, "event": "spike_event"},
+}
+
+
+def test_ensure_spike_metric_creates_it_once_with_its_definition():
+    recorder, lines = Recorder(), []
+    api = _api(recorder, lines)
+    first = api.ensure_spike_metric()
+    second = api.ensure_spike_metric()
+    posts = [r for r in recorder.requests if r.method == "POST"]
+    assert [r.url.path for r in posts] == [f"/api/v1/environments/{ENV_KEY}/experiment-metrics/"]
+    assert json.loads(posts[0].content) == METRIC_BODY
+    assert first["created"] is True and second["created"] is False
+    assert second["metric"]["id"] == 777
+
+
+def test_ensure_spike_metric_stops_on_a_metric_that_differs():
+    recorder, lines = Recorder(metrics=[{"id": 5, **METRIC_BODY, "aggregation": "sum"}]), []
+    with pytest.raises(admin_api.Refused, match="aggregation"):
+        _api(recorder, lines).ensure_spike_metric()
+    assert [r for r in recorder.requests if r.method == "POST"] == []
+
+
+def test_spike_metric_names_match_the_agents():
+    from agent.spike import agent as spike
+
+    assert admin_api.SPIKE_METRIC == spike.SPIKE_METRIC
+    assert admin_api.SPIKE_EVENT == spike.SPIKE_EVENT
+    assert admin_api.METRIC_DESCRIPTION == spike.METRIC_DESCRIPTION
+    assert (
+        admin_api.METRIC_DIRECTION_UP == spike.API_METRIC_DIRECTION[names.METRIC_DIRECTION_HIGHER]
+    )
 
 
 def test_json_bodies_are_printed_redacted():
