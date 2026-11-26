@@ -30,7 +30,8 @@ Read in this order before doing anything:
   `rsmoke<HHMM>` (3.6) and `rfault<HHMM>` (4.3). Any other start needs the
   human's yes. The human ends every experiment; no agent ends one or calls
   an end-experiment endpoint.
-- Do not send `temperature`, `top_p` or `top_k` to any Bedrock model.
+- Do not send `temperature`, `top_p` (Converse: `topP`) or `top_k` to any
+  Bedrock model.
 - Stay in your workstream's directories (design.md section 12).
 - Technical claims come from official documentation (docs.aws.amazon.com,
   docs.flagsmith.com) or from something you ran. If you could not verify
@@ -71,7 +72,11 @@ Read in this order before doing anything:
 - Flagsmith request usage passes 35,000 (read through the API found in
   task 1.3, or ask the human to read the Usage page after each load).
 - The CloudWatch sum of `AnswerCostMicroUsd` passes 60,000,000 (60 US
-  dollars of answers; judging and the agent's own calls come on top).
+  dollars of answers; judging and the agent's own calls come on top). The
+  sum is the Sum for `Variant=current` plus the Sum for `Variant=cheaper`
+  since `2026-11-26T02:30:00Z` (statistic Sum, period 3600, all datapoints
+  added). An empty result means unknown, not zero: fix the query first.
+  Check it after every load.
 - Anything would touch an account other than `818928662830`.
 
 Ask with one specific question and the action you need. Keep working on

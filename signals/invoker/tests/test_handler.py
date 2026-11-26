@@ -117,6 +117,7 @@ def agent_response(**changes):
         "state": names.STATE_ROLLED_BACK,
         "message": "Rolled back: the cheaper arm's p95 latency crossed the threshold.",
         "awaiting": None,
+        "pending": None,
         "error": None,
     }
     value.update(changes)
@@ -128,11 +129,13 @@ NOOP_RESPONSE = {
     "state": None,
     "message": "No active run; nothing to do.",
     "awaiting": None,
+    "pending": None,
     "error": None,
 }
 ERROR_RESPONSES = [
     agent_response(
         state=names.STATE_RUNNING,
+        pending=names.STATE_ROLLED_BACK,
         error={"code": names.ERROR_EFFECT_FAILED, "message": "SNS publish failed; pending kept."},
     ),
     agent_response(
@@ -205,12 +208,21 @@ def client_error(code, status, operation):
     )
 
 
+def refuse_creation(what):
+    """A client factory that fails the test as soon as it is called."""
+
+    def factory():
+        raise AssertionError(f"{what} was created")
+
+    return factory
+
+
 @pytest.fixture(autouse=True)
 def stub_off_and_no_default_clients(monkeypatch):
-    """Each test starts with STUB unset, and the default clients fail if a test reaches them."""
+    """Each test starts with STUB unset, and creating a default client fails the test."""
     monkeypatch.delenv(names.INVOKER_STUB_ENV, raising=False)
-    monkeypatch.setattr(invoker, "_default_ssm", lambda: Untouchable("the default SSM client"))
-    monkeypatch.setattr(invoker, "_default_agent", lambda: Untouchable("the default agent client"))
+    monkeypatch.setattr(invoker, "_default_ssm", refuse_creation("the default SSM client"))
+    monkeypatch.setattr(invoker, "_default_agent", refuse_creation("the default agent client"))
 
 
 @pytest.fixture
@@ -368,8 +380,9 @@ def test_unrecognised_events_send_nothing(event, caplog):
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("event", [alarm_event(), TICK_EVENT], ids=["alarm", "tick"])
 def test_stub_logs_the_payload_and_never_reads_the_parameter(event, stub_on, caplog):
-    caplog.set_level(logging.INFO)
-    # The autouse fixture makes the default clients fail if they are created or used.
+    # No caplog.set_level: the INFO line is captured only because the handler sets its own
+    # logger to INFO, as Lambda's plain-text format needs, so this also guards that line.
+    # The autouse fixture fails the test if a default client is created.
     result = invoker.handler(event, None)
     assert result["outcome"] == "stub"
     [log] = invoker_logs(caplog)
@@ -516,6 +529,7 @@ def test_a_well_formed_response_with_an_error_does_not_raise(response, caplog):
         json.dumps(agent_response(message=None)).encode(),
         json.dumps(agent_response(run_id=202611271530)).encode(),
         json.dumps(agent_response(state=[names.STATE_RUNNING])).encode(),
+        json.dumps(agent_response(pending=5)).encode(),
     ],
     ids=[
         "empty",
@@ -531,6 +545,7 @@ def test_a_well_formed_response_with_an_error_does_not_raise(response, caplog):
         "message-null",
         "run-id-number",
         "state-list",
+        "pending-number",
     ],
 )
 def test_a_reply_that_is_not_a_response_raises(reply):

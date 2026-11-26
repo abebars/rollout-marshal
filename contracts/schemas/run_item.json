@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/run_item.json",
   "title": "Run item",
-  "description": "A run in table rm-runs, pk RUN#<run_id> (design.md section 6), as Python holds it: write it through contracts.dynamo.to_dynamo and read it back through contracts.dynamo.from_dynamo (whole numbers become int, fractions float). Every *_at value is ISO 8601 UTC in one form, written with contracts.names.utc_iso(). history[0] is the start transition, with from null. history actor is the table's Actor column for that transition, not the payload's actor. A commit removes pending (design.md section 6, step 3); pending_at may stay behind.",
+  "description": "A run in table rm-runs, pk RUN#<run_id> (design.md section 6), as Python holds it: write it through contracts.dynamo.to_dynamo and read it back through contracts.dynamo.from_dynamo (whole numbers become int, fractions float). Every *_at value is ISO 8601 UTC in one form, written with contracts.names.utc_iso(). history[0] is the start transition, with from null. notified is written empty at create. history actor is the table's Actor column for that transition, not the payload's actor. A commit removes pending (design.md section 6, step 3); pending_at may stay behind.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,6 +12,7 @@
     "prompt",
     "plan",
     "history",
+    "notified",
     "created_at",
     "updated_at"
   ],
@@ -56,23 +57,35 @@
         "minimum": 0
       }
     },
-    "incident": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "started_at",
-        "alarm_name"
-      ],
-      "properties": {
-        "started_at": {
-          "$ref": "#/$defs/utc"
-        },
-        "cleared_at": {
-          "$ref": "#/$defs/utc"
-        },
-        "alarm_name": {
-          "const": "rm-cheaper-latency-p95"
+    "incidents": {
+      "description": "One entry per rollback, appended by every commit into ROLLED_BACK from RUNNING or RESULTS_READY; the AWAITING_RESUME -> RUNNING commit sets resumed_at on the open entry. Absent until the first rollback.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "started_at"
+        ],
+        "properties": {
+          "started_at": {
+            "$ref": "#/$defs/utc"
+          },
+          "resumed_at": {
+            "$ref": "#/$defs/utc"
+          }
         }
+      }
+    },
+    "notified": {
+      "description": "Notification dedupe key (<history length when claimed>#<to state>, contracts.names.dedupe_key) to the SNS message ID. Written empty at create; a key is recorded after its publish succeeds.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[1-9][0-9]*#(PLANNED|RUNNING|ROLLED_BACK|AWAITING_RESUME|RESULTS_READY|PROMOTED|HELD|ABORTED)$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
       }
     },
     "report_key": {

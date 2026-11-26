@@ -74,7 +74,7 @@ ALARM_EVENT_DETAIL_TYPE = "CloudWatch Alarm State Change"
 # The tick payload, which is also the rm-tick schedule's input.
 TICK_PAYLOAD = {"action": ACTION_TICK}
 # The response.json fields that hold null or a string.
-_NULL_OR_TEXT_FIELDS = ("run_id", "state", "awaiting")
+_NULL_OR_TEXT_FIELDS = ("run_id", "state", "awaiting", "pending")
 
 
 class AgentResponseError(RuntimeError):
@@ -131,9 +131,10 @@ def read_runtime_arn(ssm: Any) -> str:
 def is_response(value: Any) -> bool:
     """True when value has response.json's shape as far as this function relies on it.
 
-    Exactly the five fields; run_id, state and awaiting null or a string; message a string;
-    error null or exactly a code and a message, both strings. The agent validates the full
-    schema (task 2.5); a Lambda without jsonschema checks only this much.
+    Exactly the fields in RESPONSE_FIELDS; run_id, state, awaiting and pending null or a
+    string; message a string; error null or exactly a code and a message, both strings.
+    The agent validates the full schema (task 2.5); a Lambda without jsonschema checks
+    only this much.
     """
     if not isinstance(value, dict) or set(value) != set(RESPONSE_FIELDS):
         return False

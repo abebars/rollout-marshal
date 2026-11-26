@@ -46,7 +46,13 @@ request into `dev`.
 For tasks whose result is deployed state and not a diff (applies, 2.7,
 3.6, 4.3, 5.1, 5.2), the goldfish also gets read-only AWS access and the
 exact commands in the evidence file, and reruns them. An evidence file
-without the commands that produced it is rejected.
+without the commands that produced it is rejected. Each evidence file
+marks its commands read or write. The goldfish first checks that
+`AWS_PROFILE=rm-review aws sts get-caller-identity` shows the role
+`rm-review-readonly`, then reruns only the read commands, each with that
+profile, and never runs seed, load, inject, reset, `marshal` or
+`terraform`. The lead reruns any Flagsmith reads and gives the goldfish
+the command and the raw output.
 
 A goldfish never edits code. An implementer never reviews its own task.
 The same agent instance never reviews twice.

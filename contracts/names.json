@@ -37,6 +37,7 @@
   "AGENT_MAX_TOKENS": 4000,
   "AGENT_RUNTIME_ARN_PARAMETER": "/rm/agent-runtime-arn",
   "AGENT_RUNTIME_NAME": "rm_agent",
+  "AGENT_THINKING_EFFORT": "low",
   "AGENT_TOOLS": [
     "flagsmith_admin",
     "state",
@@ -47,6 +48,7 @@
     "report"
   ],
   "AGENT_TOOL_FLAGSMITH_ADMIN": "flagsmith_admin",
+  "ALARM_BASELINE_STOP_MS": 8000,
   "ALARM_DATAPOINTS_TO_ALARM": 2,
   "ALARM_DIMENSION": "Variant=cheaper",
   "ALARM_EVALUATION_PERIODS": 2,
@@ -54,8 +56,7 @@
   "ALARM_NAME": "rm-cheaper-latency-p95",
   "ALARM_NOOP_STATES": [
     "AWAITING_RESUME",
-    "ROLLED_BACK",
-    "RESULTS_READY"
+    "ROLLED_BACK"
   ],
   "ALARM_PERIOD_SECONDS": 60,
   "ALARM_STATES": [
@@ -67,7 +68,9 @@
   "ALARM_STATE_INSUFFICIENT_DATA": "INSUFFICIENT_DATA",
   "ALARM_STATE_OK": "OK",
   "ALARM_STATISTIC": "p95",
+  "ALARM_THRESHOLD_FAULT_MARGIN_MS": 5000,
   "ALARM_THRESHOLD_MS": 10000,
+  "ALARM_THRESHOLD_VARIABLE": "alarm_threshold_ms",
   "ALARM_TREAT_MISSING_DATA": "notBreaching",
   "ANSWER_BUDGET": 5100,
   "ANSWER_CHEAPER_FUNCTION": "rm-answer-cheaper",
@@ -80,6 +83,16 @@
   "ANSWER_HARD_STOP": 7500,
   "ANSWER_MAX_TOKENS": 2000,
   "ANSWER_MAX_WORDS": 120,
+  "ANSWER_REQUEST_FIELDS": [
+    "question",
+    "identity"
+  ],
+  "ANSWER_RESPONSE_FIELDS": [
+    "answer",
+    "input_tokens",
+    "output_tokens",
+    "model_id"
+  ],
   "ANSWER_THINKING_EFFORT": "low",
   "ANSWER_TIMEOUT_SECONDS": 25,
   "API_GATEWAY_TIMEOUT_SECONDS": 30,
@@ -100,8 +113,11 @@
   "BOOTSTRAP_FLAGSMITH_SCRIPT": "scripts/bootstrap_flagsmith.py",
   "CHAOS_FEATURE": "chaos_delay_cheaper",
   "CHECK_LEGAL_STATES": [
+    "PLANNED",
     "RUNNING",
-    "ROLLED_BACK"
+    "ROLLED_BACK",
+    "AWAITING_RESUME",
+    "RESULTS_READY"
   ],
   "CLEAR_ACTIVE": "clear_active",
   "CLI_ACTIONS": [
@@ -111,6 +127,7 @@
     "status",
     "check"
   ],
+  "CLI_ENTRY_POINT": "cli.marshal:main",
   "CLI_NAME": "marshal",
   "CONTROL_VALUE": "current",
   "CW_DIMENSION_SETS": [
@@ -134,6 +151,7 @@
   },
   "CW_NAMESPACE": "RolloutMarshal",
   "DATA_RETENTION_MODE": "aws_review",
+  "DEDUPE_KEY_TEMPLATE": "<history length when claimed>#<to state>",
   "DEFAULT_MODEL_CACHE_SECONDS": 30,
   "DEFAULT_MODEL_DEFAULT": "current",
   "DEFAULT_MODEL_FEATURE": "assistant_default_model",
@@ -148,7 +166,9 @@
     "NOT_FOUND",
     "EXPERIMENT_NOT_ENDED",
     "EFFECT_FAILED",
-    "BAD_REQUEST"
+    "BAD_REQUEST",
+    "TRANSITION_PENDING",
+    "UPSTREAM_FAILED"
   ],
   "ERROR_EFFECT_FAILED": "EFFECT_FAILED",
   "ERROR_EXPERIMENT_NOT_ENDED": "EXPERIMENT_NOT_ENDED",
@@ -159,6 +179,8 @@
   "ERROR_ILLEGAL_IN_STATE": "ILLEGAL_IN_STATE",
   "ERROR_NOT_FOUND": "NOT_FOUND",
   "ERROR_RUN_ACTIVE": "RUN_ACTIVE",
+  "ERROR_TRANSITION_PENDING": "TRANSITION_PENDING",
+  "ERROR_UPSTREAM_FAILED": "UPSTREAM_FAILED",
   "EVENTS": [
     "answer_helpful",
     "answer_latency_ms",
@@ -212,6 +234,7 @@
   "FORBIDDEN_SAMPLING_PARAMETERS": [
     "temperature",
     "top_p",
+    "topP",
     "top_k"
   ],
   "GATEWAY_API_KEY_HEADER": "Authorization",
@@ -249,10 +272,10 @@
   "IDENTITY_LAST": "user-150",
   "IDENTITY_PATTERN": "^user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$",
   "INCIDENTS_TOPIC": "rm-incidents",
+  "INCIDENT_EMAIL_VARIABLE": "incident_email",
   "INCIDENT_FIELDS": [
     "started_at",
-    "cleared_at",
-    "alarm_name"
+    "resumed_at"
   ],
   "INFRA_DIR": "infra/",
   "INJECT_FAULT_SCRIPT": "scripts/inject_fault.sh",
@@ -318,6 +341,10 @@
       "PROMOTED"
     ],
     [
+      "RESULTS_READY",
+      "ROLLED_BACK"
+    ],
+    [
       "ROLLED_BACK",
       "AWAITING_RESUME"
     ],
@@ -350,6 +377,7 @@
     "questions": 10,
     "users": 150
   },
+  "LOAD_LOCK_NAME": "rm-load.lock",
   "LOAD_MAX_CONCURRENCY": 10,
   "LOAD_SCRIPT": "scripts/load.py",
   "LOAD_SMOKE": {
@@ -399,8 +427,10 @@
   "MODEL_CHEAPER": "us.anthropic.claude-sonnet-5",
   "MODEL_CURRENT": "us.anthropic.claude-fable-5-1",
   "MODEL_JUDGE": "us.anthropic.claude-haiku-5-5",
+  "NAMES_JSON_FILE": "contracts/names.json",
+  "NO_ACTIVE_RUN_MESSAGE": "no active run",
   "PARTITION_KEY": "pk",
-  "PENDING_STALE_SECONDS": 60,
+  "PENDING_STALE_SECONDS": 360,
   "PERMANENT_FEATURES": [
     "assistant_cheaper_enabled",
     "assistant_default_model"
@@ -415,6 +445,37 @@
       "type": "string"
     }
   },
+  "PLAN_FIELDS": [
+    "hypothesis",
+    "summary",
+    "current_model",
+    "cheaper_model",
+    "primary_metric",
+    "guardrail_metrics",
+    "split",
+    "min_identities_per_variation",
+    "stop_rules",
+    "guardrails",
+    "recommendation_rule"
+  ],
+  "PLAN_GUARDRAIL_FIELDS": [
+    "max_latency_ratio",
+    "max_cost_ratio"
+  ],
+  "PLAN_MODEL_FIELDS": [
+    "hypothesis",
+    "summary"
+  ],
+  "PLAN_RECOMMENDATION_RULE_FIELDS": [
+    "after_incident",
+    "promote_min_prob_not_worse",
+    "promote_min_helpful_lift_ci_lower"
+  ],
+  "PLAN_STOP_RULE_FIELDS": [
+    "rollback_alarm",
+    "results_embargo_seconds",
+    "promote_requires_experiment_ended"
+  ],
   "POINTER_ATTRIBUTES": [
     "run_id",
     "feature_key"
@@ -423,7 +484,9 @@
   "POINTER_CREATE_CONDITION": "attribute_not_exists(pk)",
   "PRICES_FILE": "app/prices.json",
   "PRIMARY_METRIC": "helpful_rate",
+  "PROBE_IDENTITY": "user-001",
   "PROBE_INVOKES": 5,
+  "PROBE_QUESTION": "How do I reset my password?",
   "PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER": -0.05,
   "PROMOTE_MIN_PROB_NOT_WORSE": 0.95,
   "PYTHON_VERSION": "3.13",
@@ -459,6 +522,7 @@
     "state",
     "message",
     "awaiting",
+    "pending",
     "error"
   ],
   "RESULTS_EMBARGO_SECONDS": 600,
@@ -469,6 +533,8 @@
     "helpful_lift_ci_lower"
   ],
   "RESULTS_REFRESH_MIN_SECONDS": 300,
+  "REVIEW_PROFILE": "rm-review",
+  "REVIEW_ROLE": "rm-review-readonly",
   "ROUTER_FUNCTION": "rm-router",
   "ROUTER_TIMEOUT_SECONDS": 29,
   "RUNS_TABLE": "rm-runs",
@@ -481,9 +547,10 @@
     "feature_key": "S",
     "first_running_at": "S",
     "history": "L",
-    "incident": "M",
+    "incidents": "L",
     "last_refresh_at": "S",
     "metric_ids": "M",
+    "notified": "M",
     "pending": "S",
     "pending_at": "S",
     "plan": "M",
@@ -497,6 +564,8 @@
   "RUN_PK_TEMPLATE": "RUN#<run_id>",
   "SCHEMA_DIR": "contracts/schemas/",
   "SCHEMA_FILES": {
+    "answer_request": "contracts/schemas/answer_request.json",
+    "answer_response": "contracts/schemas/answer_response.json",
     "invoke": "contracts/schemas/invoke.json",
     "judge_payload": "contracts/schemas/judge_payload.json",
     "plan": "contracts/schemas/plan.json",
@@ -510,7 +579,9 @@
     "plan",
     "run_item",
     "results",
-    "judge_payload"
+    "judge_payload",
+    "answer_request",
+    "answer_response"
   ],
   "SCHEMA_PLAN_FILE": "contracts/schemas/plan.json",
   "SCRATCH_RUN_ID_TIME_FORMAT": "%H%M",
@@ -554,6 +625,7 @@
   ],
   "TFSTATE_BUCKET": "rm-tfstate-818928662830",
   "TFSTATE_KEY": "rollout-marshal/terraform.tfstate",
+  "TFVARS_FILE": "infra/terraform.tfvars",
   "THINKING_EFFORT_FIELD": "output_config.effort",
   "TICK_INTERVAL_MINUTES": 2,
   "TICK_SCHEDULE": "rm-tick",
@@ -648,6 +720,17 @@
       "target": "HELD",
       "triggers": [
         "decline"
+      ]
+    },
+    {
+      "actor": "agent",
+      "source": "RESULTS_READY",
+      "target": "ROLLED_BACK",
+      "triggers": [
+        "alarm",
+        "tick",
+        "check",
+        "approve"
       ]
     },
     {

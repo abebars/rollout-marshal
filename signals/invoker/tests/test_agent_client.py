@@ -113,7 +113,7 @@ def test_new_agent_client_carries_the_setting(monkeypatch):
 
 
 def test_new_agent_client_uses_the_given_session():
-    """The CLI passes the engineer's session; the region is pinned whatever it says."""
+    """A given session is the one used; the region is pinned whatever it says."""
 
     class RecordingSession:
         def __init__(self):

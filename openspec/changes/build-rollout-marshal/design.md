@@ -25,8 +25,9 @@ changes, and clear output.
 | Language | Python 3.13, `arm64` Lambdas |
 | Agent framework | Strands Agents on Amazon Bedrock AgentCore Runtime, created with the AgentCore CLI |
 | AgentCore CLI | npm package `@aws/agentcore`, command `agentcore`, version 1.3.0 or later within 1.x. Its project lives under `agent/`; it deploys the runtime through its own CDK stack and bootstraps CDK on the first deploy |
-| Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, and the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates |
-| Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below |
+| Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy |
+| Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below. For a task whose Pass needs its own Terraform applied (2.7, 4.3), the lead may apply that branch merged locally with `dev` before it merges, attaches the plan, and re-applies `dev` if it does not merge. While a branch is applied unmerged, every later apply includes it; branches are applied together only from one local merge, and only if they touch different modules |
+| Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review` |
 | Timebox | 90 minutes per task unless the task says otherwise. Past it, stop and tell the lead |
 | Flagsmith | SaaS, organisation 41656, project "Toggle Wars" (ID `55601`), environment "Development" |
 | Flagsmith plan limits | Free: 50,000 API requests a month, 1 project, 1 seat |
@@ -44,7 +45,7 @@ file, and the destroy runs before the pull request is reviewed.
 
 | Role | Model ID | Notes |
 | --- | --- | --- |
-| Current arm (control) | `us.anthropic.claude-fable-5-1` | Needs account data retention mode `aws_review` in us-east-1. Send no `temperature`, `top_p` or `top_k`. Thinking is always on. |
+| Current arm (control) | `us.anthropic.claude-fable-5-1` | Needs account data retention mode `aws_review` in us-east-1. Send no `temperature`, `top_p`, `topP` or `top_k`. Thinking is always on. |
 | Cheaper arm (treatment) | `us.anthropic.claude-sonnet-5` | |
 | Judge | `us.anthropic.claude-haiku-5-5` | Scores helpfulness so neither arm grades itself. |
 | The agent's own reasoning | `us.anthropic.claude-sonnet-5` | Plan, incident note, report prose. |
@@ -59,7 +60,8 @@ a small budget returns no text at all:
   `additionalModelRequestFields` (`output_config.effort`). The system
   prompt asks for an answer of at most 120 words.
 - Judge: thinking disabled, `maxTokens` 200.
-- Agent prose: `maxTokens` 4000.
+- Agent prose: `maxTokens` 4000, thinking effort `low` (the same request
+  fields as the answers).
 - A response with `stopReason` `max_tokens` is an error, never a result.
 
 Task 1.2 proves the exact request fields for effort `low` on both answer
@@ -136,14 +138,18 @@ Router evaluation order, per request:
 
 1. Read the active run pointer (section 6). No active run: read
    `assistant_default_model` from the environment flags (cached 30
-   seconds), serve that model, record no exposure and no event.
+   seconds), serve that model, record no exposure and no event, and do not
+   invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is
+   emitted.
 2. Call `get_identity_flags` once. Both the experiment feature and the
    kill switch are read from that one result. Do not call
    `get_experiment_flag`; it makes its own identity request.
 3. If the experiment feature reports the identity is in the experiment,
    record the exposure with `track_exposure_event`.
 4. If `assistant_cheaper_enabled` is disabled, serve `current` whatever the
-   variation says, and set `served=current`, `assigned=<variation>`.
+   variation says, and set `served=current`. `assigned` is always the
+   experiment feature's value for the identity (`current` or `cheaper`),
+   not `flag.variant`; the exposure call sends `flag.variant`.
 5. Otherwise serve the assigned variation.
 6. `flush_events()` before returning.
 
@@ -169,6 +175,9 @@ rm-router -> CloudWatch embedded metrics
   API Gateway's 30 second limit applies to the request path only.
 - Answer Lambdas return whole responses. No response streaming (FIS Lambda
   faults do not support it).
+- The answer functions take `question` and `identity` and return `answer`,
+  `input_tokens`, `output_tokens` and `model_id` (schemas `answer_request`
+  and `answer_response`).
 
 CloudWatch namespace `RolloutMarshal`, dimension `Variant` = `current` or
 `cheaper` (the variant actually served):
@@ -187,20 +196,44 @@ and date in the file. Do not invent prices.
 Alarm `rm-cheaper-latency-p95`: `AnswerLatencyMs`, `Variant=cheaper`,
 statistic p95, period 60 seconds, 2 of 2 datapoints above the threshold,
 missing data treated as not breaching. Threshold default 10000 ms; task
-4.1 recalibrates it to twice the measured baseline p95, rounded up to the
-next 1000, and records the number here.
+4.1 recalibrates it to the baseline p95 that task 3.6 measures for
+`Variant=cheaper`, plus half the injected delay (5000 ms), rounded up to
+the next 1000, and records the number here. If that p95 is above 8000 ms,
+it stops and asks the human first. The threshold reaches Terraform as the
+signals module's variable `alarm_threshold_ms`, which the root fills from
+`contracts/names.json`, so a recalibration is a contract change plus the
+lead's re-apply.
 
 ## 6. State
 
 DynamoDB table `rm-runs`, partition key `pk` (string).
 
 Pointer item: `pk = "ACTIVE"`, attributes `run_id` and, once launched,
-`feature_key`. Written at `PLANNED` (without `feature_key`), given its
-`feature_key` when launch commits, removed when the run reaches a terminal
-state. The router treats a pointer without `feature_key` as "no active
-run". The router caches the pointer for 30 seconds, so for up to 30
-seconds after a terminal state it may still serve the old run; that is
-accepted.
+`feature_key`. "Active run" means the pointer exists. The pointer changes
+only inside the same `TransactWriteItems` as the run-item write it mirrors:
+
+- Create, for `start`: put the pointer on condition
+  `attribute_not_exists(pk)`, returning the old item if that fails, and put
+  the run item on the same condition. A failed pointer condition means
+  `RUN_ACTIVE`, naming the run the old item names. A failed run-item
+  condition alone means the run ID is in use: `start` returns
+  `BAD_REQUEST`, "start again next minute", and writes nothing.
+- Launch commit: the commit into `RUNNING`, plus an update that sets the
+  pointer's `feature_key` on condition its `run_id` is this run.
+- Terminal commit (`PROMOTED`, `HELD`, `ABORTED`): the commit, plus
+  `clear_active`, a delete of the pointer on condition it is absent or
+  names this run.
+
+A transaction cancelled by a colliding write is a lost race: re-read, and
+retry a commit once if the claim is still this invocation's. The router
+treats a pointer without `feature_key` as "no active run". The router
+caches the pointer for 30 seconds, so for up to 30 seconds after a terminal
+state it may still serve the old run; that is accepted. A pointer whose run
+item is missing also counts as no active run for `status`, `tick` and
+`alarm`: a no-op whose message starts "no active run" and names the
+pointer's run and `scripts/reset.py`. `start` still refuses it with
+`RUN_ACTIVE`, and `approve`, `decline` and `check` on that run return
+`NOT_FOUND`.
 
 Run item: `pk = "RUN#<run_id>"` with:
 
@@ -209,17 +242,45 @@ Run item: `pk = "RUN#<run_id>"` with:
 | `run_id` | S | |
 | `state` | S | One of the states below |
 | `prompt` | S | The engineer's request |
-| `plan` | M | Hypothesis, metrics, split, stop rules (schema `contracts/schemas/plan.json`) |
+| `plan` | M | The plan below (schema `contracts/schemas/plan.json`) |
 | `feature_key` | S | `assistant_model_<run_id>` |
 | `experiment_id` | N | Flagsmith experiment ID |
 | `metric_ids` | M | name to Flagsmith metric ID |
-| `incident` | M | `started_at`, `cleared_at`, `alarm_name`; absent if none |
+| `incidents` | L | One entry per rollback: `started_at`, `resumed_at`; absent until the first rollback |
+| `notified` | M | Notification dedupe key to the SNS message ID; written empty at create |
 | `report_key` | S | S3 key of the report |
 | `history` | L | Appended on every transition: `at`, `from`, `to`, `actor`, `reason` |
 | `pending`, `pending_at` | S | Target state of a claimed, unfinished transition, and when it was claimed |
 | `last_refresh_at` | S | When results were last refreshed |
 | `first_running_at` | S | When the run first entered `RUNNING` |
 | `created_at`, `updated_at` | S | ISO 8601 UTC |
+
+A notification's dedupe key is `<history length when claimed>#<to state>`,
+for example `2#ROLLED_BACK`, so a second rollback after a resume gets a key
+of its own. A notification is published unless its key is already in
+`notified`, then the key is recorded with the SNS message ID: at least
+once, never lost. Neither a dedupe key nor an incident time comes from
+`pending_at`, which a takeover rewrites.
+
+The plan. The model writes only `hypothesis` and `summary`; every other
+field is injected from names.py, so a plan whose values came from the
+prompt fails validation:
+
+| Field | Value |
+| --- | --- |
+| `hypothesis`, `summary` | written by the model |
+| `current_model` | `us.anthropic.claude-fable-5-1` |
+| `cheaper_model` | `us.anthropic.claude-sonnet-5` |
+| `primary_metric` | `helpful_rate` |
+| `guardrail_metrics` | `mean_latency_ms`, `mean_cost_micro_usd` |
+| `split` | `current` 50, `cheaper` 50 |
+| `min_identities_per_variation` | 50 |
+| `stop_rules` | `rollback_alarm` `rm-cheaper-latency-p95`; `results_embargo_seconds` 600; `promote_requires_experiment_ended` true |
+| `guardrails` | `max_latency_ratio` 1.1; `max_cost_ratio` 1.0 |
+| `recommendation_rule` | `after_incident` `hold, re-run`; `promote_min_prob_not_worse` 0.95; `promote_min_helpful_lift_ci_lower` -0.05 |
+
+`start` returns `BAD_REQUEST` before any write when the prompt names no
+model move, or any move other than Fable 5.1 to Sonnet 5.
 
 States and the only legal transitions:
 
@@ -231,25 +292,40 @@ States and the only legal transitions:
 | `RUNNING` | `ROLLED_BACK` | `alarm`; or `tick` or `check` when the alarm is in ALARM | agent |
 | `RUNNING` | `RESULTS_READY` | `tick` or `check`, when the alarm is not in ALARM and results are ready | agent |
 | `RUNNING` | `HELD` | `decline` | engineer |
-| `ROLLED_BACK` | `AWAITING_RESUME` | `tick` or `check`, when the health probe passes | agent |
+| `ROLLED_BACK` | `AWAITING_RESUME` | `tick` or `check`, when the alarm is not in ALARM and the health probe passes | agent |
 | `ROLLED_BACK` | `HELD` | `decline` | engineer |
-| `AWAITING_RESUME` | `RUNNING` | `approve`, when the health probe passes again | engineer |
+| `AWAITING_RESUME` | `RUNNING` | `approve`, when the alarm is not in ALARM and the health probe passes again | engineer |
 | `AWAITING_RESUME` | `ROLLED_BACK` | `approve`, when the health probe fails | agent |
 | `AWAITING_RESUME` | `HELD` | `decline` | engineer |
-| `RESULTS_READY` | `PROMOTED` | `approve`, only if the experiment is ended in Flagsmith | engineer |
+| `RESULTS_READY` | `ROLLED_BACK` | `alarm`; or `tick`, `check` or `approve` when the alarm is in ALARM | agent |
+| `RESULTS_READY` | `PROMOTED` | `approve`, when the alarm is not in ALARM, only if the experiment is ended in Flagsmith | engineer |
 | `RESULTS_READY` | `HELD` | `decline` | engineer |
 
 Terminal states: `PROMOTED`, `HELD`, `ABORTED`.
 
 Rules that hold everywhere:
 
-- **One run at a time.** `start` is refused while any run is in a
-  non-terminal state. The pointer is written at `PLANNED` with the
+- **One run at a time.** `start` is refused while the pointer exists,
+  that is, while a run is active. The pointer is written at `PLANNED` with the
   condition `attribute_not_exists(pk)`, so a second `start` fails on it.
-  `clear_active` is a conditional delete on `run_id`.
-- **`tick` and `check` in `RUNNING` look at the alarm first, then results.**
-- **`check` is legal in `RUNNING` and `ROLLED_BACK` only**, where it does
-  what a `tick` would do. Anywhere else it returns `ILLEGAL_IN_STATE`.
+  The terminal commit deletes the pointer in the same transaction
+  (`clear_active`), on condition it is absent or names this run.
+- **An engineer action on a run the pointer does not name returns
+  `RUN_ACTIVE`** and names the active run. With no pointer at all,
+  `approve`, `decline` and `check` go ahead, so a run left without a
+  pointer can still be ended, with one exception: a `PLANNED` run with no
+  pointer can never launch, so `approve` and `check` on it return
+  `ILLEGAL_IN_STATE` (the run was reset; start a new one), while `decline`
+  still ends it, unless a launch is pending on it; such a run stays
+  `PLANNED` and, with no pointer, affects nothing. `scripts/reset.py`
+  refuses while the pointer names a run
+  in a non-terminal state, unless it is given `--force`.
+- **`tick` and `check` in `RUNNING` or `RESULTS_READY` look at the alarm
+  first**, then, in `RUNNING`, at results.
+- **`check` is legal in every non-terminal state** (except on a `PLANNED`
+  run with no pointer, above), where it does what a
+  `tick` would do for that run, including finishing a stalled transition.
+  In a terminal state it returns `ILLEGAL_IN_STATE`.
 - **Results are not read in the first 600 seconds after
   `first_running_at`.** This keeps a fast-filling experiment from reaching
   `RESULTS_READY` before a fault can be shown.
@@ -259,60 +335,101 @@ Rules that hold everywhere:
   nothing to do, is a successful no-op**: response `message` says why, no
   error, no side effect. Only `start`, `approve`, `decline` and `check`
   return an error when not legal in the current state.
-- **An alarm in `AWAITING_RESUME`, `ROLLED_BACK` or `RESULTS_READY` is a
-  no-op.** The kill switch is already off or the run is over.
+- **An alarm in `AWAITING_RESUME` or `ROLLED_BACK` is a no-op.** The kill
+  switch is already off.
+- **An alarm whose `at` is earlier than the run's latest entry into
+  `RUNNING` is a no-op**, so a late or repeated delivery cannot roll back a
+  resumed run.
+- **The tick schedule is enabled first and disabled last**: launch enables
+  it as its first effect and every terminal transition disables it as its
+  last, so a tick can finish a stalled transition until only the commit is
+  left.
 
 How a transition is applied (guard, claim, effect, commit):
 
-0. Guard: checks that decide WHETHER to move run before any claim and
-   change nothing if they fail: the health probe, "results are ready",
-   and "the experiment is ended in Flagsmith". A failed guard returns the
-   current status (or `EXPERIMENT_NOT_ENDED`) and leaves no `pending`.
-   The one exception is `approve` in `AWAITING_RESUME` with a failing
-   probe, which is itself a transition to `ROLLED_BACK`.
+0. Guard: checks that decide WHETHER to move the run, made before any
+   claim, that change nothing if they fail: the alarm state, the health
+   probe, "results are ready", and "the experiment is ended in Flagsmith".
+   A failed guard returns the current status (or `EXPERIMENT_NOT_ENDED`)
+   and leaves no `pending`. The one exception is `approve` in
+   `AWAITING_RESUME` with a failing probe, which is itself a transition to
+   `ROLLED_BACK`. A Bedrock, AWS or Flagsmith call that fails before any
+   claim returns `UPSTREAM_FAILED`. The health probe is the exception: an
+   invoke error, a timeout, an invalid reply or a failed alarm read fails
+   the probe.
 
 1. Claim: conditional write that sets `pending = <to>` and
    `pending_at = <now>`, on condition `state = <from>` and `pending` is
    absent. If the condition fails, another invocation owns it: re-read and
-   return the current status. Do nothing else.
+   return the current status, with `TRANSITION_PENDING` for an engineer
+   action while the transition is still pending. Do nothing else.
+   Takeover: a `pending` older than 360 seconds may be taken over by one
+   conditional write that sets `pending_at = <now>` on condition
+   `state = <from>`, `pending = <to>` and `pending_at` still holding the
+   value read. Only the winner runs the effects. `tick` and `check` may
+   take over any transition; any other action only one its row lists as a
+   trigger. `decline` never takes over a transition another action
+   claimed.
 2. Effects: run the side effects below. Every effect is idempotent
-   (get-or-create by key, set-to-value, publish with a deduplication key
-   stored on the item).
-3. Commit: write `state = <to>`, remove `pending`, append to `history`.
+   (get-or-create by key, set-to-value, publish unless its key is already
+   in `notified`).
+3. Commit: write `state = <to>`, remove `pending`, append to `history`, on
+   condition `state = <from>`, `pending = <to>` and `pending_at` holding
+   the value this invocation wrote. If the condition fails, re-read and
+   return the current status, with `TRANSITION_PENDING` for an engineer
+   action while the transition is still pending.
 
-If an effect throws, leave `pending` in place and return an error. Any
-later `tick`, `check` or repeat of the same action that finds `pending`
-older than 60 seconds resumes from step 2 for that same target state.
+If an effect throws, the invocation releases its own claim, moving
+`pending_at` back by 360 seconds on condition the claim is still its own,
+and returns `EFFECT_FAILED`. Its message names the failed effect, the
+command `marshal check <run_id>`, and when that will act. Any later
+`tick`, `check` or repeat of the same action that finds `pending` older
+than 360 seconds resumes from step 2 for that same target state; only an
+invocation that died leaves a claim to wait out. A resumed
+`RUNNING -> RESULTS_READY` reads the last results again and writes the
+report prose inside the effect.
 
-What each transition does:
+What each transition does (the pointer changes are in the commits above):
 
-- `(none) -> PLANNED`: write the run item and the `ACTIVE` pointer.
-- `PLANNED -> RUNNING` (launch): get-or-create the two permanent features;
-  set `assistant_cheaper_enabled` enabled; get-or-create the run's
-  feature, options, metrics and experiment through the MCP server; start
-  the experiment through the Admin API tool; enable the tick schedule.
-- `RUNNING -> ROLLED_BACK`: disable `assistant_cheaper_enabled`; record
-  `incident.started_at`; publish the incident note to SNS.
-- `ROLLED_BACK -> AWAITING_RESUME` (guard: the health probe passes; the
-  probe is 5 direct invokes of `rm-answer-cheaper` and passes if the
-  slowest is under the alarm threshold): record `incident.cleared_at`;
-  publish a resume request to SNS.
-- `AWAITING_RESUME -> RUNNING` (guard: the probe passes again): enable
-  `assistant_cheaper_enabled`.
+- `(none) -> PLANNED`: the create transaction: the run item, with
+  `notified` empty, and the pointer.
+- `PLANNED -> RUNNING` (launch): enable the tick schedule; get-or-create
+  the two permanent features; set `assistant_cheaper_enabled` enabled;
+  get-or-create the run's feature, options, metrics and experiment through
+  the MCP server; start the experiment through the Admin API tool.
+- `RUNNING -> ROLLED_BACK` and `RESULTS_READY -> ROLLED_BACK`: disable
+  `assistant_cheaper_enabled`; publish the incident note to SNS. The
+  commit appends an `incidents` entry with `started_at`.
+- `ROLLED_BACK -> AWAITING_RESUME` (guard: the alarm is not in ALARM, then
+  the health probe passes): publish a resume request to SNS. The probe is 5
+  direct invokes of `rm-answer-cheaper`, run in parallel, each asking
+  `How do I reset my password?` as `user-001`. It passes if the slowest is
+  under the alarm's threshold, read from the same DescribeAlarms call as
+  the alarm's state; a failed read, an invoke error, a timeout or a reply
+  that fails `answer_response` fails it.
+- `AWAITING_RESUME -> RUNNING` (guard: the alarm is not in ALARM, then the
+  probe passes again; an ALARM returns the status with a message): enable
+  `assistant_cheaper_enabled`. The commit sets `resumed_at` on the open
+  `incidents` entry.
 - `AWAITING_RESUME -> ROLLED_BACK` (the probe failed on `approve`):
-  publish a note saying the cheaper model is slow again.
-- `RUNNING -> RESULTS_READY` (guard: results refreshed through the Admin
-  API tool show both variations with at least 50 identities and non-null
-  values): write the report to S3; publish it to SNS.
-- `RESULTS_READY -> PROMOTED` (guard: the experiment is ended): set
-  `assistant_default_model` to `cheaper`; clear the pointer; disable the
-  tick schedule. From then on the router serves `cheaper` to everyone.
-- Any transition into `HELD`: clear the pointer; disable the tick
-  schedule; set `assistant_cheaper_enabled` enabled; leave everything else
-  in Flagsmith as it is. `assistant_default_model` is not changed, so the
-  router keeps serving `current`.
-- `PLANNED -> ABORTED`: clear the pointer. Nothing in Flagsmith is
-  touched, because nothing was created.
+  publish a note saying the cheaper model is slow again. It adds no
+  `incidents` entry.
+- `RUNNING -> RESULTS_READY` (guard, all before the claim: the alarm is not
+  in ALARM, results refreshed through the Admin API tool are `ready`, and
+  the report prose is written): write the report to S3 with a plain put,
+  so S3 keeps the report of the latest entry into `RESULTS_READY`; publish
+  it to SNS.
+- `RESULTS_READY -> PROMOTED` (guard, in this order: the alarm is read
+  first, and an alarm in ALARM rolls the run back instead; then the
+  experiment is ended): set
+  `assistant_default_model` to `cheaper`; disable the tick schedule. From
+  then on the router serves `cheaper` to everyone.
+- Any transition into `HELD`: disable the tick schedule; leave everything
+  in Flagsmith as it is, including the kill switch.
+  `assistant_default_model` is not changed, so the router keeps serving
+  `current`.
+- `PLANNED -> ABORTED`: disable the tick schedule (normally a no-op).
+  Nothing in Flagsmith is touched, because nothing was created.
 
 Guardrails pass when the cheaper arm's `mean_latency_ms` is at most 110
 percent of the current arm's, and its `mean_cost_micro_usd` is not higher
@@ -320,19 +437,21 @@ than the current arm's.
 
 Recommendation rule (in code, not in the prompt):
 
-- An incident happened during the run: recommend `hold, re-run`, and state
-  that rolled-back users still count in the cheaper arm.
+- An incident happened during the run (`incidents` is not empty): recommend
+  `hold, re-run`, and state that rolled-back users still count in the
+  cheaper arm.
 - Otherwise recommend `promote` only if the probability that `cheaper` is
   not worse on `helpful_rate` is at least 0.95 and both guardrails pass.
 - Otherwise recommend `hold`.
 
 Flagsmith's docs show a win probability against control and a credible
-interval for lift; a "not worse" probability may not exist. Task 3.6
-records a real results response. If there is no such field,
-`prob_cheaper_not_worse` is null and the promote test becomes: the lower
-bound of the credible interval for the lift on `helpful_rate` is at or
-above minus 5 percent, and both guardrails pass. Task 2.2's results
-mapping is finished against that recorded response.
+interval for lift; a "not worse" probability may not exist. Task 1.4
+records a sample from 1.2's spike experiment, and task 3.6 records a real
+results response. If there is no such field, `prob_cheaper_not_worse` is
+null and the promote test becomes: the lower bound of the credible
+interval for the lift on `helpful_rate` is at or above minus 5 percent
+(-0.05, a fraction of relative lift), and both guardrails pass. Task 2.2's
+results mapping is finished against the response 3.6 records.
 
 ## 7. Invoking the agent
 
@@ -354,9 +473,28 @@ which is longer than the 33 character minimum). Payload schema
 Response (`contracts/schemas/response.json`):
 `{"run_id": str | null, "state": str | null, "message": str,
 "awaiting": null | "launch" | "resume" | "promotion",
+"pending": str | null,
 "error": null | {"code": str, "message": str}}`.
+`pending` is the target of a claimed, unfinished transition, or null.
 Error codes: `ILLEGAL_IN_STATE`, `RUN_ACTIVE`, `NOT_FOUND`,
-`EXPERIMENT_NOT_ENDED`, `EFFECT_FAILED`, `BAD_REQUEST`.
+`EXPERIMENT_NOT_ENDED`, `EFFECT_FAILED`, `BAD_REQUEST`, `TRANSITION_PENDING`,
+`UPSTREAM_FAILED`.
+
+Legality is judged after the `RUN_ACTIVE` check and before anything
+pending: an action the table does not allow from the run's state returns
+`ILLEGAL_IN_STATE` whatever is pending.
+
+- `TRANSITION_PENDING`: an engineer action lost its claim or commit to
+  another invocation, or another transition is pending that it may not
+  take over. The message names the pending target, its age and
+  `marshal check <run_id>` (for a `PLANNED` run with no pointer: the run
+  was reset; start a new one).
+- `UPSTREAM_FAILED`: a Bedrock, AWS or Flagsmith call failed before any
+  claim, so nothing changed. After a claim, every effect failure, and a
+  commit that fails other than by a lost race, is `EFFECT_FAILED`.
+
+`status` with no active run returns `run_id`, `state`, `awaiting`,
+`pending` and `error` all null, and a message that starts "no active run".
 
 Results shape used by the tools (`contracts/schemas/results.json`):
 `{"ready": bool, "variations": {"current": V, "cheaper": V},
@@ -364,18 +502,26 @@ Results shape used by the tools (`contracts/schemas/results.json`):
 "helpful_lift_ci_lower": float | null}` where
 `V = {"identities": int, "helpful_rate": float | null,
 "mean_latency_ms": float | null, "mean_cost_micro_usd": float | null}`.
+The results tool computes `ready`: both variations have at least 50
+identities and non-null `helpful_rate`, `mean_latency_ms` and
+`mean_cost_micro_usd`. `helpful_lift_ci_lower` is the lower bound of
+Flagsmith's 95 percent credible interval for the relative lift
+(cheaper - current) / current on `helpful_rate`, as a fraction (-0.05 is
+minus 5 percent). `prob_cheaper_not_worse` is the probability that this
+lift is at least -0.05, as a fraction; it is null unless Flagsmith returns
+exactly that, and the win probability never goes in it.
 Task 2.2 maps Flagsmith's result fields onto this shape, starting from the
 sample task 1.4 records and finished against the response recorded in task
-3.6. Schemas in `contracts/schemas/`: `invoke`,
-`response`, `plan`, `run_item`, `results`, `judge_payload`.
+3.6. Schemas in `contracts/schemas/`: `invoke`, `response`, `plan`,
+`run_item`, `results`, `judge_payload`, `answer_request`, `answer_response`.
 
 Three things invoke it:
 
 | Caller | Sends | How |
 | --- | --- | --- |
-| `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials |
+| `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials, through the console script `cli.marshal:main` |
 | `rm-invoker` Lambda | `alarm` | EventBridge rule on the alarm entering ALARM. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
-| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled only while a run is active; targets `rm-invoker` |
+| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input |
 
 The CLI and `rm-invoker` share one `InvokeAgentRuntime` client setting: read
 timeout 290 seconds and one attempt (`total_max_attempts` 1). It sits just
@@ -442,7 +588,11 @@ after judging.
 Agents never print, log, commit or echo a secret value. The human enters
 both values. The organisation API key is named `rollout-marshal-agent`
 in Flagsmith (created Nov 24, admin, no expiry; delete it after judging). SNS topic `rm-incidents` has one email subscription that the
-human confirms.
+human confirms. The incident address is the root variable
+`incident_email`, marked sensitive because plans are attached to pull
+requests in a public repo. It is kept with `invoker_stub` in the
+git-ignored `infra/terraform.tfvars` that every plan and apply uses; the
+lead copies it into each worktree it creates.
 
 ## 9. Fault injection
 
@@ -455,8 +605,13 @@ the AWS FIS Lambda actions guide, with
 `AWS_FIS_SLOW_POLL_INTERVAL_SECONDS=10` so the fault starts quickly. The
 fault can take up to a minute to ramp and the alarm needs two full
 one-minute periods, so expect ALARM three to five minutes in. Timebox:
-2 hours. Fallback: a Flagsmith boolean feature `chaos_delay_cheaper` that
-`rm-answer-cheaper` reads and sleeps on.
+2 hours. Fallback, built only if task 4.3's timebox runs out: a Flagsmith
+boolean feature `chaos_delay_cheaper` that `rm-answer-cheaper` reads from
+the environment flags, cached 30 seconds; a missing flag or a failed read
+means off. When it is on, the function sleeps 10000 ms before the Bedrock
+call, the same delay as the FIS fault. `scripts/inject_fault.sh --fallback`
+gets or creates the flag (off), turns it on for 6 minutes, then off, and
+also turns it off on exit; `scripts/reset.py` turns it off too.
 
 ## 10. Report
 
@@ -470,8 +625,9 @@ bias, Recommendation, Time taken.
 of whichever agent's task calls for it, not as a Lambda (a full run outlasts Lambda's 15 minutes). At most 10
 concurrent requests, questions from `app/questions.json` (30 support
 questions for a fictional SaaS product). It stops at its count, refuses to
-start if a lock file shows another load running, and never runs
-unattended.
+start while another load holds `rm-load.lock`, an OS file lock in the
+repository's git common directory that every worktree shares and that frees
+itself if the script dies, and never runs unattended.
 
 | Use | Users x questions | Answers |
 | --- | --- | --- |
@@ -480,7 +636,10 @@ unattended.
 | Full run (5.1, and each of the two further runs in 5.2) | 150 x 10 | 1,500 |
 
 Budget for the event: 300 + 300 + 3 x 1,500 = 5,100 answers. Stop and ask the human before
-exceeding 7,500.
+exceeding 7,500. Every answer the load script sends counts toward that,
+and each run's evidence records its sent count. After a failed 5.1 or 5.2
+attempt, the lead rehearses at 150 x 2 until the path runs clean, before
+the next counted 150 x 10 run.
 
 ## 12. Repo layout
 
@@ -493,7 +652,9 @@ exceeding 7,500.
 | `signals/`, `infra/modules/signals/`, `infra/modules/fis/`, `scripts/inject_fault.sh` | C | invoker, alarm, rule, schedule, SNS, FIS |
 | `docs/`, `README.md` | D | README, time saved, video script |
 
-Each `.tf` file belongs to exactly one task. Nobody edits another owner's
+Root `.tf` files in `infra/` belong to the lead, one per module, added
+before that module's first plan. Each file under `infra/modules/` belongs
+to exactly one task. Nobody edits another owner's
 path; they ask the lead instead.
 
 ## 13. Verify before relying
