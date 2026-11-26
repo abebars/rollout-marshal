@@ -259,7 +259,8 @@ their tasks name, not against each other.
   - Pass: unit tests green; the plan from `infra/` lists this task's
     resources to add and destroys nothing outside them.
     After `infra/modules/agent` is applied: `pytest -m live` creates and starts an
-    experiment on run ID `rlive<HHMM>` and reads it back; **Human** ends
+    experiment on run ID `rlive<HHMM>`, records how long the start call took
+    against `rm-flagsmith-admin`'s 30-second timeout, and reads it back; **Human** ends
     it; the ID is in the pull request.
 
 - [ ] 2.3 **Planner**
