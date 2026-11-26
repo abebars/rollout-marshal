@@ -86,19 +86,21 @@ their tasks name, not against each other.
   - Gate: **Human approves this pull request** before 1.2 and 1.3 start.
 
 - [ ] 1.2 **Spike: Bedrock and Flagsmith SDK from Lambda**
-  - Owner: B. Needs: 1.1, the 1.1 gate's contract change merged, and the
-    **Human**'s spike experiment running. Timebox: 2 hours, plus waiting
-    for the warehouse.
+  - Owner: B. Needs: 1.1. B's first apply waits for the 1.1 gate's
+    contract change to merge, and B's first Flagsmith call for the spike
+    experiment to be running. Timebox: 2 hours, plus waiting for the
+    warehouse.
   - Files: `app/spike/handler.py`, `infra/spike/main.tf` (its own tiny
     root with local state, applied and later destroyed by B under the
     guards in design.md section 2), `evidence/1.2-sdk-spike.md`.
-  - **Human**, before B's first Flagsmith call, in the Development
-    environment: create feature `spike_flag` (value `current`, one
-    variation keyed `cheaper` with value `cheaper`) and metric
-    `spike_metric` (mean of event `spike_event`, higher is better). Then
-    create an experiment on `spike_flag`: rollout 100 percent, split 50/50,
-    `spike_metric` as primary metric with expected direction "should not
-    decrease". Creating it starts it.
+  - The spike experiment, before B's first Flagsmith call, in the
+    Development environment. The lead creates and starts it through the
+    Admin API; the human said yes to this launch on 2026-11-26 (it was a
+    **Human** dashboard step). Feature `spike_flag` (value `current`, one
+    variation keyed `cheaper` with value `cheaper`); metric `spike_metric`
+    (mean of event `spike_event`, higher is better); an experiment on
+    `spike_flag` with rollout 100 percent, split 50/50, and `spike_metric`
+    as primary metric with expected direction "should not decrease".
   - Do: one function, `rm-spike-sdk` (arm64, a timeout of a few minutes),
     that reads the SDK key from `rm/flagsmith/server-key` at run time.
     - Converse: effort `low` on Fable 5.1 and on Sonnet 5 at `maxTokens`
@@ -123,18 +125,20 @@ their tasks name, not against each other.
     response that came back with text; what `flag.variant` says for each
     arm; and an API read (or, failing that, a **Human** dashboard check)
     showing the Development warehouse has received at least one event,
-    with how long it took. The lead then reads the experiment's results
-    through the Admin API into `evidence/1.4-results-sample.json`.
+    with how long it took. The lead then refreshes and reads the
+    experiment's results through the Admin API into
+    `evidence/1.4-results-sample.json`.
     **Human**, after that read: both variations show at least 50
     identities and each arm's `spike_metric` mean matches what B sent.
     The human then ends the experiment, and the file records the status
     read afterwards. `infra/spike` is destroyed before the review. If no
-    results arrive within the timebox, B records what did arrive, and the
+    results arrive within the timebox (warehouse wait included), B records
+    what did arrive, and the
     join moves to 3.6 only with the human's written acceptance at Gate 1.
 
 - [ ] 1.3 **Spike: agent to Flagsmith**
-  - Owner: A. Needs: 1.1 and the 1.1 gate's contract change merged.
-    Timebox: 2 hours.
+  - Owner: A. Needs: 1.1. A's first deploy or Flagsmith call waits for the
+    1.1 gate's contract change to merge. Timebox: 2 hours.
   - Files: `agent/spike/agent.py`, `agent/scripts/setup_gateway.py`, the
     AgentCore CLI project under `agent/`,
     `evidence/1.3-flagsmith-agent-spike.md`.
@@ -144,16 +148,17 @@ their tasks name, not against each other.
     created by the idempotent `setup_gateway.py`. The agent calls the MCP
     tools by name, not through the model, to create:
     - feature `assistant_model_rspike<HHMM>`, a new key on every attempt
-      (`experiment_feature_key(scratch_run_id("spike", now))`), value
-      `current`, one option keyed `cheaper` at 50 percent;
+      (`experiment_feature_key(scratch_run_id("spike", now))`; if that key
+      already exists, wait for the next UTC minute), value `current`, one
+      option keyed `cheaper` at 50 percent;
     - metric `spike_mcp_metric`, mean of `spike_event`, higher is better;
     - one experiment, rollout 100 percent, with `spike_mcp_metric`
       expected "should not decrease".
 
     A local script starts the experiment through the Admin API. Then try
-    to change the feature while it runs, toggle the boolean feature
-    `spike_kill_switch` while it runs, and read status, exposures and
-    results. No agent calls an end-experiment endpoint.
+    to change the feature while it runs, create the boolean feature
+    `spike_kill_switch` and toggle it while the experiment runs, and read
+    status, exposures and results. No agent calls an end-experiment endpoint.
   - Pass: the evidence file answers every row of design.md section 13
     owned by 1.3, with the request and response for each; the row on
     ending an experiment through an API is "documented, not exercised",
@@ -167,7 +172,10 @@ their tasks name, not against each other.
   - Owner: Lead. Needs: 1.2, 1.3.
   - Do: a contract-change pull request updating design.md and
     `contracts/` wherever a spike contradicted them; every section 13 row
-    owned by 1.2, 1.3 or 1.4 marked `verified` or `corrected`.
+    owned by 1.2, 1.3 or 1.4 marked `verified` or `corrected`; the row on
+    ending an experiment through an API stays `documented, not exercised`.
+    If 1.2's join moved to 3.6, split that row: the 1.2 parts `verified`,
+    the join a new row owned by 3.6.
     `evidence/1.4-results-sample.json`, read during 1.2, records which of
     lift, credible interval and win probability Flagsmith returns, and in
     what units; 2.2's results mapping starts from it.

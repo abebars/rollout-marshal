@@ -214,6 +214,8 @@ NOT_A_NAME = {
         "test_spike_rules_match_design checks it"
     ),
     "CreateApiKeyCredentialProvider": "AWS API operation GATEWAY_SETUP_SCRIPT calls",
+    "aws sts get-caller-identity": "the account check CLAUDE.md requires before any AWS write",
+    "total_max_attempts": "botocore retry setting; the value is AGENT_CLIENT_MAX_ATTEMPTS",
     "apiKey": "request field of CreateApiKeyCredentialProvider",
     "evidence/": "directory; design.md section 12 owns paths",
     "s3://rm-reports-818928662830/runs/<run_id>/report.md": (
@@ -436,8 +438,21 @@ def test_lambda_timeouts_match_design():
     assert line == (
         f"answer functions {names.ANSWER_TIMEOUT_SECONDS} seconds, "
         f"router {names.ROUTER_TIMEOUT_SECONDS} seconds, "
-        f"judge {names.JUDGE_TIMEOUT_SECONDS} seconds"
+        f"judge {names.JUDGE_TIMEOUT_SECONDS} seconds, "
+        f"`{names.INVOKER_FUNCTION}` {names.INVOKER_TIMEOUT_SECONDS} seconds, "
+        f"`{names.FLAGSMITH_ADMIN_FUNCTION}` {names.FLAGSMITH_ADMIN_TIMEOUT_SECONDS} seconds"
     )
+
+
+def test_agent_client_setting_matches_design():
+    prose = re.sub(r"\s+", " ", section(7))
+    attempts = {1: "one"}[names.AGENT_CLIENT_MAX_ATTEMPTS]
+    assert (
+        f"read timeout {names.AGENT_CLIENT_READ_TIMEOUT_SECONDS} seconds and {attempts} attempt "
+        f"(`total_max_attempts` {names.AGENT_CLIENT_MAX_ATTEMPTS})" in prose
+    )
+    assert names.AGENT_CLIENT_READ_TIMEOUT_SECONDS < names.INVOKER_TIMEOUT_SECONDS
+    assert f"with `STUB={names.INVOKER_STUB_ON}` it only logs the payload and never reads" in prose
 
 
 def test_run_item_attributes_match_design():
@@ -1386,6 +1401,7 @@ def test_agentcore_cli_matches_design():
         f"within {major}.x." in DESIGN
     )
     minor = names.AGENTCORE_CLI_MIN_VERSION.split(".")[1]
+    assert names.AGENTCORE_CLI_MIN_VERSION.split(".")[2] == "0"  # preflight checks major.minor
     preflight = (ROOT / "scripts/preflight.sh").read_text()
     assert f'AGENTCORE_CLI_MAJOR="{major}"' in preflight
     assert f'AGENTCORE_CLI_MIN_MINOR="{minor}"' in preflight
@@ -1415,8 +1431,17 @@ def test_experiment_rollout_and_directions_match_design():
     rows = {r[0]: r[1] for r in table_rows(section(4), "| Thing | Name or value |")}
     assert rows["Experiment rollout"] == (
         f"{names.EXPERIMENT_ROLLOUT_PERCENT} percent of identities, set when the experiment "
-        "is created"
+        "is created; a wrong one is fixed by hand on the experiment page"
     )
+    prose = re.sub(r"\s+", " ", DESIGN)  # section 13's copies of the same values
+    assert f"50/50, rollout {names.EXPERIMENT_ROLLOUT_PERCENT} percent" in prose
+    assert f"the option's {names.TREATMENT_PERCENT} percent allocation" in prose
+    keys = list(names.METRIC_DEFINITIONS[names.PRIMARY_METRIC])
+    assert f"definition on {', '.join(keys[:-1])} and {keys[-1]}." in prose
+    assert "permanent feature is checked on type only" in prose
+    assert set(next(iter(names.PERMANENT_FEATURE_DEFINITIONS.values()))) == {"type", "default"}
+    values = listed(names.DEFAULT_MODEL_VALUES, "or")
+    assert f"default-model feature holds a string value, {values}." in prose
     expected = "; ".join(f"`{m}`: {d}" for m, d in names.EXPERIMENT_EXPECTED_DIRECTIONS.items())
     assert rows["Expected direction per experiment metric"] == expected
 
@@ -1450,22 +1475,23 @@ def test_agentcore_pieces_match_design():
     assert names.FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE == (
         f"{names.GATEWAY_API_KEY_HEADER}: {names.GATEWAY_API_KEY_PREFIX}<key>"
     )
+    assert f"its ARN and `{names.AGENT_RUNTIME_ARN_PARAMETER}` never change" in notes["Runtime"]
+    roles = re.sub(r"\s+", " ", section(7))
+    assert f"except the Gateway service role: it is always `{names.GATEWAY_ROLE}`" in roles
     prose = re.sub(r"\s+", " ", section(7))
     assert f"`{names.GATEWAY_SETUP_SCRIPT}` gets or creates each one by name" in prose
 
 
 def test_flagsmith_key_readers_match_design():
     rows = table_rows(section(8), "| Name | Holds | Read by |")
-    organisation_key_readers = ticks(rows[0][2])
-    for reader in (
+    assert ticks(rows[0][2]) == [
         names.FLAGSMITH_ADMIN_FUNCTION,
         names.GATEWAY_SETUP_SCRIPT,
         names.BOOTSTRAP_FLAGSMITH_SCRIPT,
         names.SEED_EXPERIMENT_SCRIPT,
         names.RESET_SCRIPT,
         names.INJECT_FAULT_SCRIPT,
-    ):
-        assert reader in organisation_key_readers, reader
+    ]
     assert ticks(rows[1][2]) == [
         names.ROUTER_FUNCTION,
         names.JUDGE_FUNCTION,
