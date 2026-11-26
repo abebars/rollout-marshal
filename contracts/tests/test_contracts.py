@@ -936,6 +936,7 @@ def test_run_items_validate():
         {"feature_key": "assistant_model_rspike"},
         {"experiment_id": "4321"},
         {"plan": plan(split={"current": 70, "cheaper": 30})},
+        {"dedupe_key": "x"},
     ],
 )
 def test_bad_run_items_are_rejected(overrides):
@@ -1236,7 +1237,7 @@ def test_constants_holding_booleans_or_none_are_pinned():
         if kind is bool and isinstance(value, bool):
             return True
         if isinstance(value, dict):
-            return any(holds(v, kind) for v in value.values())
+            return any(holds(k, kind) or holds(v, kind) for k, v in value.items())
         if isinstance(value, list | tuple | set | frozenset):
             return any(holds(v, kind) for v in value)
         return False
@@ -1263,3 +1264,114 @@ def test_history_with_later_transitions_validates():
         "reason": "approve",
     }
     valid("run_item", run_item(state="RUNNING", history=[first, later]))
+
+
+def test_list_constants_match_their_design_lists():
+    """Tuples whose members design.md lists in one place: the whole tuple must match."""
+    prose = re.sub(r"\s+", " ", DESIGN)
+    assert f"Send no {listed(names.FORBIDDEN_SAMPLING_PARAMETERS, 'or')}." in prose
+    assert (
+        f"dimension `{names.CW_DIMENSION_VARIANT}` = {listed(names.VARIANTS, 'or')} "
+        "(the variant actually served)" in prose
+    )
+    rows = {r[0]: r[1] for r in table_rows(section(4), "| Thing | Name or value |")}
+    assert tuple(ticks(rows["Events, one of each per answer"])) == names.EVENTS
+    guardrails = re.search(r"Guardrails pass when (.*?)\.", prose).group(1)
+    assert tuple(ticks(guardrails)) == names.GUARDRAIL_METRICS
+    pointer = re.search(r'Pointer item: `pk = "ACTIVE"`, attributes (.*?)\.', prose).group(1)
+    assert tuple(ticks(pointer)) == names.POINTER_ATTRIBUTES
+    meaning = {
+        ticks(attr)[0]: text
+        for attr, _, text in table_rows(section(6), "| Attribute | Type | Meaning |")
+        if ticks(attr)
+    }
+    assert tuple(ticks(meaning["incident"])) == names.INCIDENT_FIELDS
+    assert tuple(ticks(meaning["history"])) == names.HISTORY_FIELDS
+    rule = re.search(
+        r"Recommendation rule \(in code, not in the prompt\): (.*?) Flagsmith's", prose
+    )
+    recommended = re.findall(r"recommend `([^`]+)`", rule.group(1))
+    assert len(recommended) == len(names.RECOMMENDATIONS)
+    assert set(recommended) == set(names.RECOMMENDATIONS)
+    schemas = re.search(r"Schemas in `contracts/schemas/`: (.*?)\.", prose).group(1)
+    assert tuple(ticks(schemas)) == names.SCHEMA_NAMES
+    assert names.SCHEMA_FILES == {n: f"{names.SCHEMA_DIR}{n}.json" for n in names.SCHEMA_NAMES}
+    tools = table_rows(section(7), "| Tool | Reaches | Through |")
+    assert tuple(ticks(tool)[0] for tool, _, _ in tools if ticks(tool)) == names.AGENT_TOOLS
+    actors = [actor for *_, actor in design_transitions()]
+    assert set(actors) == set(names.ACTORS) and len(set(names.ACTORS)) == len(names.ACTORS)
+    parts = blocks(section(4))
+    bullets = next(
+        parts[i + 1] for i, b in enumerate(parts) if "permanent features exist" in b.lower()
+    )
+    assert tuple(re.findall(r"^- `([^`]+)`", bullets, flags=re.M)) == names.PERMANENT_FEATURES
+    tasks = (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    alarm = re.search(r"`alarm_state\(name\) -> (.*?)`", tasks).group(1)
+    assert tuple(re.findall(r'"(\w+)"', alarm)) == names.ALARM_STATES
+
+
+# Every tuple, list, dict or set constant names the test that ties it to its
+# source, so a new collection constant cannot land without one.
+TIED_BY = {
+    "FORBIDDEN_SAMPLING_PARAMETERS": test_list_constants_match_their_design_lists,
+    "VARIANTS": test_list_constants_match_their_design_lists,
+    "EVENTS": test_list_constants_match_their_design_lists,
+    "GUARDRAIL_METRICS": test_list_constants_match_their_design_lists,
+    "POINTER_ATTRIBUTES": test_list_constants_match_their_design_lists,
+    "INCIDENT_FIELDS": test_list_constants_match_their_design_lists,
+    "HISTORY_FIELDS": test_list_constants_match_their_design_lists,
+    "RECOMMENDATIONS": test_list_constants_match_their_design_lists,
+    "SCHEMA_NAMES": test_list_constants_match_their_design_lists,
+    "SCHEMA_FILES": test_list_constants_match_their_design_lists,
+    "AGENT_TOOLS": test_list_constants_match_their_design_lists,
+    "ACTORS": test_list_constants_match_their_design_lists,
+    "PERMANENT_FEATURES": test_list_constants_match_their_design_lists,
+    "ALARM_STATES": test_list_constants_match_their_design_lists,
+    "MODEL_BY_VARIANT": test_rule_constants_match_their_design_sentences,
+    "DEFAULT_MODEL_VALUES": test_rule_constants_match_their_design_sentences,
+    "PERMANENT_FEATURE_DEFINITIONS": test_rule_constants_match_their_design_sentences,
+    "METRIC_AGGREGATIONS_AVAILABLE": test_rule_constants_match_their_design_sentences,
+    "METRIC_DEFINITIONS": test_rule_constants_match_their_design_sentences,
+    "FLAGSMITH_CLIENT_OPTIONS": test_rule_constants_match_their_design_sentences,
+    "ANSWER_FUNCTION_BY_VARIANT": test_rule_constants_match_their_design_sentences,
+    "ACTIONS_WITH_LEGALITY_ERRORS": test_rule_constants_match_their_design_sentences,
+    "CHECK_LEGAL_STATES": test_rule_constants_match_their_design_sentences,
+    "ALARM_NOOP_STATES": test_rule_constants_match_their_design_sentences,
+    "CLI_ACTIONS": test_rule_constants_match_their_design_sentences,
+    "METRICS": test_definitions_are_consistent,
+    "FEATURE_KEYS": test_feature_keys_match_design,
+    "JUDGE_PAYLOAD_FIELDS": test_judge_payload_fields_match_design,
+    "CW_DIMENSION_SETS": test_cloudwatch_metrics_match_design,
+    "CW_METRIC_UNITS": test_cloudwatch_metrics_match_design,
+    "CW_METRIC_EMITTER": test_cloudwatch_metrics_match_design,
+    "RUN_ITEM_ATTRIBUTES": test_run_item_attributes_match_design,
+    "STATES": test_states_match_design,
+    "TERMINAL_STATES": test_terminal_states_match_design,
+    "ACTIONS": test_actions_match_design,
+    "TRANSITIONS": test_transitions_match_design,
+    "LEGAL_TRANSITIONS": test_transitions_match_design,
+    "AWAITING_VALUES": test_awaiting_values_match_design,
+    "AWAITING_BY_STATE": test_awaiting_by_state_follows_the_approve_rows,
+    "ERROR_CODES": test_error_codes_match_design,
+    "INVOKE_FIELDS": test_invoke_fields_match_design,
+    "RESPONSE_FIELDS": test_response_fields_match_design,
+    "ERROR_FIELDS": test_error_fields_match_design,
+    "RESULTS_FIELDS": test_results_fields_match_design,
+    "VARIATION_FIELDS": test_results_fields_match_design,
+    "REPORT_SECTIONS": test_report_sections_match_design,
+    "LOAD_SMOKE": test_load_plans_match_design,
+    "LOAD_FAULT": test_load_plans_match_design,
+    "LOAD_FULL": test_load_plans_match_design,
+}
+
+
+def test_every_collection_constant_names_the_test_that_ties_it():
+    collections = {
+        attr
+        for attr, value in vars(names).items()
+        if attr.isupper()
+        and not attr.startswith("_")
+        and isinstance(value, tuple | list | dict | set | frozenset)
+    }
+    assert sorted(collections - set(TIED_BY)) == [], "add each new collection to TIED_BY"
+    assert sorted(set(TIED_BY) - collections) == [], "remove TIED_BY entries names.py dropped"
