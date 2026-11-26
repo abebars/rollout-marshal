@@ -57,22 +57,32 @@ SCHEMAS = {
         ["type", "string_value", "key", "default_percentage_allocation"],
         {"feature_pk": "integer", "feature": "integer", "default_percentage_allocation": "number"},
     ),
+    # As the live Gateway lists it: the path id is renamed id__path because the body
+    # also has an id.
     "update_feature_multivariate_option": _schema(
-        ["project_pk", "feature_pk", "id", "feature"],
-        ["type", "string_value", "key", "default_percentage_allocation"],
+        ["project_pk", "feature_pk", "id__path", "feature"],
+        ["id", "type", "string_value", "key", "default_percentage_allocation"],
         {
             "feature_pk": "integer",
+            "id__path": "integer",
             "id": "integer",
             "feature": "integer",
             "default_percentage_allocation": "number",
         },
     ),
     "list_metrics": _schema(["environment_api_key"], ["q", "page"]),
-    "create_metric": _schema(
-        ["environment_api_key", "name", "definition"],
-        ["description", "aggregation", "direction"],
-        {"definition": "object"},
-    ),
+    # As the live Gateway lists it: definition is required but has no property.
+    "create_metric": {
+        "type": "object",
+        "properties": {
+            "environment_api_key": {"type": "string"},
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+            "aggregation": {"type": "string"},
+            "direction": {"type": "string"},
+        },
+        "required": ["environment_api_key", "definition", "name"],
+    },
     "list_experiments": _schema(["environment_api_key"], ["q", "status", "page"]),
     "create_experiment": _schema(
         ["environment_api_key", "feature", "name", "hypothesis"],
@@ -89,12 +99,14 @@ SCHEMAS = {
         ["environment_api_key", "experiment_id"], [], {"experiment_id": "integer"}
     ),
     "update_environment_feature_state": _schema(
-        ["environment_api_key", "id", "feature"],
-        ["enabled", "feature_state_value"],
-        {"id": "integer", "feature": "integer", "enabled": "boolean"},
+        ["environment_api_key", "id__path", "feature"],
+        ["id", "enabled", "feature_state_value"],
+        {"id__path": "integer", "id": "integer", "feature": "integer", "enabled": "boolean"},
     ),
     "update_feature": _schema(
-        ["project_pk", "id", "name"], ["description"], {"project_pk": "integer", "id": "integer"}
+        ["id__path", "project_pk"],
+        ["id", "name", "description"],
+        {"project_pk": "integer", "id__path": "integer", "id": "integer"},
     ),
 }
 
@@ -545,15 +557,16 @@ def test_probe_touches_only_the_spike_feature_and_spike_kill_switch_and_reverts(
     writes = _writes(fake.calls)
     targets = set()
     for tool, args in writes:
+        # The path id goes in id__path, as the live Gateway names it.
         if tool == "update_environment_feature_state":
-            assert args["id"] in (FEATURE_STATE_ID, SWITCH_STATE_ID)
+            assert args["id__path"] in (FEATURE_STATE_ID, SWITCH_STATE_ID)
             targets.add(args["feature"])
         elif tool == "update_feature_multivariate_option":
-            assert (args["feature"], args["id"]) == (FEATURE_ID, OPTION_ID)
+            assert (args["feature"], args["id__path"]) == (FEATURE_ID, OPTION_ID)
             targets.add(args["feature"])
         elif tool == "update_feature":
-            assert (args["id"], args["name"]) == (FEATURE_ID, KEY)
-            targets.add(args["id"])
+            assert (args["id__path"], args["name"]) == (FEATURE_ID, KEY)
+            targets.add(args["id__path"])
         else:
             raise AssertionError(f"probe wrote with {tool}")
     assert targets == {FEATURE_ID, SWITCH_ID}

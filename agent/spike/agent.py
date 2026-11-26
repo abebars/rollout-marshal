@@ -200,13 +200,18 @@ def _types(prop: Any) -> set[str]:
 
 
 def _fit(tool: str, schema: dict, arguments: dict) -> dict:
-    """Check arguments against the tool's listed input schema; coerce int and str IDs."""
+    """Check arguments against the tool's listed input schema; coerce int and str IDs.
+
+    A name listed in ``required`` is allowed even without a property: the live
+    create_metric schema requires ``definition`` but does not describe it.
+    """
     props = schema.get("properties") or {}
-    missing = sorted(set(schema.get("required") or ()) - set(arguments))
+    required = set(schema.get("required") or ())
+    missing = sorted(required - set(arguments))
     if missing:
         raise SpikeError(f"{tool}: missing required arguments {missing}")
     if props:
-        unknown = sorted(set(arguments) - set(props))
+        unknown = sorted(set(arguments) - set(props) - required)
         if unknown:
             raise SpikeError(f"{tool}: arguments {unknown} are not in its input schema")
     fitted = {}
@@ -251,8 +256,10 @@ def _describe(tool: Any) -> dict:
         "inputSchema": getattr(mcp_tool, "input_schema", None)
         or getattr(mcp_tool, "inputSchema", None)
         or {},
-        "outputSchema": getattr(mcp_tool, "output_schema", None)
-        or getattr(mcp_tool, "outputSchema", None),
+        # mcp 2.x spells it output_schema and warns on the old name, so read it only on 1.x.
+        "outputSchema": mcp_tool.output_schema
+        if hasattr(mcp_tool, "output_schema")
+        else getattr(mcp_tool, "outputSchema", None),
         "annotations": annotations,
     }
 
@@ -393,6 +400,19 @@ def _check_metric(metric: dict) -> list[str]:
     if isinstance(definition, dict) and definition.get("event") != SPIKE_EVENT:
         problems.append(f"event {definition.get('event')!r} (want {SPIKE_EVENT!r})")
     return problems
+
+
+def _path_id(tools: FlagsmithTools, tool: str, value: Any) -> dict:
+    """The path id under the name the tool lists: id__path when its body also has an id.
+
+    The live Gateway lists update_* tools with id__path (FastMCP renames the clashing path
+    parameter); the Flagsmith OpenAPI calls it id.
+    """
+    try:
+        props = tools.schema(tool).get("properties") or {}
+    except SpikeError:
+        props = {}
+    return {"id__path": value} if "id__path" in props else {"id": value}
 
 
 def _value_of(state: dict) -> dict:
@@ -582,7 +602,7 @@ def probe(tools: FlagsmithTools, feature_key: str) -> dict:
     option_args = {
         "project_pk": project,
         "feature_pk": feature["id"],
-        "id": option["id"],
+        **_path_id(tools, "update_feature_multivariate_option", option["id"]),
         "feature": feature["id"],
         "type": option.get("type", API_OPTION_TYPE_STRING),
         "string_value": option.get("string_value"),
@@ -596,7 +616,7 @@ def probe(tools: FlagsmithTools, feature_key: str) -> dict:
     )
     state_args = {
         "environment_api_key": environment["key"],
-        "id": state["id"],
+        **_path_id(tools, "update_environment_feature_state", state["id"]),
         "feature": feature["id"],
         # Sent unchanged, so a full-object PUT cannot blank the control value.
         **_value_of(state),
@@ -607,7 +627,11 @@ def probe(tools: FlagsmithTools, feature_key: str) -> dict:
         {**state_args, "enabled": not enabled},
         {**state_args, "enabled": enabled},
     )
-    feature_args = {"project_pk": project, "id": feature["id"], "name": feature_key}
+    feature_args = {
+        "project_pk": project,
+        **_path_id(tools, "update_feature", feature["id"]),
+        "name": feature_key,
+    }
     try_then_restore(
         "update_feature",
         {**feature_args, "description": PROBE_DESCRIPTION},
@@ -615,7 +639,7 @@ def probe(tools: FlagsmithTools, feature_key: str) -> dict:
     )
     switch_args = {
         "environment_api_key": environment["key"],
-        "id": switch_state["id"],
+        **_path_id(tools, "update_environment_feature_state", switch_state["id"]),
         "feature": switch["id"],
         **_value_of(switch_state),
     }
