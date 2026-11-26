@@ -1,0 +1,44 @@
+== selfcheck: aws lambda invoke --function-name rm-spike-sdk, 2026-11-26T22:23:54Z to 2026-11-26T22:23:59Z
+{
+  "StatusCode": 200,
+  "FunctionError": null,
+  "ExecutedVersion": "$LATEST"
+}
+START RequestId: dc4a66c7-c4a6-44ec-b5df-a6befffc0fd1 Version: $LATEST
+{"spike_summary": {"action": "selfcheck", "aborted": null, "exposures_tracked": null, "events_delivered": null, "required_ok": null}}
+END RequestId: dc4a66c7-c4a6-44ec-b5df-a6befffc0fd1
+REPORT RequestId: dc4a66c7-c4a6-44ec-b5df-a6befffc0fd1	Duration: 4360.24 ms	Billed Duration: 4492 ms	Memory Size: 256 MB	Max Memory Used: 82 MB	Init Duration: 131.57 ms	
+
+== router: aws lambda invoke --function-name rm-spike-sdk, 2026-11-26T22:24:08Z to 2026-11-26T22:24:18Z
+{
+  "StatusCode": 200,
+  "FunctionError": null,
+  "ExecutedVersion": "$LATEST"
+}
+START RequestId: b002c34a-21aa-416e-a467-b9f31957f12f Version: $LATEST
+{"spike_summary": {"action": "router", "aborted": null, "exposures_tracked": 150, "events_delivered": 150, "required_ok": null}}
+END RequestId: b002c34a-21aa-416e-a467-b9f31957f12f
+REPORT RequestId: b002c34a-21aa-416e-a467-b9f31957f12f	Duration: 9825.47 ms	Billed Duration: 9826 ms	Memory Size: 256 MB	Max Memory Used: 103 MB	
+
+== judge: aws lambda invoke --function-name rm-spike-sdk, 2026-11-26T22:24:35Z to 2026-11-26T22:24:36Z
+{
+  "StatusCode": 200,
+  "FunctionError": null,
+  "ExecutedVersion": "$LATEST"
+}
+START RequestId: 3fada28a-8f17-481b-bf9e-e563e9294ee6 Version: $LATEST
+{"spike_summary": {"action": "judge", "aborted": null, "exposures_tracked": null, "events_delivered": 150, "required_ok": null}}
+END RequestId: 3fada28a-8f17-481b-bf9e-e563e9294ee6
+REPORT RequestId: 3fada28a-8f17-481b-bf9e-e563e9294ee6	Duration: 608.07 ms	Billed Duration: 609 ms	Memory Size: 256 MB	Max Memory Used: 103 MB	
+
+== converse: aws lambda invoke --function-name rm-spike-sdk, 2026-11-26T22:24:48Z to 2026-11-26T22:24:58Z
+{
+  "StatusCode": 200,
+  "FunctionError": null,
+  "ExecutedVersion": "$LATEST"
+}
+START RequestId: cb178152-4d19-425b-98f2-07ada030fe9b Version: $LATEST
+{"spike_summary": {"action": "converse", "aborted": null, "exposures_tracked": null, "events_delivered": null, "required_ok": true}}
+END RequestId: cb178152-4d19-425b-98f2-07ada030fe9b
+REPORT RequestId: cb178152-4d19-425b-98f2-07ada030fe9b	Duration: 9715.33 ms	Billed Duration: 9716 ms	Memory Size: 256 MB	Max Memory Used: 103 MB	
+
