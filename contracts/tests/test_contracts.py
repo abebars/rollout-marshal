@@ -1807,10 +1807,19 @@ PINNED_RULE_SENTENCES = (
     "| `RESULTS_READY` | `PROMOTED` | `approve`, when the alarm is not in ALARM, only if the "
     "experiment is ended in Flagsmith | engineer |",
     # section 7, section 4 and section 9
-    "Legality is judged on state first: an action the table does not allow from the run's state "
-    "returns `ILLEGAL_IN_STATE` whatever is pending.",
+    "Legality is judged after the `RUN_ACTIVE` check and before anything pending: an action the "
+    "table does not allow from the run's state returns `ILLEGAL_IN_STATE` whatever is pending.",
     "The message names the pending target, its age and `marshal check <run_id>`.",
-    "After a claim, every effect failure is `EFFECT_FAILED`.",
+    "After a claim, every effect failure, and a commit that fails other than by a lost race, is "
+    "`EFFECT_FAILED`.",
+    "still ends it, unless a launch is pending on it; such a run stays `PLANNED` and, with no "
+    "pointer, affects nothing.",
+    "**`check` is legal in every non-terminal state** (except on a `PLANNED` run with no pointer, "
+    "above)",
+    'a no-op whose message starts "no active run" and names the pointer\'s run',
+    "While a branch is applied unmerged, every later apply includes it; branches are applied "
+    "together only from one local merge, and only if they touch different modules",
+    "that every plan and apply uses; the lead copies it into each worktree it creates.",
     "and do not invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is emitted",
     "a missing flag or a failed read means off",
 )
@@ -1854,6 +1863,27 @@ def test_other_files_repeat_the_rules():
         in (tasks)
     )
     assert "`notify(run_id, subject, body, dedupe_key) -> message_id`" in tasks
+    for line in (
+        f"`resume` refuses a `pending` younger than {names.PENDING_STALE_SECONDS} seconds",
+        "`PLANNED` run with no pointer returns `ILLEGAL_IN_STATE` and changes nothing, while "
+        "`decline` ends it unless a launch is pending on it",
+        "`decline` while another action's transition is pending returns `TRANSITION_PENDING`",
+        "it refuses while the pointer names a run in a non-terminal state, unless given `--force`",
+        "B, T, the alarm margin (B + 10000 - T) and the headroom (T - B)",
+        "Lambda concurrent executions are at least 50",
+    ):
+        assert line in tasks, line
+    for line in (
+        "- **THEN** the response carries error `ILLEGAL_IN_STATE` and nothing changes, while "
+        "`decline` still ends it unless a launch is pending on it",
+        "has not been ended, and the alarm is not in ALARM",
+        "while another action's transition is still pending",
+    ):
+        assert line in spec, line
+    config = (ROOT / "openspec/config.yaml").read_text()
+    assert "plus at most one follow-up pull request that holds only its post-merge lines" in config
+    preflight = (ROOT / "scripts/preflight.sh").read_text()
+    assert 'LAMBDA_CONCURRENCY_MIN="50"' in preflight
 
 
 def test_console_script_once_the_cli_exists():

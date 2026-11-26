@@ -316,11 +316,14 @@ Rules that hold everywhere:
   pointer can still be ended, with one exception: a `PLANNED` run with no
   pointer can never launch, so `approve` and `check` on it return
   `ILLEGAL_IN_STATE` (the run was reset; start a new one), while `decline`
-  still ends it. `scripts/reset.py` refuses while the pointer names a run
+  still ends it, unless a launch is pending on it; such a run stays
+  `PLANNED` and, with no pointer, affects nothing. `scripts/reset.py`
+  refuses while the pointer names a run
   in a non-terminal state, unless it is given `--force`.
 - **`tick` and `check` in `RUNNING` or `RESULTS_READY` look at the alarm
   first**, then, in `RUNNING`, at results.
-- **`check` is legal in every non-terminal state**, where it does what a
+- **`check` is legal in every non-terminal state** (except on a `PLANNED`
+  run with no pointer, above), where it does what a
   `tick` would do for that run, including finishing a stalled transition.
   In a terminal state it returns `ILLEGAL_IN_STATE`.
 - **Results are not read in the first 600 seconds after
@@ -477,16 +480,17 @@ Error codes: `ILLEGAL_IN_STATE`, `RUN_ACTIVE`, `NOT_FOUND`,
 `EXPERIMENT_NOT_ENDED`, `EFFECT_FAILED`, `BAD_REQUEST`, `TRANSITION_PENDING`,
 `UPSTREAM_FAILED`.
 
-Legality is judged on state first: an action the table does not allow
-from the run's state returns `ILLEGAL_IN_STATE` whatever is pending.
+Legality is judged after the `RUN_ACTIVE` check and before anything
+pending: an action the table does not allow from the run's state returns
+`ILLEGAL_IN_STATE` whatever is pending.
 
 - `TRANSITION_PENDING`: an engineer action lost its claim or commit to
   another invocation, or another transition is pending that it may not
   take over. The message names the pending target, its age and
   `marshal check <run_id>`.
 - `UPSTREAM_FAILED`: a Bedrock, AWS or Flagsmith call failed before any
-  claim, so nothing changed. After a claim, every effect failure is
-  `EFFECT_FAILED`.
+  claim, so nothing changed. After a claim, every effect failure, and a
+  commit that fails other than by a lost race, is `EFFECT_FAILED`.
 
 `status` with no active run returns `run_id`, `state`, `awaiting`,
 `pending` and `error` all null, and a message that starts "no active run".

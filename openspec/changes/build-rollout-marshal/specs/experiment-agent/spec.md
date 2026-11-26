@@ -126,7 +126,7 @@ that is not legal in the run's current state without side effects.
 
 #### Scenario: A reset run cannot launch
 - **WHEN** the engineer approves or checks a `PLANNED` run that has no pointer
-- **THEN** the response carries error `ILLEGAL_IN_STATE` and nothing changes, while `decline` still ends it
+- **THEN** the response carries error `ILLEGAL_IN_STATE` and nothing changes, while `decline` still ends it unless a launch is pending on it (such a run stays `PLANNED` and affects nothing)
 
 #### Scenario: Restart within the same minute
 - **WHEN** `start`, `decline` and `start` again happen within one UTC minute
