@@ -1,5 +1,5 @@
 # Rollout Marshal developer commands. Python runs through uv on Python 3.13.
-.PHONY: help install test lint fmt preflight
+.PHONY: help install test lint fmt preflight names-json
 
 help:
 	@echo "make install    create .venv (Python 3.13) with every dependency group"
@@ -7,6 +7,7 @@ help:
 	@echo "make lint       ruff check, ruff format --check, terraform fmt -check"
 	@echo "make fmt        apply ruff fixes and formatting, and terraform fmt"
 	@echo "make preflight  scripts/preflight.sh: one ok or FAIL line per check"
+	@echo "make names-json regenerate contracts/names.json from contracts/names.py"
 
 install:
 	uv sync
@@ -26,3 +27,6 @@ fmt:
 
 preflight:
 	./scripts/preflight.sh
+
+names-json:
+	uv run python -c 'from contracts import names; print(names.as_json(), end="")' > contracts/names.json

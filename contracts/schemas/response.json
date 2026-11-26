@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/response.json",
+  "title": "Agent response",
+  "description": "What rm_agent returns for every action (design.md section 7). awaiting follows the state: PLANNED awaits launch, AWAITING_RESUME awaits resume, RESULTS_READY awaits promotion, every other state (and no run) awaits nothing. run_id is null when the request names no valid run ID and there is no active run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "state", "message", "awaiting", "error"],
+  "properties": {
+    "run_id": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^r[a-z]*[0-9]{4,12}$" }
+      ]
+    },
+    "state": {
+      "enum": [
+        null,
+        "PLANNED",
+        "RUNNING",
+        "ROLLED_BACK",
+        "AWAITING_RESUME",
+        "RESULTS_READY",
+        "PROMOTED",
+        "HELD",
+        "ABORTED"
+      ]
+    },
+    "message": { "type": "string" },
+    "awaiting": { "enum": [null, "launch", "resume", "promotion"] },
+    "error": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "ILLEGAL_IN_STATE",
+                "RUN_ACTIVE",
+                "NOT_FOUND",
+                "EXPERIMENT_NOT_ENDED",
+                "EFFECT_FAILED",
+                "BAD_REQUEST"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "PLANNED" } } },
+      "then": { "properties": { "awaiting": { "const": "launch" } } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "AWAITING_RESUME" } } },
+      "then": { "properties": { "awaiting": { "const": "resume" } } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "RESULTS_READY" } } },
+      "then": { "properties": { "awaiting": { "const": "promotion" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": { "enum": [null, "RUNNING", "ROLLED_BACK", "PROMOTED", "HELD", "ABORTED"] }
+        }
+      },
+      "then": { "properties": { "awaiting": { "const": null } } }
+    }
+  ]
+}

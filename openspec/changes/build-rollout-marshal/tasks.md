@@ -27,30 +27,30 @@ their tasks name, not against each other.
 
 ## 0. Human prerequisites (before 2026-11-26T02:30Z)
 
-- [ ] 0.1 **Human**: a shell where `aws sts get-caller-identity` prints
+- [x] 0.1 **Human**: a shell where `aws sts get-caller-identity` prints
   account `818928662830`, with credentials that last the whole session.
-- [ ] 0.2 Bedrock data retention mode is `aws_review` in us-east-1 in that
+- [x] 0.2 Bedrock data retention mode is `aws_review` in us-east-1 in that
   account. Ahmed approved this setting on Nov 24, so if preflight finds
   any other mode the lead sets it (`bedrock:PutAccountDataRetention`,
   us-east-1 only) and records that it did.
-- [ ] 0.3 **Human**: secrets `rm/flagsmith/api-key` (the organisation API
+- [x] 0.3 **Human**: secrets `rm/flagsmith/api-key` (the organisation API
   key `rollout-marshal-agent`) and `rm/flagsmith/server-key` (see
   design.md section 8) hold their values in that account's Secrets
   Manager.
-- [ ] 0.4 **Human**: the incident email address is in the kickoff prompt.
+- [x] 0.4 **Human**: the incident email address is in the kickoff prompt.
   A plus-address on an existing mailbox is enough, for example
   `you+rollout-marshal@yourdomain`.
-- [ ] 0.5 **Human**: registered on WeMakeDevs with Track 2 selected.
-- [ ] 0.6 (already done, nothing to do) The Development environment's managed warehouse is connected in
+- [x] 0.5 **Human**: registered on WeMakeDevs with Track 2 selected.
+- [x] 0.6 (already done, nothing to do) The Development environment's managed warehouse is connected in
   Flagsmith (Environment Settings, Warehouse). It was on Nov 23; preflight
   does not check it, so 1.2 confirms the first event arrives.
-- [ ] 0.7 **Human**: `gh auth status` succeeds with push rights to
+- [x] 0.7 **Human**: `gh auth status` succeeds with push rights to
   `abebars/rollout-marshal`; `terraform`, `python3.13`, `uv` or `pip`, the
   AWS CLI and the AgentCore CLI are installed.
 
 ## 1. Foundation (blocks everything)
 
-- [ ] 1.0 **Bootstrap repo, branches and Terraform root**
+- [x] 1.0 **Bootstrap repo, branches and Terraform root**
   - Owner: Lead. Needs: section 0.
   - Files: everything in the handover as it is, `pyproject.toml`,
     `Makefile`, `scripts/preflight.sh`, `infra/backend.tf`,

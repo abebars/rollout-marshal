@@ -1,0 +1,644 @@
+{
+  "ACCOUNT_ID": "818928662830",
+  "ACTIONS": [
+    "start",
+    "approve",
+    "decline",
+    "status",
+    "check",
+    "alarm",
+    "tick"
+  ],
+  "ACTIONS_WITH_LEGALITY_ERRORS": [
+    "start",
+    "approve",
+    "decline",
+    "check"
+  ],
+  "ACTION_ALARM": "alarm",
+  "ACTION_APPROVE": "approve",
+  "ACTION_CHECK": "check",
+  "ACTION_DECLINE": "decline",
+  "ACTION_START": "start",
+  "ACTION_STATUS": "status",
+  "ACTION_TICK": "tick",
+  "ACTIVE_POINTER_PK": "ACTIVE",
+  "ACTORS": [
+    "engineer",
+    "agent"
+  ],
+  "ACTOR_AGENT": "agent",
+  "ACTOR_ENGINEER": "engineer",
+  "AGENT_MAX_TOKENS": 4000,
+  "AGENT_RUNTIME_ARN_PARAMETER": "/rm/agent-runtime-arn",
+  "AGENT_RUNTIME_NAME": "rm_agent",
+  "AGENT_TOOLS": [
+    "flagsmith_admin",
+    "state",
+    "signals",
+    "probe",
+    "schedule",
+    "notify",
+    "report"
+  ],
+  "AGENT_TOOL_FLAGSMITH_ADMIN": "flagsmith_admin",
+  "ALARM_DATAPOINTS_TO_ALARM": 2,
+  "ALARM_DIMENSION": "Variant=cheaper",
+  "ALARM_EVALUATION_PERIODS": 2,
+  "ALARM_METRIC": "AnswerLatencyMs",
+  "ALARM_NAME": "rm-cheaper-latency-p95",
+  "ALARM_NOOP_STATES": [
+    "AWAITING_RESUME",
+    "ROLLED_BACK",
+    "RESULTS_READY"
+  ],
+  "ALARM_PERIOD_SECONDS": 60,
+  "ALARM_STATES": [
+    "OK",
+    "ALARM",
+    "INSUFFICIENT_DATA"
+  ],
+  "ALARM_STATE_ALARM": "ALARM",
+  "ALARM_STATE_INSUFFICIENT_DATA": "INSUFFICIENT_DATA",
+  "ALARM_STATE_OK": "OK",
+  "ALARM_STATISTIC": "p95",
+  "ALARM_THRESHOLD_MS": 10000,
+  "ALARM_TREAT_MISSING_DATA": "notBreaching",
+  "ANSWER_BUDGET": 5100,
+  "ANSWER_CHEAPER_FUNCTION": "rm-answer-cheaper",
+  "ANSWER_COST_STOP_MICRO_USD": 60000000,
+  "ANSWER_CURRENT_FUNCTION": "rm-answer-current",
+  "ANSWER_FUNCTION_BY_VARIANT": {
+    "cheaper": "rm-answer-cheaper",
+    "current": "rm-answer-current"
+  },
+  "ANSWER_HARD_STOP": 7500,
+  "ANSWER_MAX_TOKENS": 2000,
+  "ANSWER_MAX_WORDS": 120,
+  "ANSWER_THINKING_EFFORT": "low",
+  "ANSWER_TIMEOUT_SECONDS": 25,
+  "API_GATEWAY_TIMEOUT_SECONDS": 30,
+  "AWAITING_BY_STATE": {
+    "AWAITING_RESUME": "resume",
+    "PLANNED": "launch",
+    "RESULTS_READY": "promotion"
+  },
+  "AWAITING_VALUES": [
+    "launch",
+    "resume",
+    "promotion"
+  ],
+  "AWAITS_LAUNCH": "launch",
+  "AWAITS_PROMOTION": "promotion",
+  "AWAITS_RESUME": "resume",
+  "BEDROCK_RUNTIME_SERVICE": "bedrock-runtime",
+  "BOOTSTRAP_FLAGSMITH_SCRIPT": "scripts/bootstrap_flagsmith.py",
+  "CHAOS_FEATURE": "chaos_delay_cheaper",
+  "CHECK_LEGAL_STATES": [
+    "RUNNING",
+    "ROLLED_BACK"
+  ],
+  "CLEAR_ACTIVE": "clear_active",
+  "CLI_ACTIONS": [
+    "start",
+    "approve",
+    "decline",
+    "status",
+    "check"
+  ],
+  "CLI_NAME": "marshal",
+  "CONTROL_VALUE": "current",
+  "CW_DIMENSION_SETS": [
+    [
+      "Variant"
+    ]
+  ],
+  "CW_DIMENSION_VARIANT": "Variant",
+  "CW_METRIC_ANSWER_COST_MICRO_USD": "AnswerCostMicroUsd",
+  "CW_METRIC_ANSWER_HELPFUL": "AnswerHelpful",
+  "CW_METRIC_ANSWER_LATENCY_MS": "AnswerLatencyMs",
+  "CW_METRIC_EMITTER": {
+    "AnswerCostMicroUsd": "rm-judge",
+    "AnswerHelpful": "rm-judge",
+    "AnswerLatencyMs": "rm-router"
+  },
+  "CW_METRIC_UNITS": {
+    "AnswerCostMicroUsd": "Count",
+    "AnswerHelpful": "Count",
+    "AnswerLatencyMs": "Milliseconds"
+  },
+  "CW_NAMESPACE": "RolloutMarshal",
+  "DATA_RETENTION_MODE": "aws_review",
+  "DEFAULT_MODEL_CACHE_SECONDS": 30,
+  "DEFAULT_MODEL_DEFAULT": "current",
+  "DEFAULT_MODEL_FEATURE": "assistant_default_model",
+  "DEFAULT_MODEL_VALUES": [
+    "current",
+    "cheaper"
+  ],
+  "ERROR_BAD_REQUEST": "BAD_REQUEST",
+  "ERROR_CODES": [
+    "ILLEGAL_IN_STATE",
+    "RUN_ACTIVE",
+    "NOT_FOUND",
+    "EXPERIMENT_NOT_ENDED",
+    "EFFECT_FAILED",
+    "BAD_REQUEST"
+  ],
+  "ERROR_EFFECT_FAILED": "EFFECT_FAILED",
+  "ERROR_EXPERIMENT_NOT_ENDED": "EXPERIMENT_NOT_ENDED",
+  "ERROR_FIELDS": [
+    "code",
+    "message"
+  ],
+  "ERROR_ILLEGAL_IN_STATE": "ILLEGAL_IN_STATE",
+  "ERROR_NOT_FOUND": "NOT_FOUND",
+  "ERROR_RUN_ACTIVE": "RUN_ACTIVE",
+  "EVENTS": [
+    "answer_helpful",
+    "answer_latency_ms",
+    "answer_cost_micro_usd"
+  ],
+  "EVENT_COST_MICRO_USD": "answer_cost_micro_usd",
+  "EVENT_HELPFUL": "answer_helpful",
+  "EVENT_LATENCY_MS": "answer_latency_ms",
+  "EXPERIMENT_FEATURE_KEY_TEMPLATE": "assistant_model_<run_id>",
+  "EXPERIMENT_FEATURE_PREFIX": "assistant_model_",
+  "EXPOSURE_METADATA_KEY": "experiment_id",
+  "FEATURE_KEYS": [
+    "assistant_model_<run_id>",
+    "assistant_cheaper_enabled",
+    "assistant_default_model",
+    "chaos_delay_cheaper"
+  ],
+  "FIS_ACTION": "aws:lambda:invocation-add-delay",
+  "FIS_DELAY_MS": 10000,
+  "FIS_DURATION_MINUTES": 6,
+  "FIS_INVOCATION_PERCENTAGE": 100,
+  "FIS_SLOW_POLL_ENV": "AWS_FIS_SLOW_POLL_INTERVAL_SECONDS",
+  "FIS_SLOW_POLL_SECONDS": 10,
+  "FIS_TARGET_FUNCTION": "rm-answer-cheaper",
+  "FIS_TEMPLATE": "rm-delay-cheaper",
+  "FIS_TIMEBOX_MINUTES": 120,
+  "FLAGSMITH_ADMIN_FUNCTION": "rm-flagsmith-admin",
+  "FLAGSMITH_API_KEY_NAME": "rollout-marshal-agent",
+  "FLAGSMITH_CLIENT_OPTIONS": {
+    "enable_events": true
+  },
+  "FLAGSMITH_ENVIRONMENT_NAME": "Development",
+  "FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE": "Authorization: Api-Key <key>",
+  "FLAGSMITH_MCP_URL": "https://mcp.flagsmith.com",
+  "FLAGSMITH_MONTHLY_REQUEST_LIMIT": 50000,
+  "FLAGSMITH_ORGANISATION_ID": 41656,
+  "FLAGSMITH_PROJECT_ID": 55601,
+  "FLAGSMITH_PROJECT_NAME": "Toggle Wars",
+  "FLAGSMITH_SDK_MIN_VERSION": "6.6.0",
+  "FLAGSMITH_SDK_PACKAGE": "flagsmith",
+  "FLAGSMITH_USAGE_STOP": 35000,
+  "FORBIDDEN_SAMPLING_PARAMETERS": [
+    "temperature",
+    "top_p",
+    "top_k"
+  ],
+  "GATEWAY_FALLBACK_AFTER_MINUTES": 90,
+  "GUARDRAIL_MAX_COST_RATIO": 1.0,
+  "GUARDRAIL_MAX_LATENCY_RATIO": 1.1,
+  "GUARDRAIL_METRICS": [
+    "mean_latency_ms",
+    "mean_cost_micro_usd"
+  ],
+  "HISTORY_FIELDS": [
+    "at",
+    "from",
+    "to",
+    "actor",
+    "reason"
+  ],
+  "IDENTITY_COUNT": 150,
+  "IDENTITY_FIRST": "user-001",
+  "IDENTITY_LAST": "user-150",
+  "IDENTITY_PATTERN": "^user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$",
+  "INCIDENTS_TOPIC": "rm-incidents",
+  "INCIDENT_FIELDS": [
+    "started_at",
+    "cleared_at",
+    "alarm_name"
+  ],
+  "INFRA_DIR": "infra/",
+  "INVOKER_FUNCTION": "rm-invoker",
+  "INVOKER_STUB_ENV": "STUB",
+  "INVOKER_STUB_ON": "1",
+  "INVOKER_STUB_VARIABLE": "invoker_stub",
+  "INVOKE_FIELDS": [
+    "action",
+    "prompt",
+    "actor",
+    "run_id",
+    "alarm_name",
+    "alarm_state",
+    "at"
+  ],
+  "JUDGE_FUNCTION": "rm-judge",
+  "JUDGE_MAX_TOKENS": 200,
+  "JUDGE_PAYLOAD_FIELDS": [
+    "run_id",
+    "identity",
+    "assigned",
+    "served",
+    "model_id",
+    "question",
+    "answer",
+    "input_tokens",
+    "output_tokens",
+    "latency_ms"
+  ],
+  "JUDGE_TIMEOUT_SECONDS": 30,
+  "KILL_SWITCH_DEFAULT_ENABLED": true,
+  "KILL_SWITCH_FEATURE": "assistant_cheaper_enabled",
+  "LAMBDA_ARCHITECTURE": "arm64",
+  "LEGAL_TRANSITIONS": [
+    [
+      "AWAITING_RESUME",
+      "HELD"
+    ],
+    [
+      "AWAITING_RESUME",
+      "ROLLED_BACK"
+    ],
+    [
+      "AWAITING_RESUME",
+      "RUNNING"
+    ],
+    [
+      "PLANNED",
+      "ABORTED"
+    ],
+    [
+      "PLANNED",
+      "RUNNING"
+    ],
+    [
+      "RESULTS_READY",
+      "HELD"
+    ],
+    [
+      "RESULTS_READY",
+      "PROMOTED"
+    ],
+    [
+      "ROLLED_BACK",
+      "AWAITING_RESUME"
+    ],
+    [
+      "ROLLED_BACK",
+      "HELD"
+    ],
+    [
+      "RUNNING",
+      "HELD"
+    ],
+    [
+      "RUNNING",
+      "RESULTS_READY"
+    ],
+    [
+      "RUNNING",
+      "ROLLED_BACK"
+    ],
+    [
+      null,
+      "PLANNED"
+    ]
+  ],
+  "LOAD_FAULT": {
+    "questions": 2,
+    "users": 150
+  },
+  "LOAD_FULL": {
+    "questions": 10,
+    "users": 150
+  },
+  "LOAD_MAX_CONCURRENCY": 10,
+  "LOAD_SCRIPT": "scripts/load.py",
+  "LOAD_SMOKE": {
+    "questions": 2,
+    "users": 150
+  },
+  "METRICS": [
+    "helpful_rate",
+    "mean_latency_ms",
+    "mean_cost_micro_usd"
+  ],
+  "METRIC_AGGREGATION": "mean",
+  "METRIC_AGGREGATIONS_AVAILABLE": [
+    "occurrence",
+    "count",
+    "sum",
+    "mean"
+  ],
+  "METRIC_DEFINITIONS": {
+    "helpful_rate": {
+      "aggregation": "mean",
+      "event": "answer_helpful"
+    },
+    "mean_cost_micro_usd": {
+      "aggregation": "mean",
+      "event": "answer_cost_micro_usd"
+    },
+    "mean_latency_ms": {
+      "aggregation": "mean",
+      "event": "answer_latency_ms"
+    }
+  },
+  "METRIC_HELPFUL_RATE": "helpful_rate",
+  "METRIC_MEAN_COST_MICRO_USD": "mean_cost_micro_usd",
+  "METRIC_MEAN_LATENCY_MS": "mean_latency_ms",
+  "MIN_IDENTITIES_PER_VARIATION": 50,
+  "MODEL_AGENT": "us.anthropic.claude-sonnet-5",
+  "MODEL_BY_VARIANT": {
+    "cheaper": "us.anthropic.claude-sonnet-5",
+    "current": "us.anthropic.claude-fable-5-1"
+  },
+  "MODEL_CHEAPER": "us.anthropic.claude-sonnet-5",
+  "MODEL_CURRENT": "us.anthropic.claude-fable-5-1",
+  "MODEL_JUDGE": "us.anthropic.claude-haiku-5-5",
+  "PARTITION_KEY": "pk",
+  "PENDING_STALE_SECONDS": 60,
+  "PERMANENT_FEATURES": [
+    "assistant_cheaper_enabled",
+    "assistant_default_model"
+  ],
+  "PERMANENT_FEATURE_DEFINITIONS": {
+    "assistant_cheaper_enabled": {
+      "default": true,
+      "type": "boolean"
+    },
+    "assistant_default_model": {
+      "default": "current",
+      "type": "string"
+    }
+  },
+  "POINTER_ATTRIBUTES": [
+    "run_id",
+    "feature_key"
+  ],
+  "POINTER_CACHE_SECONDS": 30,
+  "POINTER_CREATE_CONDITION": "attribute_not_exists(pk)",
+  "PRICES_FILE": "app/prices.json",
+  "PRIMARY_METRIC": "helpful_rate",
+  "PROBE_INVOKES": 5,
+  "PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER": -0.05,
+  "PROMOTE_MIN_PROB_NOT_WORSE": 0.95,
+  "PYTHON_VERSION": "3.13",
+  "QUESTIONS_COUNT": 30,
+  "QUESTIONS_FILE": "app/questions.json",
+  "RECOMMENDATIONS": [
+    "hold, re-run",
+    "promote",
+    "hold"
+  ],
+  "RECOMMEND_HOLD": "hold",
+  "RECOMMEND_HOLD_RERUN": "hold, re-run",
+  "RECOMMEND_PROMOTE": "promote",
+  "REGION": "us-east-1",
+  "REPO": "github.com/abebars/rollout-marshal",
+  "REPORTS_BUCKET": "rm-reports-818928662830",
+  "REPORT_KEY_TEMPLATE": "runs/<run_id>/report.md",
+  "REPORT_SECTIONS": [
+    "Hypothesis",
+    "Setup",
+    "Timeline",
+    "Results",
+    "Guardrails",
+    "Incident",
+    "Known bias",
+    "Recommendation",
+    "Time taken"
+  ],
+  "RESOURCE_PREFIX": "rm-",
+  "RESPONSE_FIELDS": [
+    "run_id",
+    "state",
+    "message",
+    "awaiting",
+    "error"
+  ],
+  "RESULTS_EMBARGO_SECONDS": 600,
+  "RESULTS_FIELDS": [
+    "ready",
+    "variations",
+    "prob_cheaper_not_worse",
+    "helpful_lift_ci_lower"
+  ],
+  "RESULTS_REFRESH_MIN_SECONDS": 300,
+  "ROUTER_FUNCTION": "rm-router",
+  "ROUTER_TIMEOUT_SECONDS": 29,
+  "RUNS_TABLE": "rm-runs",
+  "RUN_ID_PATTERN": "^r[a-z]*[0-9]{4,12}$",
+  "RUN_ID_PREFIX": "r",
+  "RUN_ID_TIME_FORMAT": "%Y%m%d%H%M",
+  "RUN_ITEM_ATTRIBUTES": {
+    "created_at": "S",
+    "experiment_id": "N",
+    "feature_key": "S",
+    "first_running_at": "S",
+    "history": "L",
+    "incident": "M",
+    "last_refresh_at": "S",
+    "metric_ids": "M",
+    "pending": "S",
+    "pending_at": "S",
+    "plan": "M",
+    "prompt": "S",
+    "report_key": "S",
+    "run_id": "S",
+    "state": "S",
+    "updated_at": "S"
+  },
+  "RUN_PK_PREFIX": "RUN#",
+  "RUN_PK_TEMPLATE": "RUN#<run_id>",
+  "SCHEMA_DIR": "contracts/schemas/",
+  "SCHEMA_FILES": {
+    "invoke": "contracts/schemas/invoke.json",
+    "judge_payload": "contracts/schemas/judge_payload.json",
+    "plan": "contracts/schemas/plan.json",
+    "response": "contracts/schemas/response.json",
+    "results": "contracts/schemas/results.json",
+    "run_item": "contracts/schemas/run_item.json"
+  },
+  "SCHEMA_NAMES": [
+    "invoke",
+    "response",
+    "plan",
+    "run_item",
+    "results",
+    "judge_payload"
+  ],
+  "SCHEMA_PLAN_FILE": "contracts/schemas/plan.json",
+  "SCRATCH_RUN_ID_TIME_FORMAT": "%H%M",
+  "SDK_EXPOSURE_CALL": "track_exposure_event",
+  "SDK_FLAGS_CALL": "get_identity_flags",
+  "SDK_FLUSH_CALL": "flush_events",
+  "SDK_FORBIDDEN_CALL": "get_experiment_flag",
+  "SDK_OUTCOME_CALL": "track_event",
+  "SECRET_FLAGSMITH_API_KEY": "rm/flagsmith/api-key",
+  "SECRET_FLAGSMITH_SERVER_KEY": "rm/flagsmith/server-key",
+  "SESSION_ID_MIN_LENGTH": 33,
+  "SESSION_ID_PREFIX": "rm-session-",
+  "STATES": [
+    "PLANNED",
+    "RUNNING",
+    "ROLLED_BACK",
+    "AWAITING_RESUME",
+    "RESULTS_READY",
+    "PROMOTED",
+    "HELD",
+    "ABORTED"
+  ],
+  "STATE_ABORTED": "ABORTED",
+  "STATE_AWAITING_RESUME": "AWAITING_RESUME",
+  "STATE_HELD": "HELD",
+  "STATE_PLANNED": "PLANNED",
+  "STATE_PROMOTED": "PROMOTED",
+  "STATE_RESULTS_READY": "RESULTS_READY",
+  "STATE_ROLLED_BACK": "ROLLED_BACK",
+  "STATE_RUNNING": "RUNNING",
+  "STOP_REASON_MAX_TOKENS": "max_tokens",
+  "TASK_TIMEBOX_MINUTES": 90,
+  "TERMINAL_STATES": [
+    "PROMOTED",
+    "HELD",
+    "ABORTED"
+  ],
+  "TFSTATE_BUCKET": "rm-tfstate-818928662830",
+  "TFSTATE_KEY": "rollout-marshal/terraform.tfstate",
+  "THINKING_EFFORT_FIELD": "output_config.effort",
+  "TICK_INTERVAL_MINUTES": 2,
+  "TICK_SCHEDULE": "rm-tick",
+  "TRANSITIONS": [
+    {
+      "actor": "engineer",
+      "source": null,
+      "target": "PLANNED",
+      "triggers": [
+        "start"
+      ]
+    },
+    {
+      "actor": "engineer",
+      "source": "PLANNED",
+      "target": "RUNNING",
+      "triggers": [
+        "approve"
+      ]
+    },
+    {
+      "actor": "engineer",
+      "source": "PLANNED",
+      "target": "ABORTED",
+      "triggers": [
+        "decline"
+      ]
+    },
+    {
+      "actor": "agent",
+      "source": "RUNNING",
+      "target": "ROLLED_BACK",
+      "triggers": [
+        "alarm",
+        "tick",
+        "check"
+      ]
+    },
+    {
+      "actor": "agent",
+      "source": "RUNNING",
+      "target": "RESULTS_READY",
+      "triggers": [
+        "tick",
+        "check"
+      ]
+    },
+    {
+      "actor": "engineer",
+      "source": "RUNNING",
+      "target": "HELD",
+      "triggers": [
+        "decline"
+      ]
+    },
+    {
+      "actor": "agent",
+      "source": "ROLLED_BACK",
+      "target": "AWAITING_RESUME",
+      "triggers": [
+        "tick",
+        "check"
+      ]
+    },
+    {
+      "actor": "engineer",
+      "source": "ROLLED_BACK",
+      "target": "HELD",
+      "triggers": [
+        "decline"
+      ]
+    },
+    {
+      "actor": "engineer",
+      "source": "AWAITING_RESUME",
+      "target": "RUNNING",
+      "triggers": [
+        "approve"
+      ]
+    },
+    {
+      "actor": "agent",
+      "source": "AWAITING_RESUME",
+      "target": "ROLLED_BACK",
+      "triggers": [
+        "approve"
+      ]
+    },
+    {
+      "actor": "engineer",
+      "source": "AWAITING_RESUME",
+      "target": "HELD",
+      "triggers": [
+        "decline"
+      ]
+    },
+    {
+      "actor": "engineer",
+      "source": "RESULTS_READY",
+      "target": "PROMOTED",
+      "triggers": [
+        "approve"
+      ]
+    },
+    {
+      "actor": "engineer",
+      "source": "RESULTS_READY",
+      "target": "HELD",
+      "triggers": [
+        "decline"
+      ]
+    }
+  ],
+  "TREATMENT_OPTION_KEY": "cheaper",
+  "TREATMENT_OPTION_VALUE": "cheaper",
+  "TREATMENT_PERCENT": 50,
+  "UTC_TIMESTAMP_FORMAT": "%Y-%m-%dT%H:%M:%S.%fZ",
+  "VARIANTS": [
+    "current",
+    "cheaper"
+  ],
+  "VARIANT_CHEAPER": "cheaper",
+  "VARIANT_CURRENT": "current",
+  "VARIATION_FIELDS": [
+    "identities",
+    "helpful_rate",
+    "mean_latency_ms",
+    "mean_cost_micro_usd"
+  ]
+}
