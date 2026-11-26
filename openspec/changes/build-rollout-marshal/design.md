@@ -379,8 +379,9 @@ Three things invoke it:
 
 The CLI and `rm-invoker` share one `InvokeAgentRuntime` client setting: read
 timeout 290 seconds and one attempt (`total_max_attempts` 1). It sits just
-under the invoker's own timeout, so the client gives up cleanly before Lambda
-stops it, and Lambda's retry of the asynchronous event is the only retry.
+under the invoker's own timeout, so the client normally gives up before
+Lambda stops it, and Lambda's retry of the asynchronous event is the only
+retry.
 
 `check` is the manual fallback for the alarm path: it does whatever `alarm`
 or `tick` would do for the run's current state.

@@ -476,7 +476,7 @@ GATEWAY_INVOKE_ACTION = "bedrock-agentcore:InvokeGateway"  # granted to the runt
 GATEWAY_ROLE = "rm-gateway-role"  # the Gateway's service role; Lambda targets use it
 GATEWAY_CREDENTIAL_PROVIDER = "rm-flagsmith-api-key"  # holds SECRET_FLAGSMITH_API_KEY's value
 GATEWAY_TARGET_FLAGSMITH = "flagsmith"  # MCP server target for FLAGSMITH_MCP_URL
-GATEWAY_TARGET_FLAGSMITH_ADMIN = "flagsmith-admin"  # Lambda target, added by task 2.2
+GATEWAY_TARGET_FLAGSMITH_ADMIN = "flagsmith-admin"  # Lambda target, once 2.2 deploys its function
 # A target's name shapes the Gateway's tool names, so these never change.
 GATEWAY_TARGETS = (GATEWAY_TARGET_FLAGSMITH, GATEWAY_TARGET_FLAGSMITH_ADMIN)
 GATEWAY_API_KEY_HEADER = "Authorization"
