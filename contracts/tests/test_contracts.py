@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta, timezone
 from functools import cache
 from pathlib import Path
@@ -17,7 +19,7 @@ import pytest
 from jsonschema import Draft202012Validator, ValidationError
 
 import contracts
-from contracts import names
+from contracts import dynamo, names
 
 ROOT = Path(__file__).resolve().parents[2]
 DESIGN_PATH = ROOT / "openspec/changes/build-rollout-marshal/design.md"
@@ -262,6 +264,135 @@ def test_every_name_in_design_section_has_a_constant(n):
 def test_not_a_name_entries_still_exist_in_design():
     spans = {s for n in range(2, 12) for s in single_line_spans(section(n))}
     assert set(NOT_A_NAME) <= spans, "remove NOT_A_NAME entries design.md no longer has"
+
+
+def fenced_blocks(n: int) -> list[str]:
+    return re.findall(r"^```[a-z]*\n(.*?)^```", section(n, keep_fences=True), flags=re.S | re.M)
+
+
+@pytest.mark.parametrize("n", [5, 7])
+def test_names_inside_fenced_blocks_have_constants(n):
+    """The section 5 request-path diagram and the section 7 payload examples."""
+    values = name_values()
+    text = "\n".join(fenced_blocks(n))
+    assert text, f"design.md section {n} has no fenced block"
+    found = set(re.findall(r"\brm-[a-z0-9-]*[a-z0-9]\b|\bscripts/[a-z_]+\.py\b", text))
+    found |= set(re.findall(r'"([a-z_]+)":', text))  # payload keys
+    assert sorted(found - values) == []
+
+
+def test_invoke_fields_match_design():
+    keys = []
+    for line in "\n".join(fenced_blocks(7)).splitlines():
+        if line.startswith('{"action"'):
+            keys += [k for k in re.findall(r'"([a-z_]+)":', line) if k not in keys]
+    assert tuple(keys) == names.INVOKE_FIELDS
+
+
+def test_error_fields_match_design():
+    span = next(s for s in multi_line_spans(section(7)) if s.startswith('{"run_id"'))
+    error = re.search(r'"error": null \| \{(.*?)\}', span, flags=re.S).group(1)
+    assert tuple(re.findall(r'"(\w+)":', error)) == names.ERROR_FIELDS
+    error_schema = contracts.load_schema("response")["properties"]["error"]["oneOf"][1]
+    assert tuple(error_schema["required"]) == names.ERROR_FIELDS
+
+
+# Constant values that are not in design.md word for word, each with its source.
+OTHER_SOURCES = {
+    "%Y%m%d%H%M": "strftime form of section 4's YYYYMMDDHHMM",
+    "%H%M": "strftime form of section 4's HHMM",
+    "OK": "signals spec ('changes to OK or INSUFFICIENT_DATA') and tasks.md 2.4",
+    "INSUFFICIENT_DATA": "signals spec and tasks.md 2.4",
+    names.IDENTITY_PATTERN: "section 4: 'user-001 to user-150'",
+    "contracts/schemas/run_item.json": "section 7: contracts/schemas/ plus the name run_item",
+    "contracts/schemas/judge_payload.json": "section 7: contracts/schemas/ plus judge_payload",
+    "notBreaching": "CloudWatch's value for section 5's 'missing data treated as not breaching'",
+    -0.05: "section 6: 'at or above minus 5 percent', as a fraction",
+    1.1: "section 6: 'at most 110 percent', as a ratio",
+    35000: "CLAUDE.md: 'Flagsmith request usage passes 35,000'",
+    60000000: "CLAUDE.md: 'AnswerCostMicroUsd passes 60,000,000'",
+}
+
+
+def constant_leaves():
+    def walk(value):
+        if isinstance(value, bool) or value is None:
+            return
+        if isinstance(value, str | int | float):
+            yield value
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                yield from walk(k)
+                yield from walk(v)
+        elif isinstance(value, list | tuple | set | frozenset):
+            for v in value:
+                yield from walk(v)
+
+    for attr, value in vars(names).items():
+        if attr.isupper() and not attr.startswith("_"):
+            for leaf in walk(value):
+                yield attr, leaf
+
+
+def test_every_constant_value_comes_from_design_or_a_named_source():
+    """The reverse direction: names.py invents nothing."""
+    flat = re.sub(r"\s+", " ", DESIGN)
+    invented = set()
+    for attr, leaf in constant_leaves():
+        if leaf in OTHER_SOURCES:
+            continue
+        if isinstance(leaf, str):
+            ok = leaf in DESIGN or leaf in flat
+        else:
+            forms = {str(leaf), f"{leaf:,}"} if isinstance(leaf, int) else {str(leaf)}
+            ok = any(re.search(rf"(?<![\w.,]){re.escape(f)}(?![\w]|[.,]\d)", flat) for f in forms)
+        if not ok:
+            invented.add((attr, leaf))
+    assert sorted(invented, key=str) == []
+
+
+def test_other_sources_are_real():
+    claude = (ROOT / "CLAUDE.md").read_text()
+    signals = (ROOT / "openspec/changes/build-rollout-marshal/specs/signals/spec.md").read_text()
+    assert "35,000" in claude and "60,000,000" in claude
+    assert "OK or INSUFFICIENT_DATA" in signals
+    assert "missing data treated as not breaching" in re.sub(r"\s+", " ", section(5))
+    used = {leaf for _, leaf in constant_leaves()}
+    assert set(OTHER_SOURCES) <= used, "remove OTHER_SOURCES entries no constant uses"
+
+
+def test_names_and_dynamo_import_without_jsonschema():
+    """Lambdas import contracts.names without packaging jsonschema."""
+    code = (
+        "import sys; sys.modules['jsonschema'] = None; sys.modules['referencing'] = None\n"
+        "import contracts, contracts.names, contracts.dynamo\n"
+        "assert contracts.names.ALARM_NAME == 'rm-cheaper-latency-p95'\n"
+        "try:\n    contracts.validate('invoke', {'action': 'tick'})\n"
+        "except ImportError:\n    print('validate needs jsonschema, as documented')\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, check=False
+    )
+    assert done.returncode == 0, done.stderr
+    assert "validate needs jsonschema" in done.stdout
+
+
+def test_run_item_survives_a_dynamodb_round_trip():
+    """Offline: boto3's own serializer and deserializer, no AWS call."""
+    from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
+
+    item = run_item(experiment_id=4321, metric_ids={"helpful_rate": 7})
+    serialize, deserialize = TypeSerializer().serialize, TypeDeserializer().deserialize
+    with pytest.raises(TypeError):  # boto3 refuses raw floats: the plan has 1.1 and 0.95
+        serialize(item)
+    stored = {k: serialize(v) for k, v in dynamo.to_dynamo(item).items()}
+    raw = {k: deserialize(v) for k, v in stored.items()}
+    invalid("run_item", raw)  # Decimals as boto3 returns them do not validate
+    back = dynamo.from_dynamo(raw)
+    assert back == item
+    valid("run_item", back)
+    naive = json.loads(json.dumps(raw, default=int))  # every number to int: 1.1 becomes 1
+    invalid("run_item", naive)
 
 
 def test_no_flagsmith_key_literal_in_design_or_contracts():
@@ -776,11 +907,12 @@ def test_run_items_validate():
     "overrides",
     [
         {"pending": "RUNNING"},
-        {"pending_at": "2026-11-27T15:58:00Z"},
         {"state": "DONE"},
         {"pk": "RUN#rspike"},
         {"created_at": "2026-11-27T10:30:05-05:00"},
         {"created_at": "2026-11-27"},
+        {"created_at": "2026-13-45T25:61:61Z"},
+        {"created_at": "2026-11-27T15:30:05+0000"},
         {"history": []},
         {
             "history": [
@@ -902,3 +1034,26 @@ def test_schema_constants_match_names():
     assert run["$defs"]["state"]["enum"] == list(names.STATES)
     assert run["$defs"]["history_entry"]["properties"]["actor"]["enum"] == list(names.ACTORS)
     assert run["properties"]["metric_ids"]["propertyNames"]["enum"] == list(names.METRICS)
+
+
+def test_commit_may_leave_pending_at_behind():
+    """design.md section 6 step 3 removes pending only."""
+    valid("run_item", run_item(pending_at="2026-11-27T15:58:00Z"))
+
+
+@pytest.mark.parametrize(
+    "at", ["2026-11-27T15:42:00Z", "2026-11-27T15:42:00.551+0000", "2026-11-27T10:42:00-05:00"]
+)
+def test_alarm_at_accepts_iso_8601_offsets(at):
+    valid(
+        "invoke",
+        {"action": "alarm", "alarm_name": names.ALARM_NAME, "alarm_state": "ALARM", "at": at},
+    )
+
+
+@pytest.mark.parametrize("at", ["2026-13-45T25:61:61Z", "2026-11-27T15:42:00", "2026-11-27"])
+def test_alarm_at_rejects_impossible_or_offsetless_times(at):
+    invalid(
+        "invoke",
+        {"action": "alarm", "alarm_name": names.ALARM_NAME, "alarm_state": "ALARM", "at": at},
+    )

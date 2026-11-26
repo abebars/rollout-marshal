@@ -147,6 +147,10 @@
   ],
   "ERROR_EFFECT_FAILED": "EFFECT_FAILED",
   "ERROR_EXPERIMENT_NOT_ENDED": "EXPERIMENT_NOT_ENDED",
+  "ERROR_FIELDS": [
+    "code",
+    "message"
+  ],
   "ERROR_ILLEGAL_IN_STATE": "ILLEGAL_IN_STATE",
   "ERROR_NOT_FOUND": "NOT_FOUND",
   "ERROR_RUN_ACTIVE": "RUN_ACTIVE",
@@ -225,6 +229,15 @@
   "INVOKER_STUB_ENV": "STUB",
   "INVOKER_STUB_ON": "1",
   "INVOKER_STUB_VARIABLE": "invoker_stub",
+  "INVOKE_FIELDS": [
+    "action",
+    "prompt",
+    "actor",
+    "run_id",
+    "alarm_name",
+    "alarm_state",
+    "at"
+  ],
   "JUDGE_FUNCTION": "rm-judge",
   "JUDGE_MAX_TOKENS": 200,
   "JUDGE_PAYLOAD_FIELDS": [

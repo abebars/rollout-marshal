@@ -204,6 +204,8 @@ ALARM_EVALUATION_PERIODS = 2
 ALARM_DATAPOINTS_TO_ALARM = 2
 ALARM_TREAT_MISSING_DATA = "notBreaching"
 ALARM_THRESHOLD_MS = 10_000  # default; task 4.1 recalibrates it and records it in design.md
+# OK and INSUFFICIENT_DATA come from the signals spec and tasks.md 2.4, not
+# design.md; the test's OTHER_SOURCES lists them.
 ALARM_STATE_OK = "OK"
 ALARM_STATE_ALARM = "ALARM"
 ALARM_STATE_INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
@@ -382,7 +384,9 @@ ERROR_CODES = (
     ERROR_BAD_REQUEST,
 )
 
+INVOKE_FIELDS = ("action", "prompt", "actor", "run_id", "alarm_name", "alarm_state", "at")
 RESPONSE_FIELDS = ("run_id", "state", "message", "awaiting", "error")
+ERROR_FIELDS = ("code", "message")
 RESULTS_FIELDS = ("ready", "variations", "prob_cheaper_not_worse", "helpful_lift_ci_lower")
 VARIATION_FIELDS = ("identities", "helpful_rate", "mean_latency_ms", "mean_cost_micro_usd")
 
@@ -472,7 +476,8 @@ ANSWER_BUDGET = 5_100  # 300 + 300 + 3 x 1,500
 ANSWER_HARD_STOP = 7_500  # stop and ask the human before exceeding
 
 # ---------------------------------------------------------------------------
-# CLAUDE.md stop rules (operational limits, not design.md names)
+# CLAUDE.md stop rules (operational limits from CLAUDE.md, not design.md; the
+# test's OTHER_SOURCES lists them)
 # ---------------------------------------------------------------------------
 FLAGSMITH_USAGE_STOP = 35_000
 ANSWER_COST_STOP_MICRO_USD = 60_000_000

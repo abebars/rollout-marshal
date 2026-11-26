@@ -1,7 +1,11 @@
 """Shared contracts: names (contracts.names) and JSON schemas (contracts/schemas).
 
-from contracts import names, validate
-validate("invoke", {"action": "tick"})   # raises jsonschema.ValidationError
+    from contracts import names, validate
+    validate("invoke", {"action": "tick"})   # raises jsonschema.ValidationError
+
+contracts.names and contracts.dynamo use only the standard library, so a
+Lambda can import them without packaging jsonschema. Only validate() and
+validator() need jsonschema, and they import it when first called.
 """
 
 from __future__ import annotations
@@ -9,9 +13,6 @@ from __future__ import annotations
 import json
 from functools import cache
 from pathlib import Path
-
-from jsonschema import Draft202012Validator, FormatChecker
-from referencing import Registry, Resource
 
 from contracts import names
 
@@ -29,7 +30,9 @@ def load_schema(name: str) -> dict:
 
 
 @cache
-def _registry() -> Registry:
+def _registry():
+    from referencing import Registry, Resource
+
     resources = []
     for name in names.SCHEMA_NAMES:
         schema = load_schema(name)
@@ -37,11 +40,12 @@ def _registry() -> Registry:
     return Registry().with_resources(resources)
 
 
-def validator(name: str) -> Draft202012Validator:
-    """A validator for one schema, resolving references to the others."""
-    return Draft202012Validator(
-        load_schema(name), registry=_registry(), format_checker=FormatChecker()
-    )
+def validator(name: str):
+    """A jsonschema Draft 2020-12 validator for one schema, resolving references
+    to the others."""
+    from jsonschema import Draft202012Validator
+
+    return Draft202012Validator(load_schema(name), registry=_registry())
 
 
 def validate(name: str, instance: object) -> None:
