@@ -70,6 +70,8 @@ STOP_REASON_MAX_TOKENS = "max_tokens"  # always an error, never a result
 ANSWER_TIMEOUT_SECONDS = 25
 ROUTER_TIMEOUT_SECONDS = 29
 JUDGE_TIMEOUT_SECONDS = 30
+INVOKER_TIMEOUT_SECONDS = 300
+FLAGSMITH_ADMIN_TIMEOUT_SECONDS = 30
 
 # ---------------------------------------------------------------------------
 # Section 4. Flagsmith contract
@@ -441,7 +443,11 @@ INVOKER_FUNCTION = "rm-invoker"  # sends alarm and tick
 AGENT_RUNTIME_ARN_PARAMETER = "/rm/agent-runtime-arn"
 INVOKER_STUB_VARIABLE = "invoker_stub"  # Terraform root variable, set by the lead
 INVOKER_STUB_ENV = "STUB"
-INVOKER_STUB_ON = "1"  # with STUB=1 rm-invoker only logs the payload
+INVOKER_STUB_ON = "1"  # with STUB=1 rm-invoker only logs the payload, never reads the ARN
+# One InvokeAgentRuntime client setting for the CLI and rm-invoker (botocore
+# read_timeout and total_max_attempts): under INVOKER_TIMEOUT_SECONDS, no client retry.
+AGENT_CLIENT_READ_TIMEOUT_SECONDS = 290
+AGENT_CLIENT_MAX_ATTEMPTS = 1
 TICK_SCHEDULE = "rm-tick"
 TICK_INTERVAL_MINUTES = 2  # EventBridge Scheduler, enabled only while a run is active
 
@@ -470,7 +476,7 @@ GATEWAY_INVOKE_ACTION = "bedrock-agentcore:InvokeGateway"  # granted to the runt
 GATEWAY_ROLE = "rm-gateway-role"  # the Gateway's service role; Lambda targets use it
 GATEWAY_CREDENTIAL_PROVIDER = "rm-flagsmith-api-key"  # holds SECRET_FLAGSMITH_API_KEY's value
 GATEWAY_TARGET_FLAGSMITH = "flagsmith"  # MCP server target for FLAGSMITH_MCP_URL
-GATEWAY_TARGET_FLAGSMITH_ADMIN = "flagsmith-admin"  # Lambda target, added by task 2.2
+GATEWAY_TARGET_FLAGSMITH_ADMIN = "flagsmith-admin"  # Lambda target, once 2.2 deploys its function
 # A target's name shapes the Gateway's tool names, so these never change.
 GATEWAY_TARGETS = (GATEWAY_TARGET_FLAGSMITH, GATEWAY_TARGET_FLAGSMITH_ADMIN)
 GATEWAY_API_KEY_HEADER = "Authorization"

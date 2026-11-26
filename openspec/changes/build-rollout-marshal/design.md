@@ -34,7 +34,7 @@ changes, and clear output.
 
 Task 1.2's exception to the apply rule: agent B applies and destroys
 `infra/spike/`, a separate root whose local state is never committed. B runs
-the account check first. Its provider pins `us-east-1` and allows only this
+`aws sts get-caller-identity` first. Its provider pins `us-east-1` and allows only this
 account, as the root does. Every resource name starts with `rm-spike-`. The
 spike function gets the secret's name, never its value, and reads the value
 at run time. The plan, apply and destroy output go in the task's evidence
@@ -66,7 +66,8 @@ Task 1.2 proves the exact request fields for effort `low` on both answer
 models, and for disabling thinking on the judge's model (Haiku 5.5) and on
 Sonnet 5, and records them. Fable 5.1 cannot disable thinking; Bedrock
 rejects the request. Lambda timeouts: answer functions 25 seconds, router 29
-seconds, judge 30 seconds.
+seconds, judge 30 seconds, `rm-invoker` 300 seconds, `rm-flagsmith-admin` 30
+seconds.
 
 ## 4. Flagsmith contract
 
@@ -76,7 +77,7 @@ seconds, judge 30 seconds.
 | Experiment feature (multivariate) | `assistant_model_<run_id>` |
 | Control | the feature's own value, `current`. Flagsmith reserves the control; it is not a keyed option |
 | Treatment | one multivariate option with key `cheaper` and value `cheaper`, at 50 percent. An option without a key records no exposures |
-| Experiment rollout | 100 percent of identities, set when the experiment is created |
+| Experiment rollout | 100 percent of identities, set when the experiment is created; a wrong one is fixed by hand on the experiment page |
 | Kill-switch feature (boolean) | `assistant_cheaper_enabled`, default enabled |
 | Events, one of each per answer | `answer_helpful` (value 1 or 0, integer), `answer_latency_ms` (value), `answer_cost_micro_usd` (value) |
 | Metrics (environment level, get-or-create) | `helpful_rate` = mean of `answer_helpful` (primary, higher is better); `mean_latency_ms` = mean of `answer_latency_ms` (lower is better); `mean_cost_micro_usd` = mean of `answer_cost_micro_usd` (lower is better) |
@@ -113,9 +114,9 @@ Rules:
 - Get-or-create checks what it finds. A found metric must match its
   definition on event, aggregation and direction. A found permanent feature
   is checked on type only: a standard feature, not multivariate, and the
-  default-model feature holds a string value. Its current state and value
-  are never compared, because rollback and promote change them; the defaults
-  apply only on create. A mismatch stops with an error for the human to fix
+  default-model feature holds a string value, `current` or `cheaper`. Its
+  current state and value are never compared with the defaults, because
+  rollback and promote change them; the defaults apply only on create. A mismatch stops with an error for the human to fix
   in the dashboard. Nothing updates itself.
 - In spikes (tasks 1.2 and 1.3), every name created in Flagsmith starts
   with `spike_`: features, metrics and events. The one exception is task
@@ -363,8 +364,9 @@ Results shape used by the tools (`contracts/schemas/results.json`):
 "helpful_lift_ci_lower": float | null}` where
 `V = {"identities": int, "helpful_rate": float | null,
 "mean_latency_ms": float | null, "mean_cost_micro_usd": float | null}`.
-Task 2.2 maps Flagsmith's result fields onto this shape from the response
-recorded in task 3.6. Schemas in `contracts/schemas/`: `invoke`,
+Task 2.2 maps Flagsmith's result fields onto this shape, starting from the
+sample task 1.4 records and finished against the response recorded in task
+3.6. Schemas in `contracts/schemas/`: `invoke`,
 `response`, `plan`, `run_item`, `results`, `judge_payload`.
 
 Three things invoke it:
@@ -372,8 +374,14 @@ Three things invoke it:
 | Caller | Sends | How |
 | --- | --- | --- |
 | `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials |
-| `rm-invoker` Lambda | `alarm` | EventBridge rule on the alarm entering ALARM. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload |
+| `rm-invoker` Lambda | `alarm` | EventBridge rule on the alarm entering ALARM. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
 | `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled only while a run is active; targets `rm-invoker` |
+
+The CLI and `rm-invoker` share one `InvokeAgentRuntime` client setting: read
+timeout 290 seconds and one attempt (`total_max_attempts` 1). It sits just
+under the invoker's own timeout, so the client normally gives up before
+Lambda stops it, and Lambda's retry of the asynchronous event is the only
+retry.
 
 `check` is the manual fallback for the alarm path: it does whatever `alarm`
 or `tick` would do for the run's current state.
@@ -401,16 +409,17 @@ instead under the same names:
 
 | Piece | Name | Notes |
 | --- | --- | --- |
-| Runtime | `rm_agent` | One AgentCore CLI project under `agent/`, deployed from task 1.3 on. Task 2.7 redeploys the same runtime, so its ARN never changes |
+| Runtime | `rm_agent` | One AgentCore CLI project under `agent/`, deployed from task 1.3 on. Task 2.7 redeploys the same runtime, so its ARN and `/rm/agent-runtime-arn` never change |
 | Gateway | `rm-gateway` | Protocol `MCP`, inbound auth `AWS_IAM`, so no Cognito pool. The agent signs with SigV4 through `mcp-proxy-for-aws`, and the runtime's role gets `bedrock-agentcore:InvokeGateway` on the Gateway |
 | Gateway service role | `rm-gateway-role` | Also the outbound auth of the Lambda target, which supports only the service role |
 | Credential provider | `rm-flagsmith-api-key` | Holds the organisation key from `rm/flagsmith/api-key`, passed in the `apiKey` field of `CreateApiKeyCredentialProvider`, never through the CLI's env file |
 | MCP server target | `flagsmith` | `https://mcp.flagsmith.com`, API-key outbound auth, header `Authorization`, prefix `Api-Key ` |
-| Lambda target | `flagsmith-admin` | Lambda `rm-flagsmith-admin`, added by task 2.2 |
+| Lambda target | `flagsmith-admin` | Lambda `rm-flagsmith-admin`, added once task 2.2 has deployed it; `agent/scripts/setup_gateway.py` is finished in task 2.7 |
 
 A target's name shapes the tool names the Gateway gives its tools, so these
 names never change. Stack and role names that the CLI generates without the
-`rm-` prefix are accepted.
+`rm-` prefix are accepted, except the Gateway service role: it is always
+`rm-gateway-role`, passed to the CLI when its gateway commands are used.
 
 Fallback if Gateway auth to the Flagsmith MCP server is not working after
 90 minutes of task 1.3: connect the agent directly to `https://mcp.flagsmith.com`
@@ -495,7 +504,7 @@ the result to `evidence/`.
 
 | Claim | Task |
 | --- | --- |
-| Exact signatures of `get_identity_flags`, `track_exposure_event`, `track_event` and `flush_events`; that events survive a Lambda freeze; that an outcome event sent from a second invocation, with its own client, joins an exposure sent from the first (as `rm-judge` and `rm-router` will). 1.2 shows the join on a spike experiment the human creates and starts (`spike_flag` with one variation keyed `cheaper`, metric `spike_metric` = mean of `spike_event`, 50/50, rollout 100 percent), using all 150 identities. If no results arrive within 1.2's timebox, the join moves to 3.6, but only with the human's written acceptance at Gate 1 | 1.2 |
+| Exact signatures of `get_identity_flags`, `track_exposure_event`, `track_event` and `flush_events`; that events survive a Lambda freeze; that an outcome event sent from a second invocation, with its own client, joins an exposure sent from the first (as `rm-judge` and `rm-router` will). 1.2 shows the join on a spike experiment the lead creates and starts through the Admin API, with the human's yes (`spike_flag` with one variation keyed `cheaper`, metric `spike_metric` = mean of `spike_event`, 50/50, rollout 100 percent), using all 150 identities. If no results arrive within 1.2's timebox, the join moves to 3.6, but only with the human's written acceptance at Gate 1 | 1.2 |
 | Request fields for thinking effort `low` on both answer models, and for disabling thinking on Haiku 5.5 and Sonnet 5. Fable 5.1 cannot disable thinking (AWS model card) | 1.2 |
 | What remote evaluation reports as `flag.variant` for each arm, the control arm especially (`current`, `control` or nothing); an exposure without a label is not counted | 1.2 |
 | That the MCP server can set a multivariate option's key; if not, the Admin API does it | 1.3 |
