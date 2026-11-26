@@ -73,7 +73,8 @@ their tasks name, not against each other.
     per 0.2); both secrets
     exist and have a current version (never read the value); one Converse
     call succeeds for each of the three model IDs; AgentCore control plane
-    and FIS APIs answer in us-east-1; `gh auth status`; `terraform
+    and FIS APIs answer in us-east-1; Lambda concurrent executions are at
+    least 50; `gh auth status`; `terraform
     version`; AgentCore CLI version.
   - Pass: every preflight line is `ok`; `git log --format=%cI main | tail
     -1` is at or after `2026-11-26T02:30:00Z`; `terraform init` succeeds.
@@ -90,7 +91,7 @@ their tasks name, not against each other.
     error code and feature key in design.md appears in `names.py`.
   - Gate: **Human approves this pull request** before 1.2 and 1.3 start.
 
-- [ ] 1.2 **Spike: Bedrock and Flagsmith SDK from Lambda**
+- [x] 1.2 **Spike: Bedrock and Flagsmith SDK from Lambda**
   - Owner: B. Needs: 1.1. B's first apply waits for the 1.1 gate's
     contract change to merge, and B's first Flagsmith call for the spike
     experiment to be running. Timebox: 2 hours, plus waiting for the
@@ -183,8 +184,10 @@ their tasks name, not against each other.
     the join a new row owned by 3.6.
     `evidence/1.4-results-sample.json`, read during 1.2, records which of
     lift, credible interval and win probability Flagsmith returns, and in
-    what units; 2.2's results mapping starts from it. 1.3's Admin API call
-    times check `rm-flagsmith-admin`'s 30-second timeout.
+    what units; 2.2's results mapping starts from it. 1.4 times the Admin
+    API refresh and results calls and checks `rm-flagsmith-admin`'s
+    30-second timeout against them; the start call is timed by 2.2's live
+    test, which starts an experiment anyway.
   - Pass: `make test` green; no such row left open. If the sample has no
     lift and no credible interval, the **Human** decides at Gate 1: keep a
     promote path, or accept that every clean run recommends hold.
@@ -322,7 +325,7 @@ their tasks name, not against each other.
     `AWAITING_RESUME` counts as a failing probe; a `tick` or a repeat
     during a fresh claim runs no effects; `approve` or `check` on a
     `PLANNED` run with no pointer returns `ILLEGAL_IN_STATE` and changes
-    nothing, while `decline` ends it; `tick` in `RUNNING` inside 600 seconds of `first_running_at`
+    nothing, while `decline` ends it unless a launch is pending on it; `tick` in `RUNNING` inside 600 seconds of `first_running_at`
     does not read results; `check` in `RUNNING` with the alarm in ALARM
     rolls back exactly as `alarm` does; `check` in every non-terminal state
     does what `tick` would, and in a terminal state returns
@@ -337,12 +340,13 @@ their tasks name, not against each other.
     the kill switch off; `approve`, `decline` or `check` on a run the
     pointer does not name returns `RUN_ACTIVE`; a pointer whose run item is
     missing is a no-op for `status`, `tick` and `alarm`; `status` with no
-    active run returns nulls and "no active run"; `decline` while a
-    transition is pending returns `TRANSITION_PENDING`; a planner model
+    active run returns nulls and "no active run"; `decline` while
+    another action's transition is pending returns `TRANSITION_PENDING`; a planner model
     error on `start` returns `UPSTREAM_FAILED` and creates nothing; a
     failed launch ran `set_tick(True)` first, and a `tick`, or separately a
     `check`, completes it with one history entry; a `tick` right after
-    `EFFECT_FAILED` resumes at once (the claim was released); `start`,
+    `EFFECT_FAILED` resumes at once (the claim was released); a commit
+    that fails other than by a lost race returns `EFFECT_FAILED`; `start`,
     `decline`, `start` within one minute returns `BAD_REQUEST`;
     `status` returns the run without changing it; an unknown `run_id`
     returns `NOT_FOUND`; `decline` of a `PLANNED` run touches nothing in

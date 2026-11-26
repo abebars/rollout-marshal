@@ -1,0 +1,27 @@
+# Task 1.2, phase 2: terraform apply of infra/spike
+#
+# Commands, run from the repo root at 2026-11-26T22:23Z:
+#   unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; export AWS_PROFILE=abisb_IsbAdminsPS-818928662830
+#   aws sts get-caller-identity --query Account --output text   -> 818928662830
+#   cd infra/spike && terraform apply -no-color -input=false spike.tfplan   (the plan saved in evidence/1.2-terraform-plan.txt, phase 2)
+#
+# Output of the apply follows, unedited. State is local to infra/spike and git-ignored.
+
+aws_cloudwatch_log_group.spike: Creating...
+aws_iam_role.spike: Creating...
+aws_cloudwatch_log_group.spike: Creation complete after 0s [id=rm-spike-sdk]
+data.aws_iam_policy_document.spike: Reading...
+data.aws_iam_policy_document.spike: Read complete after 0s [id=817948354]
+aws_iam_role.spike: Creation complete after 1s [id=rm-spike-sdk-role]
+aws_iam_role_policy.spike: Creating...
+aws_iam_role_policy.spike: Creation complete after 0s [id=rm-spike-sdk-role:rm-spike-sdk-policy]
+aws_lambda_function.spike: Creating...
+aws_lambda_function.spike: Still creating... [00m10s elapsed]
+aws_lambda_function.spike: Creation complete after 16s [id=rm-spike-sdk]
+
+Apply complete! Resources: 4 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+function_name = "rm-spike-sdk"
+role_name = "rm-spike-sdk-role"
