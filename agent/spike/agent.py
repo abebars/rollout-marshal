@@ -415,6 +415,118 @@ def _path_id(tools: FlagsmithTools, tool: str, value: Any) -> dict:
     return {"id__path": value} if "id__path" in props else {"id": value}
 
 
+def _attempt(tools: FlagsmithTools, attempts: list[dict], tool: str, args: dict) -> dict:
+    """Call a tool, record the outcome in attempts, and return it; never raises."""
+    try:
+        record = tools.attempt(tool, args)
+    except SpikeError as exc:  # the arguments do not fit the listed schema: nothing sent
+        record = {
+            "tool": tools.prefix + tool,
+            "arguments": args,
+            "status": "not_sent",
+            "result": str(exc),
+        }
+    attempts.append(record)
+    return record
+
+
+def _typed_value(value: Any) -> dict:
+    """A feature state value in the object form the versioning tools take."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, bool):
+        return {"type": "bool", "boolean_value": value}
+    if isinstance(value, int):
+        return {"type": "int", "integer_value": value}
+    if isinstance(value, str):
+        return {"type": API_OPTION_TYPE_STRING, "string_value": value}
+    return {}
+
+
+def _set_enabled(
+    tools: FlagsmithTools,
+    attempts: list[dict],
+    environment: dict,
+    feature: dict,
+    state: dict,
+    enabled: bool,
+) -> bool:
+    """Set the feature's environment-default enabled flag; True once the change is live.
+
+    With v2 feature versioning (Development has it) a state is changed by creating a
+    version, updating the version's environment-default state and publishing the version;
+    update_environment_feature_state applies only without v2 (the tools' descriptions).
+    """
+    if not environment["use_v2_feature_versioning"]:
+        record = _attempt(
+            tools,
+            attempts,
+            "update_environment_feature_state",
+            {
+                "environment_api_key": environment["key"],
+                **_path_id(tools, "update_environment_feature_state", state["id"]),
+                "feature": feature["id"],
+                # Sent unchanged, so a full-object PUT cannot blank the control value.
+                **_value_of(state),
+                "enabled": enabled,
+            },
+        )
+        return record["status"] == "success"
+    base = {"environment_pk": environment["id"], "feature_pk": feature["id"]}
+    created = _attempt(
+        tools,
+        attempts,
+        "create_environment_feature_version",
+        {**base, "description": PROBE_DESCRIPTION},
+    )
+    if created["status"] != "success":
+        return False
+    version = (created["result"] or {}).get("uuid") if isinstance(created["result"], dict) else None
+    listed = _attempt(
+        tools,
+        attempts,
+        "get_environment_feature_version_states",
+        {**base, "environment_feature_version_pk": version},
+    )
+    if listed["status"] != "success":
+        return False
+    defaults = [
+        s
+        for s in _results(listed["result"])
+        if not s.get("feature_segment") and not s.get("identity")
+    ]
+    if not defaults:
+        attempts.append(
+            {
+                "tool": tools.prefix + "update_environment_feature_version_state",
+                "arguments": {},
+                "status": "not_sent",
+                "result": "the new version lists no environment-default state",
+            }
+        )
+        return False
+    default = defaults[0]
+    updated = _attempt(
+        tools,
+        attempts,
+        "update_environment_feature_version_state",
+        {
+            **base,
+            "environment_feature_version_pk": version,
+            **_path_id(tools, "update_environment_feature_version_state", default["id"]),
+            "feature": feature["id"],
+            "enabled": enabled,
+            "feature_state_value": _typed_value(default.get("feature_state_value")),
+        },
+    )
+    if updated["status"] != "success":
+        return False
+    published = _attempt(
+        tools, attempts, "publish_environment_feature_version", {**base, "id": version}
+    )
+    return published["status"] == "success"
+
+
 def _value_of(state: dict) -> dict:
     """The state's current value as an argument, or nothing when it has none (a boolean flag)."""
     value = state.get("feature_state_value")
@@ -578,26 +690,20 @@ def probe(tools: FlagsmithTools, feature_key: str) -> dict:
     option = _treatment_option(tools, feature["id"])
     state = feature.get("environment_feature_state") or {}
     switch_state = switch.get("environment_feature_state") or {}
-    if option is None or "id" not in state or "id" not in switch_state:
+    versioned = bool(environment["use_v2_feature_versioning"])
+    if option is None or (not versioned and ("id" not in state or "id" not in switch_state)):
         raise SpikeError("the feature's option or an environment feature state was not listed")
     attempts: list[dict] = []
 
     def try_then_restore(tool: str, change: dict, restore: dict) -> None:
-        try:
-            record = tools.attempt(tool, change)
-        except SpikeError as exc:  # the arguments do not fit the listed schema: nothing sent
-            attempts.append(
-                {
-                    "tool": tools.prefix + tool,
-                    "arguments": change,
-                    "status": "not_sent",
-                    "result": str(exc),
-                }
-            )
-            return
-        attempts.append(record)
+        record = _attempt(tools, attempts, tool, change)
         if record["status"] == "success":
-            attempts.append(tools.attempt(tool, restore))
+            _attempt(tools, attempts, tool, restore)
+
+    def toggle_then_restore(target: dict, target_state: dict) -> None:
+        enabled = bool(target_state.get("enabled", True))
+        if _set_enabled(tools, attempts, environment, target, target_state, not enabled):
+            _set_enabled(tools, attempts, environment, target, target_state, enabled)
 
     option_args = {
         "project_pk": project,
@@ -614,19 +720,7 @@ def probe(tools: FlagsmithTools, feature_key: str) -> dict:
         {**option_args, "default_percentage_allocation": PROBE_ALLOCATION},
         {**option_args, "default_percentage_allocation": allocation},
     )
-    state_args = {
-        "environment_api_key": environment["key"],
-        **_path_id(tools, "update_environment_feature_state", state["id"]),
-        "feature": feature["id"],
-        # Sent unchanged, so a full-object PUT cannot blank the control value.
-        **_value_of(state),
-    }
-    enabled = bool(state.get("enabled", True))
-    try_then_restore(
-        "update_environment_feature_state",
-        {**state_args, "enabled": not enabled},
-        {**state_args, "enabled": enabled},
-    )
+    toggle_then_restore(feature, state)
     feature_args = {
         "project_pk": project,
         **_path_id(tools, "update_feature", feature["id"]),
@@ -637,18 +731,7 @@ def probe(tools: FlagsmithTools, feature_key: str) -> dict:
         {**feature_args, "description": PROBE_DESCRIPTION},
         {**feature_args, "description": feature.get("description") or ""},
     )
-    switch_args = {
-        "environment_api_key": environment["key"],
-        **_path_id(tools, "update_environment_feature_state", switch_state["id"]),
-        "feature": switch["id"],
-        **_value_of(switch_state),
-    }
-    switch_enabled = bool(switch_state.get("enabled", True))
-    try_then_restore(
-        "update_environment_feature_state",
-        {**switch_args, "enabled": not switch_enabled},
-        {**switch_args, "enabled": switch_enabled},
-    )
+    toggle_then_restore(switch, switch_state)
     return {
         "feature_key": feature_key,
         "feature_id": feature["id"],

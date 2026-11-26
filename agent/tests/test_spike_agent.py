@@ -108,6 +108,40 @@ SCHEMAS = {
         ["id", "name", "description"],
         {"project_pk": "integer", "id__path": "integer", "id": "integer"},
     ),
+    # The v2 feature versioning tools, as the live Gateway lists them.
+    "create_environment_feature_version": _schema(
+        ["environment_pk", "feature_pk"],
+        ["description", "publish_immediately", "feature_states_to_update"],
+        {"environment_pk": "integer", "feature_pk": "integer", "publish_immediately": "boolean"},
+    ),
+    "get_environment_feature_version_states": _schema(
+        ["environment_feature_version_pk", "environment_pk", "feature_pk"],
+        [],
+        {"environment_pk": "integer", "feature_pk": "integer"},
+    ),
+    "update_environment_feature_version_state": _schema(
+        [
+            "environment_feature_version_pk",
+            "environment_pk",
+            "feature_pk",
+            "id__path",
+            "feature_state_value",
+        ],
+        ["id", "enabled", "feature"],
+        {
+            "environment_pk": "integer",
+            "feature_pk": "integer",
+            "id__path": "integer",
+            "feature": "integer",
+            "enabled": "boolean",
+            "feature_state_value": "object",
+        },
+    ),
+    "publish_environment_feature_version": _schema(
+        ["environment_pk", "feature_pk", "id"],
+        ["live_from"],
+        {"environment_pk": "integer", "feature_pk": "integer"},
+    ),
 }
 
 
@@ -123,13 +157,21 @@ class FakeGateway:
     """Duck-types the parts of strands' MCPClient that the spike uses."""
 
     def __init__(
-        self, existing=(), errors=None, page_size=7, metric_aggregation="mean", drops_key=False
+        self,
+        existing=(),
+        errors=None,
+        page_size=7,
+        metric_aggregation="mean",
+        drops_key=False,
+        v2=False,
     ):
         self.existing = set(existing)
         self.errors = errors or {}
         self.page_size = page_size
         self.metric_aggregation = metric_aggregation
         self.drops_key = drops_key  # an MCP server that does not store the option's key
+        self.v2 = v2  # the environment uses v2 feature versioning, as Development does
+        self.versions = 0
         self.option_created = False
         self.calls = []
         self.listed = 0
@@ -181,7 +223,7 @@ class FakeGateway:
                         "id": ENV_ID,
                         "name": names.FLAGSMITH_ENVIRONMENT_NAME,
                         "api_key": ENV_KEY,
-                        "use_v2_feature_versioning": False,
+                        "use_v2_feature_versioning": self.v2,
                     },
                 ]
             )
@@ -276,7 +318,28 @@ class FakeGateway:
             return {"id": EXPERIMENT_ID, "name": args["name"], "status": "created"}
         if tool in ("get_experiment", "get_experiment_exposures", "get_experiment_results"):
             return {"id": args["experiment_id"], "status": "running", "environment": ENV_KEY}
-        if tool in ("update_environment_feature_state", "update_feature"):
+        if tool == "create_environment_feature_version":
+            self.versions += 1
+            return {"uuid": f"version-{self.versions}", "is_live": False, "published": False}
+        if tool == "get_environment_feature_version_states":
+            feature = args["feature_pk"]
+            return [
+                {
+                    "id": FEATURE_STATE_ID if feature == FEATURE_ID else SWITCH_STATE_ID,
+                    "feature": feature,
+                    "feature_segment": None,
+                    "identity": None,
+                    "enabled": True,
+                    "feature_state_value": names.CONTROL_VALUE if feature == FEATURE_ID else None,
+                }
+            ]
+        if tool == "publish_environment_feature_version":
+            return {"uuid": args["id"], "published": True, "is_live": True}
+        if tool in (
+            "update_environment_feature_state",
+            "update_environment_feature_version_state",
+            "update_feature",
+        ):
             return {"ok": True}
         raise AssertionError(f"unexpected tool {tool}")
 
@@ -595,6 +658,48 @@ def test_probe_records_a_refusal_instead_of_failing():
     refused = [a for a in attempts if a["tool"].endswith("update_feature_multivariate_option")]
     assert refused and refused[0]["status"] == "error"
     assert "locked" in json.dumps(refused[0])
+
+
+def test_probe_in_a_v2_environment_changes_states_through_published_versions():
+    fake = FakeGateway(existing={"feature", "option", "switch"}, v2=True)
+    reply = spike.handle({"action": "probe", "feature_key": KEY}, tools=spike.FlagsmithTools(fake))
+    assert reply["ok"] is True, reply
+    used = _names(fake.calls)
+    assert "update_environment_feature_state" not in used
+    version_updates = [
+        args for tool, args in fake.calls if tool == "update_environment_feature_version_state"
+    ]
+    feature_updates = [a for a in version_updates if a["feature_pk"] == FEATURE_ID]
+    switch_updates = [a for a in version_updates if a["feature_pk"] == SWITCH_ID]
+    assert [a["enabled"] for a in feature_updates] == [False, True]  # tried, then put back
+    assert [a["enabled"] for a in switch_updates] == [False, True]  # toggled off, then on
+    assert all(
+        a["feature_state_value"] == {"type": "unicode", "string_value": names.CONTROL_VALUE}
+        for a in feature_updates
+    )
+    assert all(a["environment_pk"] == ENV_ID for a in version_updates)
+    # Every change is published, and each version is published after its own update.
+    assert used.count("publish_environment_feature_version") == 4
+    for index, tool in enumerate(used):
+        if tool == "publish_environment_feature_version":
+            assert used[index - 1] == "update_environment_feature_version_state"
+
+
+def test_probe_in_a_v2_environment_records_a_refused_version_and_goes_on():
+    fake = FakeGateway(
+        existing={"feature", "option", "switch"},
+        v2=True,
+        errors={"create_environment_feature_version": "HTTP 400: feature is locked"},
+    )
+    reply = spike.handle({"action": "probe", "feature_key": KEY}, tools=spike.FlagsmithTools(fake))
+    assert reply["ok"] is True, reply
+    refused = [
+        a
+        for a in reply["result"]["attempts"]
+        if a["tool"].endswith("create_environment_feature_version")
+    ]
+    assert refused and all(a["status"] == "error" for a in refused)
+    assert "update_environment_feature_version_state" not in _names(fake.calls)
 
 
 def test_probe_sends_the_control_value_unchanged_with_each_state_write():
