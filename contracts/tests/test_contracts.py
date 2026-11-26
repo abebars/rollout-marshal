@@ -287,6 +287,8 @@ def test_invoke_fields_match_design():
         if line.startswith('{"action"'):
             keys += [k for k in re.findall(r'"([a-z_]+)":', line) if k not in keys]
     assert tuple(keys) == names.INVOKE_FIELDS
+    branches = contracts.load_schema("invoke")["oneOf"]
+    assert {k for b in branches for k in b["properties"]} == set(names.INVOKE_FIELDS)
 
 
 def test_error_fields_match_design():
@@ -311,6 +313,7 @@ OTHER_SOURCES = {
     1.1: "section 6: 'at most 110 percent', as a ratio",
     35000: "CLAUDE.md: 'Flagsmith request usage passes 35,000'",
     60000000: "CLAUDE.md: 'AnswerCostMicroUsd passes 60,000,000'",
+    "type": "PERMANENT_FEATURE_DEFINITIONS key (section 4: boolean, string value)",
 }
 
 
@@ -342,7 +345,7 @@ def test_every_constant_value_comes_from_design_or_a_named_source():
         if leaf in OTHER_SOURCES:
             continue
         if isinstance(leaf, str):
-            ok = leaf in DESIGN or leaf in flat
+            ok = bool(re.search(rf"(?<![\w-]){re.escape(leaf)}(?![\w-])", flat))
         else:
             forms = {str(leaf), f"{leaf:,}"} if isinstance(leaf, int) else {str(leaf)}
             ok = any(re.search(rf"(?<![\w.,]){re.escape(f)}(?![\w]|[.,]\d)", flat) for f in forms)
@@ -390,6 +393,8 @@ def test_run_item_survives_a_dynamodb_round_trip():
     invalid("run_item", raw)  # Decimals as boto3 returns them do not validate
     back = dynamo.from_dynamo(raw)
     assert back == item
+    assert type(back["experiment_id"]) is int and type(back["metric_ids"]["helpful_rate"]) is int
+    assert type(back["plan"]["guardrails"]["max_latency_ratio"]) is float
     valid("run_item", back)
     naive = json.loads(json.dumps(raw, default=int))  # every number to int: 1.1 becomes 1
     invalid("run_item", naive)
@@ -498,7 +503,7 @@ def test_cloudwatch_metrics_match_design():
 def test_alarm_matches_design():
     prose = re.sub(r"\s+", " ", section(5))
     assert f"Alarm `{names.ALARM_NAME}`: `{names.ALARM_METRIC}`, `{names.ALARM_DIMENSION}`" in prose
-    assert f"statistic {names.ALARM_STATISTIC}" in prose
+    assert f"statistic {names.ALARM_STATISTIC}," in prose
     assert f"period {names.ALARM_PERIOD_SECONDS} seconds" in prose
     assert (
         f"{names.ALARM_DATAPOINTS_TO_ALARM} of {names.ALARM_EVALUATION_PERIODS} datapoints" in prose
@@ -569,14 +574,15 @@ def test_numbers_in_design_rules():
     assert f"every {names.TICK_INTERVAL_MINUTES} minutes" in prose
     assert f"at {names.TREATMENT_PERCENT} percent" in prose
     assert f"`{names.ANSWER_THINKING_EFFORT}` through" in prose
-    assert f"`maxTokens` {names.ANSWER_MAX_TOKENS}" in prose
-    assert f"`maxTokens` {names.JUDGE_MAX_TOKENS}" in prose
-    assert f"`maxTokens` {names.AGENT_MAX_TOKENS}" in prose
+    assert f"Answers (both arms): `maxTokens` {names.ANSWER_MAX_TOKENS}," in prose
+    assert f"Judge: thinking disabled, `maxTokens` {names.JUDGE_MAX_TOKENS}." in prose
+    assert f"Agent prose: `maxTokens` {names.AGENT_MAX_TOKENS}." in prose
     assert f"at most {names.ANSWER_MAX_WORDS} words" in prose
-    assert f"{names.SESSION_ID_MIN_LENGTH} character minimum" in prose
-    assert (
-        f"{names.FLAGSMITH_SDK_PACKAGE}` Python package {names.FLAGSMITH_SDK_MIN_VERSION}" in prose
+    assert f"than the {names.SESSION_ID_MIN_LENGTH} character minimum" in prose
+    sdk = (
+        f"{names.FLAGSMITH_SDK_PACKAGE}` Python package {names.FLAGSMITH_SDK_MIN_VERSION} or later"
     )
+    assert sdk in prose
 
 
 # ---------------------------------------------------------------------------
@@ -1057,3 +1063,11 @@ def test_alarm_at_rejects_impossible_or_offsetless_times(at):
         "invoke",
         {"action": "alarm", "alarm_name": names.ALARM_NAME, "alarm_state": "ALARM", "at": at},
     )
+
+
+def test_every_fenced_block_and_multi_line_span_has_a_check():
+    """A new fenced block or multi-line span in design.md needs its own check."""
+    fenced = {n: len(fenced_blocks(n)) for n in range(2, 12) if fenced_blocks(n)}
+    assert fenced == {5: 1, 7: 1}
+    starts = sorted(s.split(None, 1)[0] for n in range(2, 12) for s in multi_line_spans(section(n)))
+    assert starts == sorted(["{run_id,", '{"run_id":', '{"ready":', "V"])
