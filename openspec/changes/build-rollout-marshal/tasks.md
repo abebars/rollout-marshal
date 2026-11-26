@@ -87,7 +87,7 @@ their tasks name, not against each other.
     error code and feature key in design.md appears in `names.py`.
   - Gate: **Human approves this pull request** before 1.2 and 1.3 start.
 
-- [ ] 1.2 **Spike: Bedrock and Flagsmith SDK from Lambda**
+- [x] 1.2 **Spike: Bedrock and Flagsmith SDK from Lambda**
   - Owner: B. Needs: 1.1. B's first apply waits for the 1.1 gate's
     contract change to merge, and B's first Flagsmith call for the spike
     experiment to be running. Timebox: 2 hours, plus waiting for the
