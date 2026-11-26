@@ -214,6 +214,11 @@ NOT_A_NAME = {
     "2#ROLLED_BACK": "example of dedupe_key(); test_dedupe_key_matches_design checks it",
     "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
     "flag.variant": "SDK attribute the exposure call sends",
+    "flag.value": "SDK attribute: the variant's value, which names the model served",
+    "<project>_<target>_<runtime>": (
+        "the AgentCore CLI's naming pattern; see AGENT_RUNTIME_DEPLOYED_NAME"
+    ),
+    "flagsmith___<tool>": "the Gateway's tool-name pattern for target GATEWAY_TARGET_FLAGSMITH",
     "scripts/inject_fault.sh --fallback": "command line of INJECT_FAULT_SCRIPT's flag fallback",
     "agent/": "directory; design.md section 12 owns paths",
     "assistant_model_rspike<HHMM>": (
@@ -1501,11 +1506,12 @@ def test_agentcore_pieces_match_design():
     assert f"from `{names.SECRET_FLAGSMITH_API_KEY}`" in notes["Credential provider"]
     assert notes["MCP server target"] == (
         f"`{names.FLAGSMITH_MCP_URL}`, API-key outbound auth, header "
-        f"`{names.GATEWAY_API_KEY_HEADER}`, prefix `{names.GATEWAY_API_KEY_PREFIX}`"
+        f"`{names.GATEWAY_API_KEY_HEADER}`, prefix `{names.GATEWAY_API_KEY_PREFIX}`; the Gateway "
+        "adds the space (task 1.3)"
     )
     assert notes["Lambda target"].startswith(f"Lambda `{names.FLAGSMITH_ADMIN_FUNCTION}`")
     assert names.FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE == (
-        f"{names.GATEWAY_API_KEY_HEADER}: {names.GATEWAY_API_KEY_PREFIX}<key>"
+        f"{names.GATEWAY_API_KEY_HEADER}: {names.GATEWAY_API_KEY_PREFIX} <key>"
     )
     assert f"its ARN and `{names.AGENT_RUNTIME_ARN_PARAMETER}` never change" in notes["Runtime"]
     roles = re.sub(r"\s+", " ", section(7))
@@ -1866,6 +1872,52 @@ def test_console_script_once_the_cli_exists():
     assert scripts.get(names.CLI_NAME) == names.CLI_ENTRY_POINT
 
 
+# ---------------------------------------------------------------------------
+# What the spikes found (task 1.4)
+# ---------------------------------------------------------------------------
+def test_spike_findings_match_design():
+    prose = re.sub(r"\s+", " ", DESIGN)
+    assert (
+        f"effort `{names.ANSWER_THINKING_EFFORT}` is `{names.THINKING_EFFORT_FIELD}` on both "
+        f"answer models, and thinking is disabled with `{names.THINKING_DISABLED_FIELD}` "
+        f"`{names.THINKING_DISABLED_VALUE}`" in prose
+    )
+    assert f"exposures and results label it `{names.CONTROL_LABEL}` (task 1.2)" in prose
+    assert names.CONTROL_LABEL not in names.VARIANTS
+    rows = {r[0]: r[1] for r in table_rows(section(4), "| Thing | Name or value |")}
+    words = {**names.METRIC_DIRECTION_API, **names.EXPECTED_DIRECTION_API}
+    assert rows["API spellings (task 1.3)"] == "; ".join(f"{k}: `{v}`" for k, v in words.items())
+    assert set(names.METRIC_DIRECTION_API) == {
+        d["direction"] for d in names.METRIC_DEFINITIONS.values()
+    }
+    assert set(names.EXPECTED_DIRECTION_API) == set(names.EXPERIMENT_EXPECTED_DIRECTIONS.values())
+    variant = names.FLAGSMITH_RESULT_VARIANT_FIELDS
+    inference = names.FLAGSMITH_RESULT_INFERENCE_FIELDS
+    assert (
+        f"each variant's {listed(variant, 'and')} (the mean is sum / n) and, for `cheaper`, its "
+        f"`{inference[0]}` (relative, a fraction), {listed(inference[1:], 'and')}" in prose
+    )
+    assert f"`helpful_lift_ci_lower` is the `helpful_rate` metric's `{inference[1]}`" in prose
+    sample = json.loads((ROOT / "evidence/1.4-results-sample.json").read_text())
+    metric = sample["results"]["payload"]["metrics"][0]
+    assert set(metric["variants"]) == {names.VARIANT_CHEAPER, names.CONTROL_LABEL}
+    for arm in metric["variants"].values():
+        assert tuple(arm) == variant
+    assert set(metric["inference"][names.VARIANT_CHEAPER]) == set(inference)
+    assert names.AGENT_RUNTIME_DEPLOYED_NAME == (
+        f"{names.AGENTCORE_PROJECT_NAME}_{names.AGENTCORE_TARGET_NAME}_{names.AGENT_RUNTIME_NAME}"
+    )
+    assert (
+        f"in the AgentCore CLI project `{names.AGENTCORE_PROJECT_NAME}` with target "
+        f"`{names.AGENTCORE_TARGET_NAME}`"
+        in prose
+        and f"so it is `{names.AGENT_RUNTIME_DEPLOYED_NAME}`, and callers use its ARN" in prose
+    )
+    assert "Task 1.2 confirmed that events accept this client-side key" in DESIGN
+    assert "The MCP server cannot create a metric" in prose
+    assert "| `flagsmith_admin` | get-or-create metrics, start experiment," in DESIGN
+
+
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
@@ -1897,6 +1949,10 @@ TIED_BY = {
     "METRICS": test_definitions_are_consistent,
     "EXPERIMENT_EXPECTED_DIRECTIONS": test_experiment_rollout_and_directions_match_design,
     "GATEWAY_TARGETS": test_agentcore_pieces_match_design,
+    "METRIC_DIRECTION_API": test_spike_findings_match_design,
+    "EXPECTED_DIRECTION_API": test_spike_findings_match_design,
+    "FLAGSMITH_RESULT_VARIANT_FIELDS": test_spike_findings_match_design,
+    "FLAGSMITH_RESULT_INFERENCE_FIELDS": test_spike_findings_match_design,
     "FEATURE_KEYS": test_feature_keys_match_design,
     "JUDGE_PAYLOAD_FIELDS": test_judge_payload_fields_match_design,
     "CW_DIMENSION_SETS": test_cloudwatch_metrics_match_design,

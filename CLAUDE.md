@@ -69,8 +69,9 @@ Read in this order before doing anything:
 - A spike contradicts `design.md`.
 - Anything needs a secret, a sign-in, an approval, or a click in the
   Flagsmith dashboard.
-- Flagsmith request usage passes 35,000 (read through the API found in
-  task 1.3, or ask the human to read the Usage page after each load).
+- Flagsmith request usage passes 35,000. Task 1.3 found no API that reports
+  usage on this plan, so ask the human to read the Usage page after each
+  load.
 - The CloudWatch sum of `AnswerCostMicroUsd` passes 60,000,000 (60 US
   dollars of answers; judging and the agent's own calls come on top). The
   sum is the Sum for `Variant=current` plus the Sum for `Variant=cheaper`
