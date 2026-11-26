@@ -47,7 +47,7 @@ SPIKE_METRIC = f"{names.SPIKE_NAME_PREFIX}metric"  # mean of SPIKE_EVENT; made b
 
 SDK_KEY_SECRET_ENV = "FLAGSMITH_KEY_SECRET_NAME"
 SERVER_SIDE_KEY_PREFIX = "ser."  # flagsmith.py checks this prefix for local evaluation
-ACTIONS = ("router", "judge", "converse")
+ACTIONS = ("selfcheck", "router", "judge", "converse")
 FLAGS_LOGGER = "flagsmith"
 
 # The execution environment: one id per container, and how many invocations it has run.
@@ -570,6 +570,41 @@ def _versions() -> dict:
     return found
 
 
+def run_selfcheck() -> dict:
+    """Load the SDK and its compiled dependencies and use each once. No secret, no network.
+
+    Phase 2 runs this first, so the arm64 wheels are proven before any Flagsmith request.
+    """
+    import importlib
+    from importlib.machinery import EXTENSION_SUFFIXES
+
+    uses = {
+        "flagsmith": lambda m: m.Flagsmith,
+        "flag_engine": lambda m: importlib.import_module("flag_engine.engine"),
+        "regex": lambda m: m.compile(r"\p{L}+").fullmatch("spike"),
+        "iregexp_check": lambda m: m.check("[a-z]+"),
+        "charset_normalizer": lambda m: m.from_bytes(b"rollout marshal spike"),
+    }
+    # The compiled module inside each package that ships one (an import error here means a
+    # wheel for the wrong platform).
+    compiled = {
+        "regex": "regex._regex",
+        "iregexp_check": "iregexp_check.iregexp_check",
+        "charset_normalizer": "charset_normalizer.md",
+    }
+    modules = {}
+    for name, use in uses.items():
+        use(importlib.import_module(name))  # raises if the package cannot load or run
+        entry: dict[str, Any] = {"loaded": True}
+        if name in compiled:
+            path = importlib.import_module(compiled[name]).__file__ or ""
+            entry["compiled_file"] = path.rsplit("/", 1)[-1]
+            entry["compiled"] = path.endswith(tuple(EXTENSION_SUFFIXES))
+        modules[name] = entry
+    ok = all(entry.get("compiled", True) for entry in modules.values())
+    return {"modules": modules, "ok": ok}
+
+
 def handler(event, context=None) -> dict:
     global _invocations
     _invocations += 1
@@ -578,7 +613,9 @@ def handler(event, context=None) -> dict:
         raise ValueError(f"unknown action {action!r}; expected one of {ACTIONS}")
     started_at = datetime.now(UTC).isoformat()
     secret = None
-    if action == "converse":
+    if action == "selfcheck":
+        result = run_selfcheck()
+    elif action == "converse":
         result = run_converse(
             bedrock_client(), include_optional=event.get("include_optional", True)
         )

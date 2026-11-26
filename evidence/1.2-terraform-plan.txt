@@ -1,24 +1,24 @@
 # Task 1.2, phase 1: terraform plan of infra/spike (read-only; nothing applied)
 #
-# Commands, run from the repo root at 2026-11-26T22:12Z:
+# Commands, run from the repo root at 2026-11-26T22:15Z:
 #   unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; export AWS_PROFILE=abisb_IsbAdminsPS-818928662830
 #   aws sts get-caller-identity --query Account --output text   -> 818928662830
 #   ./app/spike/build.sh                                          -> app/spike/build/rm-spike-sdk.zip
-#   shasum -a 256 app/spike/build/rm-spike-sdk.zip               -> ca7c77d9fb3eb21290d03c5cf471380b3bce8416e5d0b3a8e4f468fe4d5ac20c
+#   shasum -a 256 app/spike/build/rm-spike-sdk.zip               -> 682f2de4886a29974b26ea4bb14f4f94c0d396dca414f362c63f60e423effe61
 #   cd infra/spike && terraform init -input=false && terraform validate && terraform plan -no-color -input=false
 #
 # Output of the plan follows, unedited.
 
 data.aws_secretsmanager_secret.sdk_key: Reading...
-data.aws_iam_policy_document.assume: Reading...
 data.aws_bedrock_inference_profile.model["us.anthropic.claude-haiku-5-5"]: Reading...
-data.aws_bedrock_inference_profile.model["us.anthropic.claude-fable-5-1"]: Reading...
 data.aws_bedrock_inference_profile.model["us.anthropic.claude-sonnet-5"]: Reading...
+data.aws_bedrock_inference_profile.model["us.anthropic.claude-fable-5-1"]: Reading...
+data.aws_iam_policy_document.assume: Reading...
 data.aws_iam_policy_document.assume: Read complete after 0s [id=2690255455]
+data.aws_bedrock_inference_profile.model["us.anthropic.claude-sonnet-5"]: Read complete after 0s
+data.aws_secretsmanager_secret.sdk_key: Read complete after 0s [id=arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-dawJYr]
 data.aws_bedrock_inference_profile.model["us.anthropic.claude-haiku-5-5"]: Read complete after 0s
 data.aws_bedrock_inference_profile.model["us.anthropic.claude-fable-5-1"]: Read complete after 0s
-data.aws_secretsmanager_secret.sdk_key: Read complete after 0s [id=arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-dawJYr]
-data.aws_bedrock_inference_profile.model["us.anthropic.claude-sonnet-5"]: Read complete after 1s
 
 Terraform used the selected providers to generate the following execution
 plan. Resource actions are indicated with the following symbols:
@@ -216,7 +216,7 @@ Terraform will perform the following actions:
       + signing_job_arn                = (known after apply)
       + signing_profile_version_arn    = (known after apply)
       + skip_destroy                   = false
-      + source_code_hash               = "ynx32fs+shKQ0Dxc9HE4CzvOhBbl0LOo5PRo/k1awgw="
+      + source_code_hash               = "aC8t5IhqKZdLJupLsU9PlMDTltykFPNixj9g5CPv/mE="
       + source_code_size               = (known after apply)
       + tags_all                       = {
           + "project" = "rollout-marshal"

@@ -314,6 +314,26 @@ def test_handler_converse_does_not_read_the_secret(monkeypatch, lambda_env):
     assert result["required_ok"] is True
 
 
+def test_selfcheck_loads_the_compiled_modules_without_a_secret_or_a_request(
+    lambda_env, fake_flagsmith, local_client_factory
+):
+    result = handler.handler({"action": "selfcheck"}, None)
+
+    assert result["ok"] is True
+    assert set(result["modules"]) == {
+        "flagsmith",
+        "flag_engine",
+        "regex",
+        "iregexp_check",
+        "charset_normalizer",
+    }
+    assert all(entry["loaded"] for entry in result["modules"].values())
+    assert result["versions"]["flagsmith"] == "6.7.0"
+    assert lambda_env.asked == []  # no secret read
+    assert local_client_factory.made == []  # no Flagsmith client
+    assert fake_flagsmith.identity_bodies == [] and fake_flagsmith.events() == []
+
+
 def test_handler_rejects_an_unknown_action(lambda_env):
     with pytest.raises(ValueError, match="action"):
         handler.handler({"action": "end_experiment"}, None)

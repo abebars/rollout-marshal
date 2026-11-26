@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Task 1.2, phase 2: invoke rm-spike-sdk once for one action and keep its response as evidence.
 #
+#   app/spike/invoke.sh selfcheck  load the SDK and its compiled wheels; no secret, no request
+#                                                                      -> evidence/1.2-selfcheck.json
 #   app/spike/invoke.sh router     invocation 1, the router's role   -> evidence/1.2-router.json
 #   app/spike/invoke.sh judge      invocation 2, the judge's role    -> evidence/1.2-judge.json
 #                                  (assignments read from evidence/1.2-router.json, so the
@@ -15,9 +17,9 @@ set -euo pipefail
 
 ACTION=${1:-}
 case "$ACTION" in
-router | judge | converse) ;;
+selfcheck | router | judge | converse) ;;
 *)
-  echo "usage: $0 router|judge|converse" >&2
+  echo "usage: $0 selfcheck|router|judge|converse" >&2
   exit 2
   ;;
 esac
@@ -40,6 +42,7 @@ if [ "$caller" != "$ACCOUNT" ]; then
 fi
 
 case "$ACTION" in
+selfcheck) jq -n '{action: "selfcheck"}' >"$WORK/payload.json" ;;
 router) jq -n '{action: "router"}' >"$WORK/payload.json" ;;
 judge) jq '{action: "judge", assignments: .assignments}' "$EVIDENCE/1.2-router.json" >"$WORK/payload.json" ;;
 converse) jq -n '{action: "converse", include_optional: true}' >"$WORK/payload.json" ;;
@@ -69,6 +72,9 @@ fi
 jq . "$WORK/response.json" >"$EVIDENCE/1.2-$ACTION.json"
 
 case "$ACTION" in
+selfcheck)
+  jq '{ok, modules, versions, container}' "$EVIDENCE/1.2-selfcheck.json"
+  ;;
 router)
   jq '{aborted, arm_counts, samples: (.samples | map_values(select(.) | {identity, value, variant, enabled, experiment})),
        variants_by_arm, experiment_ids, not_in_experiment, exposures_tracked, events_delivered,
