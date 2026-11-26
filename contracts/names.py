@@ -41,6 +41,10 @@ AGENTCORE_CLI_MIN_VERSION = "1.3.0"  # any 1.x from this version on
 # Task 1.2's exception to the apply rule: B applies and destroys this root, local state.
 SPIKE_INFRA_DIR = "infra/spike/"
 SPIKE_RESOURCE_PREFIX = "rm-spike-"
+# Read-only access for deployed-state goldfish reviews: ReadOnlyAccess plus a deny on
+# secret values and the state bucket's objects. The lead creates it.
+REVIEW_ROLE = "rm-review-readonly"
+REVIEW_PROFILE = "rm-review"  # the AWS CLI profile reviewers use
 
 # ---------------------------------------------------------------------------
 # Section 3. Bedrock models
@@ -51,11 +55,9 @@ MODEL_JUDGE = "us.anthropic.claude-haiku-5-5"
 MODEL_AGENT = "us.anthropic.claude-sonnet-5"  # plan, incident note, report prose
 DATA_RETENTION_MODE = "aws_review"  # needed by MODEL_CURRENT in us-east-1
 BEDROCK_RUNTIME_SERVICE = "bedrock-runtime"  # every call uses its Converse API
-# The model-native names, word for word from design.md section 3 and CLAUDE.md. The
-# Converse API spells them `temperature` and `topP` inside inferenceConfig (top_k goes only
-# in additionalModelRequestFields), so a guard must check both spellings. Adding the
-# Converse spellings here is a contract change.
-FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "top_k")
+# design.md section 3's list, including Converse's spelling topP (inside inferenceConfig);
+# top_k goes only in additionalModelRequestFields. A guard checks every one, at any depth.
+FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "topP", "top_k")
 
 ANSWER_MAX_TOKENS = 2000  # caps thinking plus text
 ANSWER_THINKING_EFFORT = "low"
@@ -65,6 +67,7 @@ THINKING_EFFORT_FIELD = "output_config.effort"
 ANSWER_MAX_WORDS = 120  # the answer system prompt asks for at most this many words
 JUDGE_MAX_TOKENS = 200  # judge runs with thinking disabled
 AGENT_MAX_TOKENS = 4000
+AGENT_THINKING_EFFORT = "low"  # the same request fields as the answers
 STOP_REASON_MAX_TOKENS = "max_tokens"  # always an error, never a result
 
 ANSWER_TIMEOUT_SECONDS = 25
@@ -234,6 +237,10 @@ CW_METRIC_EMITTER = {
 
 PRICES_FILE = "app/prices.json"  # copied from the AWS Bedrock pricing page, with URL and date
 
+# The answer functions' interface (schemas answer_request and answer_response).
+ANSWER_REQUEST_FIELDS = ("question", "identity")
+ANSWER_RESPONSE_FIELDS = ("answer", "input_tokens", "output_tokens", "model_id")
+
 ALARM_NAME = "rm-cheaper-latency-p95"
 ALARM_METRIC = CW_METRIC_ANSWER_LATENCY_MS
 ALARM_DIMENSION = f"{CW_DIMENSION_VARIANT}={VARIANT_CHEAPER}"
@@ -243,6 +250,12 @@ ALARM_EVALUATION_PERIODS = 2
 ALARM_DATAPOINTS_TO_ALARM = 2
 ALARM_TREAT_MISSING_DATA = "notBreaching"
 ALARM_THRESHOLD_MS = 10_000  # default; task 4.1 recalibrates it and records it in design.md
+# Recalibration: baseline p95 (3.6, Variant=cheaper) + half the injected delay, rounded up
+# to the next 1000; stop and ask if the baseline is above ALARM_BASELINE_STOP_MS.
+ALARM_THRESHOLD_FAULT_MARGIN_MS = 5_000
+ALARM_BASELINE_STOP_MS = 8_000
+ALARM_THRESHOLD_VARIABLE = "alarm_threshold_ms"  # signals-module variable the root fills
+NAMES_JSON_FILE = "contracts/names.json"  # this module as JSON, for Terraform
 # OK and INSUFFICIENT_DATA come from the signals spec and tasks.md 2.4, not
 # design.md; the test's OTHER_SOURCES lists them.
 ALARM_STATE_OK = "OK"
@@ -272,7 +285,8 @@ RUN_ITEM_ATTRIBUTES = {
     "feature_key": "S",
     "experiment_id": "N",
     "metric_ids": "M",
-    "incident": "M",
+    "incidents": "L",
+    "notified": "M",
     "report_key": "S",
     "history": "L",
     "pending": "S",
@@ -282,9 +296,39 @@ RUN_ITEM_ATTRIBUTES = {
     "created_at": "S",
     "updated_at": "S",
 }
-INCIDENT_FIELDS = ("started_at", "cleared_at", "alarm_name")
+INCIDENT_FIELDS = ("started_at", "resumed_at")  # one incidents entry per rollback
+# A notification's dedupe key in the run item's notified map (see dedupe_key()).
+DEDUPE_KEY_TEMPLATE = "<history length when claimed>#<to state>"
 HISTORY_FIELDS = ("at", "from", "to", "actor", "reason")
-CLEAR_ACTIVE = "clear_active"  # conditional delete of the pointer on run_id
+CLEAR_ACTIVE = "clear_active"  # the terminal commit's pointer delete: absent or names this run
+
+# The plan (contracts/schemas/plan.json): the model writes PLAN_MODEL_FIELDS, and every
+# other field is a const injected from this module.
+PLAN_MODEL_FIELDS = ("hypothesis", "summary")
+PLAN_FIELDS = (
+    "hypothesis",
+    "summary",
+    "current_model",
+    "cheaper_model",
+    "primary_metric",
+    "guardrail_metrics",
+    "split",
+    "min_identities_per_variation",
+    "stop_rules",
+    "guardrails",
+    "recommendation_rule",
+)
+PLAN_STOP_RULE_FIELDS = (
+    "rollback_alarm",
+    "results_embargo_seconds",
+    "promote_requires_experiment_ended",
+)
+PLAN_GUARDRAIL_FIELDS = ("max_latency_ratio", "max_cost_ratio")
+PLAN_RECOMMENDATION_RULE_FIELDS = (
+    "after_incident",
+    "promote_min_prob_not_worse",
+    "promote_min_helpful_lift_ci_lower",
+)
 
 STATE_PLANNED = "PLANNED"
 STATE_RUNNING = "RUNNING"
@@ -362,19 +406,28 @@ TRANSITIONS = (
     Transition(STATE_AWAITING_RESUME, STATE_RUNNING, (ACTION_APPROVE,), ACTOR_ENGINEER),
     Transition(STATE_AWAITING_RESUME, STATE_ROLLED_BACK, (ACTION_APPROVE,), ACTOR_AGENT),
     Transition(STATE_AWAITING_RESUME, STATE_HELD, (ACTION_DECLINE,), ACTOR_ENGINEER),
+    Transition(
+        STATE_RESULTS_READY,
+        STATE_ROLLED_BACK,
+        (ACTION_ALARM, ACTION_TICK, ACTION_CHECK, ACTION_APPROVE),
+        ACTOR_AGENT,
+    ),
     Transition(STATE_RESULTS_READY, STATE_PROMOTED, (ACTION_APPROVE,), ACTOR_ENGINEER),
     Transition(STATE_RESULTS_READY, STATE_HELD, (ACTION_DECLINE,), ACTOR_ENGINEER),
 )
 LEGAL_TRANSITIONS = frozenset((t.source, t.target) for t in TRANSITIONS)
 
-CHECK_LEGAL_STATES = (STATE_RUNNING, STATE_ROLLED_BACK)
+# check does what a tick would in every non-terminal state.
+CHECK_LEGAL_STATES = tuple(s for s in STATES if s not in TERMINAL_STATES)
 # design.md's sentence, not the full set: by the general no-op rule an alarm is also a
 # no-op in PLANNED and with no active run. Which actions return an error instead is
 # ACTIONS_WITH_LEGALITY_ERRORS.
-ALARM_NOOP_STATES = (STATE_AWAITING_RESUME, STATE_ROLLED_BACK, STATE_RESULTS_READY)
-PENDING_STALE_SECONDS = 60  # a pending claim older than this may be resumed
+ALARM_NOOP_STATES = (STATE_AWAITING_RESUME, STATE_ROLLED_BACK)
+PENDING_STALE_SECONDS = 360  # a pending claim older than this may be taken over
 RESULTS_EMBARGO_SECONDS = 600  # no results read in the first 600 s after first_running_at
-PROBE_INVOKES = 5  # direct invokes of rm-answer-cheaper; passes if the slowest < threshold
+PROBE_INVOKES = 5  # parallel direct invokes of rm-answer-cheaper; slowest < the alarm's threshold
+PROBE_QUESTION = "How do I reset my password?"
+PROBE_IDENTITY = IDENTITY_FIRST  # a valid identity; the answer functions make no Flagsmith call
 MIN_IDENTITIES_PER_VARIATION = 50
 
 # Guardrails: cheaper mean latency at most 110 percent of current's, and
@@ -418,6 +471,8 @@ ERROR_NOT_FOUND = "NOT_FOUND"
 ERROR_EXPERIMENT_NOT_ENDED = "EXPERIMENT_NOT_ENDED"
 ERROR_EFFECT_FAILED = "EFFECT_FAILED"
 ERROR_BAD_REQUEST = "BAD_REQUEST"
+ERROR_TRANSITION_PENDING = "TRANSITION_PENDING"  # an engineer action lost its claim or commit
+ERROR_UPSTREAM_FAILED = "UPSTREAM_FAILED"  # a call failed before any claim; nothing changed
 ERROR_CODES = (
     ERROR_ILLEGAL_IN_STATE,
     ERROR_RUN_ACTIVE,
@@ -425,19 +480,32 @@ ERROR_CODES = (
     ERROR_EXPERIMENT_NOT_ENDED,
     ERROR_EFFECT_FAILED,
     ERROR_BAD_REQUEST,
+    ERROR_TRANSITION_PENDING,
+    ERROR_UPSTREAM_FAILED,
 )
 
 INVOKE_FIELDS = ("action", "prompt", "actor", "run_id", "alarm_name", "alarm_state", "at")
-RESPONSE_FIELDS = ("run_id", "state", "message", "awaiting", "error")
+RESPONSE_FIELDS = ("run_id", "state", "message", "awaiting", "pending", "error")
+NO_ACTIVE_RUN_MESSAGE = "no active run"  # status with no active run, every other field null
 ERROR_FIELDS = ("code", "message")
 RESULTS_FIELDS = ("ready", "variations", "prob_cheaper_not_worse", "helpful_lift_ci_lower")
 VARIATION_FIELDS = ("identities", "helpful_rate", "mean_latency_ms", "mean_cost_micro_usd")
 
 SCHEMA_DIR = "contracts/schemas/"
-SCHEMA_NAMES = ("invoke", "response", "plan", "run_item", "results", "judge_payload")
+SCHEMA_NAMES = (
+    "invoke",
+    "response",
+    "plan",
+    "run_item",
+    "results",
+    "judge_payload",
+    "answer_request",
+    "answer_response",
+)
 SCHEMA_FILES = {name: f"{SCHEMA_DIR}{name}.json" for name in SCHEMA_NAMES}
 
 CLI_NAME = "marshal"
+CLI_ENTRY_POINT = "cli.marshal:main"  # the console script; pyproject.toml gains it with 2.6
 CLI_ACTIONS = (ACTION_START, ACTION_APPROVE, ACTION_DECLINE, ACTION_STATUS, ACTION_CHECK)
 INVOKER_FUNCTION = "rm-invoker"  # sends alarm and tick
 AGENT_RUNTIME_ARN_PARAMETER = "/rm/agent-runtime-arn"
@@ -493,6 +561,10 @@ FLAGSMITH_API_KEY_NAME = "rollout-marshal-agent"
 SEED_EXPERIMENT_SCRIPT = "scripts/seed_experiment.py"
 RESET_SCRIPT = "scripts/reset.py"
 INJECT_FAULT_SCRIPT = "scripts/inject_fault.sh"  # in its flag fallback
+# The incident address: a sensitive root variable, kept with invoker_stub in this
+# git-ignored file that every apply uses.
+INCIDENT_EMAIL_VARIABLE = "incident_email"
+TFVARS_FILE = "infra/terraform.tfvars"
 
 # ---------------------------------------------------------------------------
 # Section 9. Fault injection
@@ -530,6 +602,7 @@ LOAD_SCRIPT = "scripts/load.py"
 QUESTIONS_FILE = "app/questions.json"
 QUESTIONS_COUNT = 30
 LOAD_MAX_CONCURRENCY = 10
+LOAD_LOCK_NAME = "rm-load.lock"  # an OS file lock in the repository's git common directory
 
 
 class LoadPlan(NamedTuple):
@@ -599,6 +672,17 @@ def run_pk(run_id: str) -> str:
 def report_key(run_id: str) -> str:
     """S3 key of a run's report in REPORTS_BUCKET: runs/<run_id>/report.md."""
     return REPORT_KEY_TEMPLATE.replace("<run_id>", _require_run_id(run_id))
+
+
+def dedupe_key(history_length: int, to_state: str) -> str:
+    """A notification's dedupe key: <history length when claimed>#<to state>, e.g. 2#ROLLED_BACK."""
+    if isinstance(history_length, bool) or not isinstance(history_length, int):
+        raise ValueError(f"history length must be an int: {history_length!r}")
+    if history_length < 1:
+        raise ValueError(f"history length must be at least 1: {history_length}")
+    if to_state not in STATES:
+        raise ValueError(f"not a state: {to_state!r}")
+    return f"{history_length}#{to_state}"
 
 
 def identity(n: int) -> str:

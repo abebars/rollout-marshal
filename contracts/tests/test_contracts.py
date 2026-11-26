@@ -208,6 +208,12 @@ NOT_A_NAME = {
     "flag.experiment.in_experiment": "SDK attribute read before SDK_EXPOSURE_CALL",
     "InvokeAgentRuntime": "AWS API operation used by the CLI and rm-invoker",
     "cli/": "directory; design.md section 12 owns paths",
+    "dev": "the integration branch",
+    "TransactWriteItems": "DynamoDB API operation that carries every pointer change",
+    "2#ROLLED_BACK": "example of dedupe_key(); test_dedupe_key_matches_design checks it",
+    "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
+    "flag.variant": "SDK attribute the exposure call sends",
+    "scripts/inject_fault.sh --fallback": "command line of INJECT_FAULT_SCRIPT's flag fallback",
     "agent/": "directory; design.md section 12 owns paths",
     "assistant_model_rspike<HHMM>": (
         "example: experiment_feature_key(scratch_run_id('spike', now)); "
@@ -319,6 +325,8 @@ OTHER_SOURCES = {
     names.IDENTITY_PATTERN: "section 4: 'user-001 to user-150'",
     "contracts/schemas/run_item.json": "section 7: contracts/schemas/ plus the name run_item",
     "contracts/schemas/judge_payload.json": "section 7: contracts/schemas/ plus judge_payload",
+    "contracts/schemas/answer_request.json": "section 7: contracts/schemas/ plus answer_request",
+    "contracts/schemas/answer_response.json": "section 7: contracts/schemas/ plus answer_response",
     "notBreaching": "CloudWatch's value for section 5's 'missing data treated as not breaching'",
     -0.05: "section 6: 'at or above minus 5 percent', as a fraction",
     "%Y-%m-%dT%H:%M:%S.%fZ": "the one stored form of section 6's ISO 8601 UTC *_at values",
@@ -482,7 +490,7 @@ def test_run_item_schema_covers_every_attribute():
             assert resolved["type"] == json_type[kind], attr
         else:
             assert "enum" in resolved and kind == "S", attr
-    assert set(props["incident"]["properties"]) == set(names.INCIDENT_FIELDS)
+    assert set(props["incidents"]["items"]["properties"]) == set(names.INCIDENT_FIELDS)
     assert set(schema["$defs"]["history_entry"]["properties"]) == set(names.HISTORY_FIELDS)
 
 
@@ -497,8 +505,9 @@ def test_judge_payload_fields_match_design():
 def test_response_fields_match_design():
     span = next(s for s in multi_line_spans(section(7)) if s.startswith('{"run_id"'))
     fields = re.findall(r'"(\w+)":', span)
-    assert tuple(fields[:5]) == names.RESPONSE_FIELDS
-    assert set(fields[5:]) == {"code", "message"}
+    n = len(names.RESPONSE_FIELDS)
+    assert tuple(fields[:n]) == names.RESPONSE_FIELDS
+    assert set(fields[n:]) == {"code", "message"}
     assert tuple(contracts.load_schema("response")["required"]) == names.RESPONSE_FIELDS
 
 
@@ -597,7 +606,8 @@ def test_numbers_in_design_rules():
         "at or above minus 5 percent" in prose and names.PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER == -0.05
     )
     assert (
-        f"EventBridge Scheduler, every {names.TICK_INTERVAL_MINUTES} minutes, enabled only" in prose
+        f"EventBridge Scheduler, every {names.TICK_INTERVAL_MINUTES} minutes, enabled by launch"
+        in prose
     )
     assert f'metadata={{"{names.EXPOSURE_METADATA_KEY}": flag.experiment.id}}' in prose, (
         "exposure metadata key"
@@ -606,7 +616,10 @@ def test_numbers_in_design_rules():
     assert f"`{names.ANSWER_THINKING_EFFORT}` through" in prose
     assert f"Answers (both arms): `maxTokens` {names.ANSWER_MAX_TOKENS}," in prose
     assert f"Judge: thinking disabled, `maxTokens` {names.JUDGE_MAX_TOKENS}." in prose
-    assert f"Agent prose: `maxTokens` {names.AGENT_MAX_TOKENS}." in prose
+    assert (
+        f"Agent prose: `maxTokens` {names.AGENT_MAX_TOKENS}, thinking effort "
+        f"`{names.AGENT_THINKING_EFFORT}`" in prose
+    )
     assert f"at most {names.ANSWER_MAX_WORDS} words" in prose
     assert f"than the {names.SESSION_ID_MIN_LENGTH} character minimum" in prose
     sdk = (
@@ -717,7 +730,7 @@ def test_schema_is_valid_draft_2020_12(name):
     assert (ROOT / names.SCHEMA_FILES[name]).is_file()
 
 
-def test_schema_files_are_exactly_the_named_six():
+def test_schema_files_are_exactly_the_named_ones():
     on_disk = {p.stem for p in contracts.SCHEMA_DIR.glob("*.json")}
     assert on_disk == set(names.SCHEMA_NAMES)
 
@@ -805,6 +818,7 @@ def response(**overrides):
         "state": "PLANNED",
         "message": "Plan ready. Approve to launch.",
         "awaiting": "launch",
+        "pending": None,
         "error": None,
     }
     return {**base, **overrides}
@@ -831,6 +845,8 @@ def test_responses_validate():
         {"error": {"code": "RUN_ACTIVE"}},
         {"run_id": "rspike"},
         {"extra": 1},
+        {"pending": "DONE"},
+        {"error": {"code": "TIMEOUT_PENDING", "message": "x"}},
     ],
 )
 def test_bad_responses_are_rejected(overrides):
@@ -924,6 +940,7 @@ def run_item(**overrides):
                 "reason": "start",
             }
         ],
+        "notified": {},
         "created_at": "2026-11-27T15:30:05.000000Z",
         "updated_at": "2026-11-27T15:30:05.123456Z",
     }
@@ -939,7 +956,8 @@ def test_run_items_validate():
             feature_key="assistant_model_r202611271530",
             experiment_id=4321,
             metric_ids={"helpful_rate": 1, "mean_latency_ms": 2, "mean_cost_micro_usd": 3},
-            incident={"started_at": "2026-11-27T15:52:00.000000Z", "alarm_name": names.ALARM_NAME},
+            incidents=[{"started_at": "2026-11-27T15:52:00.000000Z"}],
+            notified={"4#ROLLED_BACK": "5f2c9a1e-2b6a-4bd2-9a59-3b1c0e8f7d21"},
             pending="AWAITING_RESUME",
             pending_at="2026-11-27T15:58:00.000000Z",
             first_running_at="2026-11-27T15:35:00.000000Z",
@@ -977,6 +995,13 @@ def test_run_items_validate():
         },
         {"metric_ids": {"accuracy": 1}},
         {"incident": {"started_at": "2026-11-27T15:52:00.000000Z"}},
+        {"incidents": []},
+        {"incidents": [{"resumed_at": "2026-11-27T15:58:00.000000Z"}]},
+        {"incidents": [{"started_at": "2026-11-27T15:52:00.000000Z", "alarm_name": "x"}]},
+        {"notified": {"ROLLED_BACK": "m"}},
+        {"notified": {"0#ROLLED_BACK": "m"}},
+        {"notified": {"2#DONE": "m"}},
+        {"notified": {"2#ROLLED_BACK": ""}},
         {"feature_key": "assistant_model_rspike"},
         {"experiment_id": "4321"},
         {"plan": plan(split={"current": 70, "cheaper": 30})},
@@ -1186,8 +1211,11 @@ def test_rule_constants_match_their_design_sentences():
     )
     assert "`mean_cost_micro_usd` is not higher than the current arm's" in prose
     assert names.GUARDRAIL_MAX_COST_RATIO == 1.0
-    legal = " and ".join(f"`{s}`" for s in names.CHECK_LEGAL_STATES)
-    assert f"**`check` is legal in {legal} only**" in prose
+    assert "**`check` is legal in every non-terminal state**" in prose
+    assert "In a terminal state it returns `ILLEGAL_IN_STATE`." in prose
+    assert names.CHECK_LEGAL_STATES == tuple(
+        s for s in names.STATES if s not in names.TERMINAL_STATES
+    )
     assert f"**An alarm in {listed(names.ALARM_NOOP_STATES, 'or')} is a no-op.**" in prose
     errs = listed(names.ACTIONS_WITH_LEGALITY_ERRORS, "and")
     assert f"Only {errs} return an error when not legal in the current state" in prose
@@ -1363,14 +1391,17 @@ def test_list_constants_match_their_design_lists():
         for attr, _, text in table_rows(section(6), "| Attribute | Type | Meaning |")
         if ticks(attr)
     }
-    assert tuple(ticks(meaning["incident"])) == names.INCIDENT_FIELDS
+    assert tuple(ticks(meaning["incidents"])) == names.INCIDENT_FIELDS
     assert tuple(ticks(meaning["history"])) == names.HISTORY_FIELDS
     rule = re.search(
         r"Recommendation rule \(in code, not in the prompt\): (.*?) Flagsmith's", prose
     )
     recommended = re.findall(r"recommend `([^`]+)`", rule.group(1))
     assert tuple(recommended) == names.RECOMMENDATIONS  # order is the rule: first match wins
-    assert f"An incident happened during the run: recommend `{names.RECOMMEND_HOLD_RERUN}`" in prose
+    assert (
+        "An incident happened during the run (`incidents` is not empty): recommend "
+        f"`{names.RECOMMEND_HOLD_RERUN}`" in prose
+    )
     rule_schema = contracts.load_schema("plan")["properties"]["recommendation_rule"]
     assert rule_schema["properties"]["after_incident"]["const"] == names.RECOMMEND_HOLD_RERUN
     schemas = re.search(r"Schemas in `contracts/schemas/`: (.*?)\.", prose).group(1)
@@ -1499,6 +1530,237 @@ def test_flagsmith_key_readers_match_design():
     ]
 
 
+# ---------------------------------------------------------------------------
+# The workstream decisions from the 1.1 gate (contract change b)
+# ---------------------------------------------------------------------------
+def test_plan_table_matches_design_and_schema():
+    """design.md section 6's plan table, plan.json and names agree field by field."""
+    schema = contracts.load_schema("plan")
+    assert tuple(schema["properties"]) == names.PLAN_FIELDS
+    assert tuple(schema["required"]) == names.PLAN_FIELDS
+    nested = {
+        "stop_rules": names.PLAN_STOP_RULE_FIELDS,
+        "guardrails": names.PLAN_GUARDRAIL_FIELDS,
+        "recommendation_rule": names.PLAN_RECOMMENDATION_RULE_FIELDS,
+    }
+    for field, fields in nested.items():
+        assert tuple(schema["properties"][field]["properties"]) == fields, field
+    assert names.PLAN_MODEL_FIELDS == names.PLAN_FIELDS[:2]
+    rows = table_rows(section(6), "| Field | Value |")
+    model = ", ".join(f"`{f}`" for f in names.PLAN_MODEL_FIELDS)
+    assert rows[0] == [model, "written by the model"]
+
+    def text(value):
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, str):
+            return f"`{value}`"
+        return str(value)
+
+    built = plan()
+    expected = []
+    for field in names.PLAN_FIELDS[2:]:
+        value = built[field]
+        if isinstance(value, list):
+            cell = ", ".join(text(v) for v in value)
+        elif field == "split":
+            cell = ", ".join(f"`{k}` {v}" for k, v in value.items())
+        elif isinstance(value, dict):
+            cell = "; ".join(f"`{k}` {text(v)}" for k, v in value.items())
+        else:
+            cell = text(value)
+        expected.append([f"`{field}`", cell])
+    assert rows[1:] == expected
+    prose = re.sub(r"\s+", " ", section(6))
+    assert (
+        "The model writes only `hypothesis` and `summary`; every other field is injected" in prose
+    )
+    assert "`start` returns `BAD_REQUEST` before any write when the prompt names no model" in prose
+
+
+def test_answer_interface_matches_design():
+    prose = re.sub(r"\s+", " ", section(5))
+    req = listed(names.ANSWER_REQUEST_FIELDS, "and")
+    resp = listed(names.ANSWER_RESPONSE_FIELDS, "and")
+    assert f"The answer functions take {req} and return {resp} (schemas `answer_request` and" in (
+        prose
+    )
+    for name, fields in (
+        ("answer_request", names.ANSWER_REQUEST_FIELDS),
+        ("answer_response", names.ANSWER_RESPONSE_FIELDS),
+    ):
+        schema = contracts.load_schema(name)
+        assert tuple(schema["required"]) == fields
+        assert tuple(schema["properties"]) == fields
+    request = contracts.load_schema("answer_request")
+    assert request["properties"]["identity"]["pattern"] == names.IDENTITY_PATTERN
+    response = contracts.load_schema("answer_response")
+    assert response["properties"]["model_id"]["enum"] == [names.MODEL_CURRENT, names.MODEL_CHEAPER]
+    valid("answer_request", {"question": names.PROBE_QUESTION, "identity": names.PROBE_IDENTITY})
+    good = {"answer": "Open Settings.", "input_tokens": 12, "output_tokens": 40}
+    for model in (names.MODEL_CURRENT, names.MODEL_CHEAPER):
+        valid("answer_response", {**good, "model_id": model})
+    for bad in (
+        {"question": "", "identity": "user-001"},
+        {"question": "x", "identity": "user-151"},
+        {"question": "x"},
+        {"question": "x", "identity": "user-001", "run_id": "r202611271530"},
+    ):
+        invalid("answer_request", bad)
+    for bad in (
+        {**good, "model_id": names.MODEL_JUDGE},
+        {**good, "answer": "", "model_id": names.MODEL_CHEAPER},
+        {**good, "input_tokens": -1, "model_id": names.MODEL_CHEAPER},
+        {**good, "output_tokens": 1.5, "model_id": names.MODEL_CHEAPER},
+        {**good, "model_id": names.MODEL_CHEAPER, "latency_ms": 9},
+    ):
+        invalid("answer_response", bad)
+    probe = re.sub(r"\s+", " ", section(6))
+    assert (
+        f"The probe is {names.PROBE_INVOKES} direct invokes of `{names.ANSWER_CHEAPER_FUNCTION}`, "
+        f"run in parallel, each asking `{names.PROBE_QUESTION}` as `{names.PROBE_IDENTITY}`."
+        in probe
+    )
+    assert names.PROBE_IDENTITY == names.IDENTITY_FIRST
+    assert "a reply that fails `answer_response` fails it" in probe
+
+
+def test_dedupe_key_matches_design():
+    prose = re.sub(r"\s+", " ", section(6))
+    example = names.dedupe_key(2, names.STATE_ROLLED_BACK)
+    assert example == "2#ROLLED_BACK"
+    assert (
+        f"A notification's dedupe key is `{names.DEDUPE_KEY_TEMPLATE}`, for example `{example}`"
+        in prose
+    )
+    pattern = contracts.load_schema("run_item")["properties"]["notified"]["propertyNames"]
+    for state in names.STATES:
+        assert re.fullmatch(pattern["pattern"], names.dedupe_key(12, state))
+    for bad in ((0, "RUNNING"), (-1, "RUNNING"), (True, "RUNNING"), ("2", "RUNNING"), (2, "DONE")):
+        with pytest.raises(ValueError):
+            names.dedupe_key(*bad)
+
+
+@pytest.mark.parametrize(
+    "variations, ready, ok",
+    [
+        ({"current": 50, "cheaper": 50}, True, True),
+        ({"current": 49, "cheaper": 60}, True, False),
+        ({"current": 49, "cheaper": 60}, False, True),
+        ({"current": 50, "cheaper": 50}, False, False),
+        ({"current": 120, "cheaper": None}, True, False),
+        ({"current": 120, "cheaper": None}, False, True),
+    ],
+)
+def test_ready_follows_the_rule(variations, ready, ok):
+    """ready is true exactly when both arms have 50 identities and no null mean."""
+
+    def arm(identities):
+        if identities is None:  # enough identities, one mean still null
+            return {**GOOD_VARIATION, "identities": 80, "mean_cost_micro_usd": None}
+        return {**GOOD_VARIATION, "identities": identities}
+
+    instance = results(ready=ready, variations={k: arm(v) for k, v in variations.items()})
+    (valid if ok else invalid)("results", instance)
+
+
+def test_results_definitions_match_design():
+    prose = re.sub(r"\s+", " ", section(7))
+    assert (
+        f"both variations have at least {names.MIN_IDENTITIES_PER_VARIATION} identities and "
+        "non-null `helpful_rate`, `mean_latency_ms` and `mean_cost_micro_usd`" in prose
+    )
+    assert "as a fraction (-0.05 is minus 5 percent)" in prose
+    assert "the win probability never goes in it" in prose
+    invalid("results", results(helpful_lift_ci_lower=-5.0))  # an unconverted percent
+    complete = contracts.load_schema("results")["$defs"]["complete_variation"]["properties"]
+    assert complete["identities"] == {"minimum": names.MIN_IDENTITIES_PER_VARIATION}
+    assert set(complete) == set(names.VARIATION_FIELDS)
+
+
+def test_state_machine_rules_match_design():
+    prose = re.sub(r"\s+", " ", section(6))
+    row = names.TRANSITIONS[11]
+    assert (row.source, row.target, row.actor) == (
+        names.STATE_RESULTS_READY,
+        names.STATE_ROLLED_BACK,
+        names.ACTOR_AGENT,
+    )
+    assert "**`tick` and `check` in `RUNNING` or `RESULTS_READY` look at the alarm first**" in prose
+    assert (
+        "**An alarm whose `at` is earlier than the run's latest entry into `RUNNING` is a" in prose
+    )
+    assert "**The tick schedule is enabled first and disabled last**" in prose
+    assert "`decline` never takes over a transition it did not claim" in prose
+    assert f"moving `pending_at` back by {names.PENDING_STALE_SECONDS} seconds" in prose
+    assert (
+        f"a `pending` older than {names.PENDING_STALE_SECONDS} seconds may be taken over" in prose
+    )
+    assert "A failed pointer condition means `RUN_ACTIVE`" in prose
+    assert '`start` returns `BAD_REQUEST`, "start again next minute"' in prose
+    assert "**An engineer action on a run the pointer does not name returns `RUN_ACTIVE`**" in prose
+    assert "The commit appends an `incidents` entry with `started_at`." in prose
+    assert "The commit sets `resumed_at` on the open `incidents` entry." in prose
+    assert "Any transition into `HELD`: disable the tick schedule; leave everything" in prose
+    assert "including the kill switch" in prose
+    seven = re.sub(r"\s+", " ", section(7))
+    for code in (names.ERROR_TRANSITION_PENDING, names.ERROR_UPSTREAM_FAILED):
+        assert f"- `{code}`: " in section(7), code
+    assert (
+        "`status` with no active run returns `run_id`, `state`, `awaiting`, `pending` and "
+        f'`error` all null, and the message "{names.NO_ACTIVE_RUN_MESSAGE}".' in seven
+    )
+    valid(
+        "response",
+        response(
+            run_id=None,
+            state=None,
+            awaiting=None,
+            pending=None,
+            message=names.NO_ACTIVE_RUN_MESSAGE,
+        ),
+    )
+    valid("response", response(state="RUNNING", awaiting=None, pending="ROLLED_BACK"))
+    resp = contracts.load_schema("response")
+    assert resp["properties"]["pending"]["enum"] == [None, *names.STATES]
+
+
+def test_alarm_threshold_rule_matches_design():
+    prose = re.sub(r"\s+", " ", section(5))
+    assert names.ALARM_THRESHOLD_FAULT_MARGIN_MS == names.FIS_DELAY_MS // 2
+    assert (
+        "plus half the injected delay "
+        f"({names.ALARM_THRESHOLD_FAULT_MARGIN_MS} ms), rounded up to the next 1000" in prose
+    )
+    assert f"If that p95 is above {names.ALARM_BASELINE_STOP_MS} ms, it stops and asks" in prose
+    assert (
+        f"the signals module's variable `{names.ALARM_THRESHOLD_VARIABLE}`, which the root fills "
+        f"from `{names.NAMES_JSON_FILE}`" in prose
+    )
+    assert (ROOT / names.NAMES_JSON_FILE).is_file()
+    fallback = re.sub(r"\s+", " ", section(9))
+    assert f"sleeps {names.FIS_DELAY_MS} ms before the Bedrock call" in fallback
+    assert f"cached {names.DEFAULT_MODEL_CACHE_SECONDS} seconds" in fallback
+    assert f"turns it on for {names.FIS_DURATION_MINUTES} minutes, then off" in fallback
+
+
+def test_process_names_match_design():
+    prose = re.sub(r"\s+", " ", DESIGN)
+    assert f"| Review access | Role `{names.REVIEW_ROLE}` (AWS managed ReadOnlyAccess" in DESIGN
+    assert f"through the AWS CLI profile `{names.REVIEW_PROFILE}`" in prose
+    assert (
+        f"the root variable `{names.INCIDENT_EMAIL_VARIABLE}`, marked sensitive" in prose
+        and f"the git-ignored `{names.TFVARS_FILE}`" in prose
+    )
+    assert f"another load holds `{names.LOAD_LOCK_NAME}`, an OS file lock" in prose
+    assert f"through the console script `{names.CLI_ENTRY_POINT}`" in DESIGN
+    assert names.CLI_ENTRY_POINT.split(":")[0] == "cli." + names.CLI_NAME
+    assert f"Send no {listed(names.FORBIDDEN_SAMPLING_PARAMETERS, 'or')}." in prose
+    assert "topP" in names.FORBIDDEN_SAMPLING_PARAMETERS
+    gitignore = (ROOT / ".gitignore").read_text()
+    assert "*.tfvars" in gitignore  # TFVARS_FILE never reaches the public repo
+
+
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
@@ -1553,6 +1815,13 @@ TIED_BY = {
     "LOAD_SMOKE": test_load_plans_match_design,
     "LOAD_FAULT": test_load_plans_match_design,
     "LOAD_FULL": test_load_plans_match_design,
+    "PLAN_FIELDS": test_plan_table_matches_design_and_schema,
+    "PLAN_MODEL_FIELDS": test_plan_table_matches_design_and_schema,
+    "PLAN_STOP_RULE_FIELDS": test_plan_table_matches_design_and_schema,
+    "PLAN_GUARDRAIL_FIELDS": test_plan_table_matches_design_and_schema,
+    "PLAN_RECOMMENDATION_RULE_FIELDS": test_plan_table_matches_design_and_schema,
+    "ANSWER_REQUEST_FIELDS": test_answer_interface_matches_design,
+    "ANSWER_RESPONSE_FIELDS": test_answer_interface_matches_design,
 }
 
 
@@ -1596,9 +1865,9 @@ def test_required_lists_are_pinned():
 
     every_field_required(contracts.load_schema("plan"), "plan")
     run = contracts.load_schema("run_item")
-    written_at_start = ["pk", "run_id", "state", "prompt", "plan", "history"]
+    written_at_start = ["pk", "run_id", "state", "prompt", "plan", "history", "notified"]
     assert run["required"] == [*written_at_start, "created_at", "updated_at"]
-    assert run["properties"]["incident"]["required"] == ["started_at", "alarm_name"]
+    assert run["properties"]["incidents"]["items"]["required"] == ["started_at"]
     assert run["$defs"]["history_entry"]["required"] == list(names.HISTORY_FIELDS)
     invoke = contracts.load_schema("invoke")
     status_keys = set(next(p for p in design_payloads() if p["action"] == names.ACTION_STATUS))
@@ -1639,7 +1908,8 @@ def test_every_schema_copy_of_a_name_matches_names():
     assert run["properties"]["report_key"]["pattern"] == f"^{report}$"
     assert run["$defs"]["history_entry"]["properties"]["from"]["enum"] == [None, *names.STATES]
     assert run["properties"]["pending"] == {"$ref": "#/$defs/state"}
-    assert run["properties"]["incident"]["properties"]["alarm_name"]["const"] == names.ALARM_NAME
+    states = "|".join(names.STATES)
+    assert run["properties"]["notified"]["propertyNames"]["pattern"] == f"^[1-9][0-9]*#({states})$"
     assert judge["properties"]["assigned"]["enum"] == list(names.VARIANTS)
     assert judge["properties"]["served"]["enum"] == list(names.VARIANTS)
     branches = {
@@ -1678,6 +1948,8 @@ def test_every_object_rejects_unlisted_keys():
         ("judge_payload", None): names.JUDGE_PAYLOAD_FIELDS,
         ("response", None): names.RESPONSE_FIELDS,
         ("results", None): names.RESULTS_FIELDS,
+        ("answer_request", None): names.ANSWER_REQUEST_FIELDS,
+        ("answer_response", None): names.ANSWER_RESPONSE_FIELDS,
     }
     for (name, _), fields in shapes.items():
         assert set(contracts.load_schema(name)["properties"]) == set(fields), name
@@ -1785,9 +2057,7 @@ def test_utc_iso_writes_one_sortable_form():
     stored = names.utc_iso("2019-10-02T17:04:40.989+0000")  # an alarm's at, as CloudWatch sends it
     valid(
         "run_item",
-        run_item(
-            state="ROLLED_BACK", incident={"started_at": stored, "alarm_name": names.ALARM_NAME}
-        ),
+        run_item(state="ROLLED_BACK", incidents=[{"started_at": stored}]),
     )
 
 
@@ -1892,8 +2162,8 @@ def test_every_at_field_is_the_one_stored_form():
     assert top == ["pending_at", "last_refresh_at", "first_running_at", "created_at", "updated_at"]
     for key in top:
         assert run["properties"][key] == utc, key
-    for key in ("started_at", "cleared_at"):
-        assert run["properties"]["incident"]["properties"][key] == utc, key
+    for key in names.INCIDENT_FIELDS:
+        assert run["properties"]["incidents"]["items"]["properties"][key] == utc, key
     assert run["$defs"]["history_entry"]["properties"]["at"] == utc
 
 
@@ -1907,9 +2177,10 @@ def test_every_node_with_properties_is_a_closed_object():
 
     def walk(node, path):
         if isinstance(node, dict):
-            exempt = path.endswith((".if", ".then")) or path.rsplit(".", 1)[-1] in (
+            exempt = re.search(r"\.(if|then|else)(\.|$)", path) or path.rsplit(".", 1)[-1] in (
                 "history_first",  # allOf of the closed history_entry
                 "history_later",
+                "complete_variation",  # results.json's ready predicate, used only inside if
             )
             if ("properties" in node or "required" in node) and not exempt:
                 assert node.get("type") == "object", path
