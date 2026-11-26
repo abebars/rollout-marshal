@@ -17,6 +17,7 @@ ENV_KEY = "EnvKeyThatMustNeverPrint123"
 SPIKE_KEY = "assistant_model_rspike2215"
 EXPERIMENT_ID = 903
 FEATURE_ID = 900
+HYPOTHESIS = "cheaper does not lower spike_mcp_metric"
 
 
 class Recorder:
@@ -45,6 +46,8 @@ class Recorder:
                 json={
                     "id": EXPERIMENT_ID,
                     "feature": FEATURE_ID,
+                    "name": SPIKE_KEY,
+                    "hypothesis": HYPOTHESIS,
                     "status": self.status,
                     "env": ENV_KEY,
                 },
@@ -52,6 +55,10 @@ class Recorder:
         if path == f"/api/v1/projects/{names.FLAGSMITH_PROJECT_ID}/features/{FEATURE_ID}/":
             return httpx.Response(200, json={"id": FEATURE_ID, "name": self.feature_name})
         if path == base + "start/" and request.method == "POST":
+            # The published OpenAPI spec requires name and hypothesis in start's body.
+            body = json.loads(request.content or b"{}")
+            if body != {"name": SPIKE_KEY, "hypothesis": HYPOTHESIS}:
+                return httpx.Response(400, json={"name": ["This field is required."]})
             self.status = "running"
             return httpx.Response(200, json={"id": EXPERIMENT_ID, "status": "running"})
         if path in (base + "results/refresh/", base + "exposures/refresh/"):
@@ -79,6 +86,8 @@ def test_start_posts_to_the_documented_path_for_a_spike_experiment():
     assert [r.url.path for r in posts] == [
         f"/api/v1/environments/{ENV_KEY}/experiments/{EXPERIMENT_ID}/start/"
     ]
+    assert json.loads(posts[0].content) == {"name": SPIKE_KEY, "hypothesis": HYPOTHESIS}
+    assert result["start"]["status"] == 200
     assert result["after"]["status"] == "running"
     header = posts[0].headers[names.GATEWAY_API_KEY_HEADER]
     assert header == names.GATEWAY_API_KEY_PREFIX + ORG_KEY

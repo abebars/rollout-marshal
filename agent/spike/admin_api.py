@@ -17,9 +17,10 @@ printed request and reply has the organisation key and every environment key red
     uv run python agent/spike/admin_api.py swagger [word]         # public OpenAPI, no key sent
 
 Paths: start, results refresh and results from docs.flagsmith.com/experimentation/
-set-up-with-a-coding-agent; exposures from the Flagsmith MCP server's OpenAPI
-(get_experiment_exposures); exposures refresh only from the API source on GitHub
-(api/experimentation/views.py), so it is unverified until phase 2 runs it.
+set-up-with-a-coding-agent; every path and start's body (name and hypothesis) from
+Flagsmith's published OpenAPI spec, https://api.flagsmith.com/api/v1/swagger.json, which
+the Management API page on docs.flagsmith.com links. The spec also lists pause/ and
+complete/ (the end-experiment endpoint); this script never calls either.
 """
 
 from __future__ import annotations
@@ -164,7 +165,12 @@ class AdminApi:
                 f"experiment {experiment_id} is on feature {name!r}; this script starts only "
                 f"{names.EXPERIMENT_FEATURE_PREFIX}{names.RUN_ID_PREFIX}spike<HHMM> experiments"
             )
-        started = self.send("POST", self.experiment_path(experiment_id, "start/"))
+        # The published spec requires name and hypothesis in start's body: send its own.
+        started = self.send(
+            "POST",
+            self.experiment_path(experiment_id, "start/"),
+            {"name": experiment.get("name"), "hypothesis": experiment.get("hypothesis")},
+        )
         after = self.status(experiment_id)
         return {"feature": name, "start": started, "after": after["body"]}
 
