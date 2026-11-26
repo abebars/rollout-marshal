@@ -40,7 +40,7 @@ their tasks name, not against each other.
 - [x] 0.4 **Human**: the incident email address is in the kickoff prompt.
   A plus-address on an existing mailbox is enough, for example
   `you+rollout-marshal@yourdomain`.
-- [ ] 0.5 **Human**: registered on WeMakeDevs with Track 2 selected.
+- [x] 0.5 **Human**: registered on WeMakeDevs with Track 2 selected.
 - [x] 0.6 (already done, nothing to do) The Development environment's managed warehouse is connected in
   Flagsmith (Environment Settings, Warehouse). It was on Nov 23; preflight
   does not check it, so 1.2 confirms the first event arrives.
