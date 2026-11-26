@@ -107,7 +107,8 @@ Rules:
   feature key.
 - The agent creates features, multivariate options and the experiment
   through the Flagsmith MCP server (`https://mcp.flagsmith.com`, header
-  `Authorization: Api-Key <key>`). The experiment's create carries its whole
+  `Authorization: Api-Key <key>`, with exactly one space; `api_key_authorization()`
+  in names.py builds it). The experiment's create carries its whole
   rollout block (rollout, the control's value, the option's allocation);
   Flagsmith refuses it without one (task 1.3). Flagsmith has no
   primary-metric flag, so the agent attaches `helpful_rate` first.
@@ -121,7 +122,9 @@ Rules:
   The dashboard locks the flag until then, but the API does not: task 1.3
   changed a running experiment's feature through MCP. So no agent changes
   an experiment's feature while it runs, and no agent ends an experiment or
-  calls an end-experiment endpoint.
+  calls an end-experiment endpoint, or sends an experiment's status or
+  rollout decision through MCP's experiment create or update tools, whose
+  schemas list both (task 1.3).
 - One Flagsmith identity request per answer. Flag, identity, trait and
   environment-document requests count toward the 50,000 cap.
 - Get-or-create checks what it finds. A found metric must match its
@@ -166,7 +169,11 @@ Router evaluation order, per request:
 
 Results can be refreshed at most once every 5 minutes. The run item keeps
 `last_refresh_at`; a tick inside that window reads the last results
-without refreshing.
+without refreshing. Results lag the events: in task 1.2 all events were in
+by about 2 minutes 15 seconds after the last was sent, the exact lag
+unmeasured, so a refresh right after a load can miss the last events.
+After the engineer ends an experiment, a refresh returns final results,
+as of the end (task 1.4).
 
 ## 5. Request path and metrics
 

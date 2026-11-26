@@ -215,6 +215,7 @@ NOT_A_NAME = {
     "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
     "flag.variant": "SDK attribute the exposure call sends",
     "flag.value": "SDK attribute: the variant's value, which names the model served",
+    "api_key_authorization()": "helper in contracts.names; test_spike_findings_match_design",
     "<project>_<target>_<runtime>": (
         "the AgentCore CLI's naming pattern; see AGENT_RUNTIME_DEPLOYED_NAME"
     ),
@@ -1914,6 +1915,15 @@ def test_spike_findings_match_design():
         and f"so it is `{names.AGENT_RUNTIME_DEPLOYED_NAME}`, and callers use its ARN" in prose
     )
     assert "Task 1.2 confirmed that events accept this client-side key" in DESIGN
+    assert names.api_key_authorization("k3y") == "Api-Key k3y"
+    assert names.FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE == (
+        f"{names.GATEWAY_API_KEY_HEADER}: {names.api_key_authorization('<key>')}"
+    )
+    for bad in ("", " k3y", "k3y "):
+        with pytest.raises(ValueError):
+            names.api_key_authorization(bad)
+    assert "with exactly one space; `api_key_authorization()`" in prose
+    assert "Results lag the events" in prose and "refresh returns final results" in prose
     assert "The MCP server cannot create a metric" in prose
     assert "| `flagsmith_admin` | get-or-create metrics, start experiment," in DESIGN
 

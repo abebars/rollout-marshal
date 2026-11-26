@@ -246,7 +246,8 @@ their tasks name, not against each other.
     definition (design.md section 4) stops with an error; `ensure_experiment`
     sets rollout 100 and the `cheaper` option at 50; `get_results` maps
     `evidence/1.4-results-sample.json` onto `results.json` and computes
-    `ready` (49 and 50 identities, one null mean), maps the results'
+    `ready` (49 and 50 identities, one null mean), builds the
+    Authorization value with `api_key_authorization()`, maps the results'
     `control` arm to `current`, takes each mean as sum / n and
     `helpful_lift_ci_lower` from `ci_low`, finished against
     `evidence/3.6-results.json` after 3.6 (that one test waits; the rest
@@ -415,7 +416,9 @@ their tasks name, not against each other.
     emits latency; with no active run, `rm-judge` is not invoked; the judge
     payload's `assigned` is the flag's value, while the exposure sends
     `flag.variant` (`control` or `cheaper`), and only when the identity is
-    in the experiment and `flag.variant` is set; every metric carries exactly the `Variant` dimension
+    in the experiment and `flag.variant` is set; a slow events API cannot
+    push the router past its 29 seconds (the SDK retries a flush for about
+    12 seconds or more, per 1.2's evidence); every metric carries exactly the `Variant` dimension
     set.
   - Pass: unit tests green.
 

@@ -702,6 +702,17 @@ def dedupe_key(history_length: int, to_state: str) -> str:
     return f"{history_length}#{to_state}"
 
 
+def api_key_authorization(key: str) -> str:
+    """The Authorization value for Flagsmith's MCP server and Admin API: Api-Key <key>.
+
+    Exactly one space between prefix and key; Flagsmith refuses two (task 1.3). The Gateway
+    adds that space itself when it is given GATEWAY_API_KEY_PREFIX.
+    """
+    if not key or key != key.strip():
+        raise ValueError("the key must be non-empty with no surrounding whitespace")
+    return f"{GATEWAY_API_KEY_PREFIX.strip()} {key}"
+
+
 def identity(n: int) -> str:
     """user-001 .. user-150."""
     if not 1 <= n <= IDENTITY_COUNT:
