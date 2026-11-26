@@ -442,8 +442,8 @@ RECOMMEND_HOLD_RERUN = "hold, re-run"  # after any incident
 RECOMMENDATIONS = (RECOMMEND_HOLD_RERUN, RECOMMEND_PROMOTE, RECOMMEND_HOLD)
 PROMOTE_MIN_PROB_NOT_WORSE = 0.95
 # Fallback when prob_cheaper_not_worse is null: the lower bound of the credible
-# interval for the lift on helpful_rate is at or above minus 5 percent. Encoded
-# as a fraction of relative lift; the unit is a decision at the 1.1 gate.
+# interval for the lift on helpful_rate is at or above minus 5 percent, as a fraction
+# of relative lift (design.md section 7; 1.2's results sample confirms the unit).
 PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER = -0.05
 
 # ---------------------------------------------------------------------------
@@ -517,7 +517,7 @@ INVOKER_STUB_ON = "1"  # with STUB=1 rm-invoker only logs the payload, never rea
 AGENT_CLIENT_READ_TIMEOUT_SECONDS = 290
 AGENT_CLIENT_MAX_ATTEMPTS = 1
 TICK_SCHEDULE = "rm-tick"
-TICK_INTERVAL_MINUTES = 2  # EventBridge Scheduler, enabled only while a run is active
+TICK_INTERVAL_MINUTES = 2  # EventBridge Scheduler, enabled by launch until a terminal state
 
 FLAGSMITH_ADMIN_FUNCTION = "rm-flagsmith-admin"  # Gateway target
 INCIDENTS_TOPIC = "rm-incidents"

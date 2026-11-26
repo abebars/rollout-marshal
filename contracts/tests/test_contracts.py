@@ -209,6 +209,7 @@ NOT_A_NAME = {
     "InvokeAgentRuntime": "AWS API operation used by the CLI and rm-invoker",
     "cli/": "directory; design.md section 12 owns paths",
     "dev": "the integration branch",
+    "--force": "scripts/reset.py's override flag",
     "TransactWriteItems": "DynamoDB API operation that carries every pointer change",
     "2#ROLLED_BACK": "example of dedupe_key(); test_dedupe_key_matches_design checks it",
     "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
@@ -1648,17 +1649,21 @@ def test_dedupe_key_matches_design():
         ({"current": 49, "cheaper": 60}, True, False),
         ({"current": 49, "cheaper": 60}, False, True),
         ({"current": 50, "cheaper": 50}, False, False),
-        ({"current": 120, "cheaper": None}, True, False),
-        ({"current": 120, "cheaper": None}, False, True),
+        ({"current": 120, "cheaper": "mean_cost_micro_usd"}, True, False),
+        ({"current": 120, "cheaper": "mean_cost_micro_usd"}, False, True),
+        ({"current": "helpful_rate", "cheaper": 120}, True, False),
+        ({"current": "helpful_rate", "cheaper": 120}, False, True),
+        ({"current": 120, "cheaper": "mean_latency_ms"}, True, False),
+        ({"current": 120, "cheaper": "mean_latency_ms"}, False, True),
     ],
 )
 def test_ready_follows_the_rule(variations, ready, ok):
     """ready is true exactly when both arms have 50 identities and no null mean."""
 
-    def arm(identities):
-        if identities is None:  # enough identities, one mean still null
-            return {**GOOD_VARIATION, "identities": 80, "mean_cost_micro_usd": None}
-        return {**GOOD_VARIATION, "identities": identities}
+    def arm(spec):
+        if isinstance(spec, str):  # enough identities, this mean still null
+            return {**GOOD_VARIATION, "identities": 80, spec: None}
+        return {**GOOD_VARIATION, "identities": spec}
 
     instance = results(ready=ready, variations={k: arm(v) for k, v in variations.items()})
     (valid if ok else invalid)("results", instance)
@@ -1691,7 +1696,7 @@ def test_state_machine_rules_match_design():
         "**An alarm whose `at` is earlier than the run's latest entry into `RUNNING` is a" in prose
     )
     assert "**The tick schedule is enabled first and disabled last**" in prose
-    assert "`decline` never takes over a transition it did not claim" in prose
+    assert "`decline` never takes over a transition another action claimed" in prose
     assert f"moving `pending_at` back by {names.PENDING_STALE_SECONDS} seconds" in prose
     assert (
         f"a `pending` older than {names.PENDING_STALE_SECONDS} seconds may be taken over" in prose
@@ -1708,7 +1713,7 @@ def test_state_machine_rules_match_design():
         assert f"- `{code}`: " in section(7), code
     assert (
         "`status` with no active run returns `run_id`, `state`, `awaiting`, `pending` and "
-        f'`error` all null, and the message "{names.NO_ACTIVE_RUN_MESSAGE}".' in seven
+        f'`error` all null, and a message that starts "{names.NO_ACTIVE_RUN_MESSAGE}".' in seven
     )
     valid(
         "response",
@@ -1759,6 +1764,106 @@ def test_process_names_match_design():
     assert "topP" in names.FORBIDDEN_SAMPLING_PARAMETERS
     gitignore = (ROOT / ".gitignore").read_text()
     assert "*.tfvars" in gitignore  # TFVARS_FILE never reaches the public repo
+
+
+# Rule sentences that hold no constant, pinned word for word (the PR #3 review found
+# each one could be edited with the suite green). Change one only with its rule.
+PINNED_RULE_SENTENCES = (
+    # pointer and transactions (section 6)
+    "returning the old item if that fails",
+    "sets the pointer's `feature_key` on condition its `run_id` is this run",
+    "plus `clear_active`, a delete of the pointer on condition it is absent or names this run",
+    "(`clear_active`), on condition it is absent or names this run",
+    "A transaction cancelled by a colliding write is a lost race",
+    "A pointer whose run item is missing also counts as no active run for `status`, `tick` and "
+    "`alarm`",
+    "a `PLANNED` run with no pointer can never launch, so `approve` and `check` on it return "
+    "`ILLEGAL_IN_STATE`",
+    "`scripts/reset.py` refuses while the pointer names a run in a non-terminal state, unless it "
+    "is given `--force`",
+    # claim, takeover, commit
+    "on condition `state = <from>`, `pending = <to>` and `pending_at` still holding the value read",
+    "`tick` and `check` may take over any transition; any other action only one its row lists as "
+    "a trigger",
+    "on condition `state = <from>`, `pending = <to>` and `pending_at` holding the value this "
+    "invocation wrote",
+    "The health probe is the exception: an invoke error, a timeout, an invalid reply or a failed "
+    "alarm read fails the probe.",
+    "A resumed `RUNNING -> RESULTS_READY` reads the last results again and writes the report "
+    "prose inside the effect.",
+    # effects
+    "`PLANNED -> RUNNING` (launch): enable the tick schedule; get-or-create the two permanent "
+    "features",
+    "`RUNNING -> ROLLED_BACK` and `RESULTS_READY -> ROLLED_BACK`: disable "
+    "`assistant_cheaper_enabled`",
+    "It adds no `incidents` entry.",
+    "write the report to S3 with a plain put",
+    "the alarm is read first, and an alarm in ALARM rolls the run back instead",
+    "`PLANNED -> ABORTED`: disable the tick schedule (normally a no-op).",
+    "or any move other than Fable 5.1 to Sonnet 5",
+    # the transition table's guard cells
+    "| `AWAITING_RESUME` | `RUNNING` | `approve`, when the alarm is not in ALARM and the health "
+    "probe passes again | engineer |",
+    "| `RESULTS_READY` | `PROMOTED` | `approve`, when the alarm is not in ALARM, only if the "
+    "experiment is ended in Flagsmith | engineer |",
+    # section 7, section 4 and section 9
+    "Legality is judged on state first: an action the table does not allow from the run's state "
+    "returns `ILLEGAL_IN_STATE` whatever is pending.",
+    "The message names the pending target, its age and `marshal check <run_id>`.",
+    "After a claim, every effect failure is `EFFECT_FAILED`.",
+    "and do not invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is emitted",
+    "a missing flag or a failed read means off",
+)
+
+
+def test_rule_sentences_are_pinned():
+    flat = re.sub(r"\s+", " ", DESIGN)
+    missing = [sentence for sentence in PINNED_RULE_SENTENCES if sentence not in flat]
+    assert missing == []
+
+
+def test_other_files_repeat_the_rules():
+    review = re.sub(r"\s+", " ", (ROOT / "docs/REVIEW.md").read_text())
+    assert f"`AWS_PROFILE={names.REVIEW_PROFILE} aws sts get-caller-identity` shows the role" in (
+        review
+    )
+    assert f"`{names.REVIEW_ROLE}`" in review
+    claude = re.sub(r"\s+", " ", (ROOT / "CLAUDE.md").read_text())
+    assert (
+        f"the Sum for `{names.CW_DIMENSION_VARIANT}={names.VARIANT_CURRENT}` plus the Sum for "
+        f"`{names.CW_DIMENSION_VARIANT}={names.VARIANT_CHEAPER}`" in claude
+    )
+    assert "An empty result means unknown, not zero" in claude
+    spec = re.sub(
+        r"\s+",
+        " ",
+        (
+            ROOT / "openspec/changes/build-rollout-marshal/specs/experiment-agent/spec.md"
+        ).read_text(),
+    )
+    assert (
+        "a second `alarm` action arrives while the run is `ROLLED_BACK` or `AWAITING_RESUME`"
+        in spec
+    )
+    assert set(names.ALARM_NOOP_STATES) == {names.STATE_ROLLED_BACK, names.STATE_AWAITING_RESUME}
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    assert (
+        f"`probe_cheaper(threshold_ms, n={names.PROBE_INVOKES}) -> {{passed, max_ms, reason}}`"
+        in (tasks)
+    )
+    assert "`notify(run_id, subject, body, dedupe_key) -> message_id`" in tasks
+
+
+def test_console_script_once_the_cli_exists():
+    """pyproject gains `marshal = cli.marshal:main` when task 2.6 creates cli/."""
+    import tomllib
+
+    if not (ROOT / "cli").is_dir():
+        pytest.skip("cli/ arrives with task 2.6; the lead adds the console script then")
+    scripts = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"].get("scripts", {})
+    assert scripts.get(names.CLI_NAME) == names.CLI_ENTRY_POINT
 
 
 # Every tuple, list, dict or set constant names the test that ties it to its

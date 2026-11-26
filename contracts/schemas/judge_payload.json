@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/judge_payload.json",
   "title": "Judge payload",
-  "description": "What rm-router hands rm-judge in its async invoke (design.md section 5). The router sends it only while a run is active, so run_id is always set. assigned is the experiment variation; served is the variant actually served (current when the kill switch is off).",
+  "description": "What rm-router hands rm-judge in its async invoke (design.md section 5). The router sends it only while a run is active, so run_id is always set. assigned is the experiment feature's value for the identity (current or cheaper), not flag.variant; served is the variant actually served (current when the kill switch is off).",
   "type": "object",
   "additionalProperties": false,
   "required": [

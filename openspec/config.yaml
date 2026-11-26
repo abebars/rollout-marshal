@@ -11,7 +11,7 @@ context: |
 
 rules:
   tasks:
-    - One pull request per task, into dev
+    - One pull request per task, into dev, plus at most one follow-up pull request that holds only its post-merge lines
     - Write the failing test before the code
     - A task is done only when its Pass check is green and a goldfish reviewer approved it
   specs:

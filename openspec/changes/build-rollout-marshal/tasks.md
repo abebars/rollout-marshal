@@ -183,7 +183,8 @@ their tasks name, not against each other.
     the join a new row owned by 3.6.
     `evidence/1.4-results-sample.json`, read during 1.2, records which of
     lift, credible interval and win probability Flagsmith returns, and in
-    what units; 2.2's results mapping starts from it.
+    what units; 2.2's results mapping starts from it. 1.3's Admin API call
+    times check `rm-flagsmith-admin`'s 30-second timeout.
   - Pass: `make test` green; no such row left open. If the sample has no
     lift and no credible interval, the **Human** decides at Gate 1: keep a
     promote path, or accept that every clean run recommends hold.
@@ -199,22 +200,23 @@ their tasks name, not against each other.
     `notified` empty (refuses with `RUN_ACTIVE` naming the active run, or
     `BAD_REQUEST` when the run ID is in use); `claim(run_id, expected_from,
     to) -> Run` (raises `StaleState`); `resume(run_id, expected_from, to,
-    seen_pending_at) -> Run`, the takeover; `commit(run_id, to, actor,
-    reason, updates, claimed_at) -> Run`, which carries the launch commit's
+    seen_pending_at) -> Run`, the takeover; `commit(run_id, expected_from,
+    to, actor, reason, updates, claimed_at) -> Run`, which carries the launch commit's
     `feature_key` and the terminal commit's `clear_active`;
     `release(run_id, claimed_at)`; `get_active() -> Pointer | None`.
   - Tests: every row of the transition table claims and commits (the
     `(none)` row through `create_run`); every other pair raises
     `IllegalTransition`; two concurrent claims from the same state, exactly
-    one wins; a claim with `pending` younger than 360 seconds is refused;
+    one wins; `resume` refuses a `pending` younger than 360 seconds;
     two takeovers of the same stale `pending` produce one winner, and the
     stalled owner's commit then fails; a released claim is taken over at
     once; `history` grows by exactly one per transition; `create_run` with
     a pointer present raises `RUN_ACTIVE` naming it, and with the run item
     present (same minute) `BAD_REQUEST`; a terminal commit while the
     pointer names another run is cancelled and changes nothing; a terminal
-    commit with no pointer succeeds; a colliding transaction is treated as a
-    lost race.
+    commit with no pointer succeeds; a colliding transaction, and a claim
+    that fails with `TransactionConflictException` against an in-flight
+    commit, are each treated as a lost race.
   - Pass: `pytest agent/tests/test_state.py` green against moto or
     DynamoDB Local.
 
@@ -240,7 +242,8 @@ their tasks name, not against each other.
     `evidence/3.6-results.json` after 3.6 (that one test waits; the rest
     does not); `refresh_results` inside 5 minutes of the last one does not
     call the API.
-  - Pass: unit tests green.
+  - Pass: unit tests green; the plan from `infra/` lists this task's
+    resources to add and destroys nothing outside them.
     After `infra/modules/agent` is applied: `pytest -m live` creates and starts an
     experiment on run ID `rlive<HHMM>` and reads it back; **Human** ends
     it; the ID is in the pull request.
@@ -256,8 +259,12 @@ their tasks name, not against each other.
     move other than Fable 5.1 to Sonnet 5, yields `BAD_REQUEST` before any
     write; injected values equal the constants even when the prompt asks
     for others; the model call sends thinking effort `low` and no sampling
-    parameter. Record one plan call and one report-length call, each with
-    latency, output tokens and `stopReason`.
+    parameter; the planner's model call reports the move it read, and code
+    compares it with design.md section 3. Record one plan call and one
+    report-length call, each with latency, output tokens and `stopReason`.
+    If the report call comes near 4,000 tokens or botocore's 60-second read
+    timeout, tell the lead, who adjusts `AGENT_MAX_TOKENS` or the agent's
+    Bedrock read timeout through a contract change.
   - Pass: `pytest agent/tests/test_planner.py` green.
 
 - [ ] 2.4 **AWS tools: signals, probe, schedule, notify, report**
@@ -279,7 +286,7 @@ their tasks name, not against each other.
     exactly 110 percent latency passes and just above fails; the report
     has the nine sections in order; the probe fails when any invoke is at
     or above the threshold, raises, times out, returns a function error or
-    a reply that fails `answer_response`, and when the alarm read fails;
+    a reply that fails `answer_response`;
     `notify` with a repeated `dedupe_key` publishes once and returns the
     same message ID, and a failed publish records nothing;
     `set_tick(False)` when already disabled is a no-op.
@@ -300,7 +307,11 @@ their tasks name, not against each other.
     with ready results does not move to `RESULTS_READY`; `tick` in
     `ROLLED_BACK` with a failing probe changes nothing and leaves no
     `pending`; `tick` in `ROLLED_BACK` with the alarm in ALARM skips the
-    probe; `tick` in `RUNNING` inside 600 seconds of `first_running_at`
+    probe; a failed DescribeAlarms read in `ROLLED_BACK` or
+    `AWAITING_RESUME` counts as a failing probe; a `tick` or a repeat
+    during a fresh claim runs no effects; `approve` or `check` on a
+    `PLANNED` run with no pointer returns `ILLEGAL_IN_STATE` and changes
+    nothing, while `decline` ends it; `tick` in `RUNNING` inside 600 seconds of `first_running_at`
     does not read results; `check` in `RUNNING` with the alarm in ALARM
     rolls back exactly as `alarm` does; `check` in every non-terminal state
     does what `tick` would, and in a terminal state returns
@@ -325,7 +336,8 @@ their tasks name, not against each other.
     `status` returns the run without changing it; an unknown `run_id`
     returns `NOT_FOUND`; `decline` of a `PLANNED` run touches nothing in
     Flagsmith; `approve` in
-    `AWAITING_RESUME` with a failing probe goes back to `ROLLED_BACK`;
+    `AWAITING_RESUME` with a failing probe goes back to `ROLLED_BACK` and
+    adds no `incidents` entry, and a resumed rollback adds no second entry;
     `approve` in `RESULTS_READY` with a running experiment returns
     `EXPERIMENT_NOT_ENDED`; an effect that throws returns `EFFECT_FAILED`, leaves `pending` set,
     and a later `tick` resumes and completes it; every terminal state clears
@@ -357,7 +369,8 @@ their tasks name, not against each other.
   - Pass: `marshal status` against the deployed runtime prints "no active
     run"; SSM parameter `/rm/agent-runtime-arn` holds the ARN (the
     evidence shows `get-parameter`); the evidence file lists the Gateway
-    ID, its targets and the role's permissions.
+    ID, its targets and the role's permissions; the plan from `infra/`
+    lists this task's resources to add and destroys nothing outside them.
 
 ## 3. Workstream B: assistant API
 
@@ -420,7 +433,10 @@ their tasks name, not against each other.
   - Pass: unit tests green.
 
 - [ ] 3.5 **App infrastructure, bootstrap, seed and reset**
-  - Needs: 3.1, 3.2, 3.3. Files: `infra/modules/app/*.tf`,
+  - Needs: 3.1, 3.2, 3.3; before its apply review, the lead's
+    `rm-review-readonly` role (applied from `infra/review.tf`, its
+    `simulate-principal-policy` result recorded) and the human's `rm-review`
+    profile. Files: `infra/modules/app/*.tf`,
     `scripts/bootstrap_flagsmith.py`, `scripts/seed_experiment.py`,
     `scripts/reset.py`.
   - Produces: HTTP API, `rm-router`, `rm-answer-current`,
@@ -435,7 +451,8 @@ their tasks name, not against each other.
     enabled, as launch does. `reset.py` clears the pointer, enables the
     kill switch, sets `assistant_default_model` to `current`, turns
     `chaos_delay_cheaper` off, disables the tick, and lists any experiment
-    still running for the human to end.
+    still running for the human to end; it refuses while the pointer names
+    a run in a non-terminal state, unless given `--force`.
   - Pass: `terraform validate` clean, and the plan from `infra/` lists this
     task's resources to add and destroys nothing outside them. After 3.5 is
     merged and applied: the lead attaches the plan and apply output, and a
@@ -453,11 +470,15 @@ their tasks name, not against each other.
     variants; the baseline p95 for exactly `Variant=cheaper`, the Flagsmith
     request count before and after (to see whether events count), the raw
     results response (`evidence/3.6-results.json`, with whether lift,
-    interval and win probability come back and in what units), the answers
+    interval and win probability come back, in what units and at what
+    interval level), the answers
     sent, and the cost check are recorded. The cost check is each
     variant's Sum and SampleCount of `AnswerCostMicroUsd` since
     2026-11-26T02:30:00Z, and a projection: spent so far plus the
-    remaining answers times the higher mean cost per answer. If 1.2's
+    remaining answers, with one 150 x 2 rehearsal per expected failure,
+    times the higher mean cost per answer. If the projection passes
+    60,000,000 or the answers would pass 7,500, the lead asks the human
+    before the next load. If 1.2's
     join moved here, both variations also show non-null values for all
     three metrics. **Human** ends the smoke experiment.
 
@@ -478,11 +499,14 @@ their tasks name, not against each other.
     and `aws sns list-subscriptions-by-topic` shows it confirmed; one
     `AnswerLatencyMs` datapoint above the threshold, with `Variant=cheaper`
     and unit Milliseconds, published once a minute for 3 minutes in a row,
-    drives the alarm to ALARM, with no alarm setting changed; the time to
-    ALARM and the time from the last datapoint back to OK are recorded in
-    `evidence/4.1-alarm.md`, outside 3.6's baseline window. After 3.6: C
+    drives the alarm to ALARM, with no alarm setting changed
+    (`EvaluateLowSampleCountPercentile` stays at its default, evaluate); the
+    test's start and end times, the time to ALARM and the time from the last
+    datapoint back to OK are recorded in `evidence/4.1-alarm.md`, outside
+    3.6's baseline window. After 3.6: C
     gives the lead the baseline p95, and the lead opens the contract-change
-    pull request with the threshold rule of design.md section 5.
+    pull request with the threshold rule of design.md section 5; it records
+    B, T, the alarm margin (B + 10000 - T) and the headroom (T - B).
 
 - [ ] 4.2 **Invoker**
   - Needs: 1.1. Files: `signals/invoker/handler.py`, tests.
@@ -507,7 +531,9 @@ their tasks name, not against each other.
   - Pass: the alarm reaches ALARM within 5 minutes of the fault starting
     and leaves ALARM after it ends; times recorded. **Human** ends the
     experiment, then `reset.py` runs. A pre-merge apply of
-    `infra/modules/fis` is allowed (design.md section 2). Past the timebox: ask the lead to have B add the
+    `infra/modules/fis` is allowed (design.md section 2), and the plan from
+    `infra/` lists this task's resources to add and destroys nothing outside
+    them. Past the timebox: ask the lead to have B add the
     `chaos_delay_cheaper` flag read to `app/answer/handler.py`, and record
     why.
 
@@ -521,7 +547,8 @@ their tasks name, not against each other.
     `scripts/e2e.py` drives one run, takes the load size as an argument,
     prints UTC timestamps when it sends `start`, when the plan returns, when
     it sees the approve and when the run reaches `RUNNING`, and never
-    approves anything itself: it runs `marshal start`, then
+    approves anything itself; its wait for `AWAITING_RESUME` allows for the
+    alarm's return to OK that 4.1 records. It runs `marshal start`, then
     pauses for the **Human** to run `marshal approve`; starts
     `load.py --users 150 --questions 10` and injects the fault straight
     away; waits for `ROLLED_BACK`, then `AWAITING_RESUME`; pauses for the
@@ -538,8 +565,8 @@ their tasks name, not against each other.
   - Needs: 5.1.
   - Pass: `scripts/reset.py` then `scripts/e2e.py`, twice, with no code
     change between; both histories saved under `evidence/5.2/`. If a run
-    fails, fix, rehearse at 150 x 2 until the path runs clean, and the
-    count restarts. Every answer counts toward the 7,500 stop.
+    fails, fix, rehearse at 150 x 2 until the path runs clean (as long as
+    4.3 shows that load fires the alarm), and the count restarts. Every answer counts toward the 7,500 stop.
 
 ## 6. Workstream D: proof and submission
 

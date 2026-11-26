@@ -26,7 +26,7 @@ changes, and clear output.
 | Agent framework | Strands Agents on Amazon Bedrock AgentCore Runtime, created with the AgentCore CLI |
 | AgentCore CLI | npm package `@aws/agentcore`, command `agentcore`, version 1.3.0 or later within 1.x. Its project lives under `agent/`; it deploys the runtime through its own CDK stack and bootstraps CDK on the first deploy |
 | Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy |
-| Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below. For a task whose Pass needs its own Terraform applied (2.7, 4.3), the lead may apply that branch merged locally with `dev` before it merges, attaches the plan, and re-applies `dev` if it does not merge |
+| Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below. For a task whose Pass needs its own Terraform applied (2.7, 4.3), the lead may apply that branch merged locally with `dev` before it merges, attaches the plan, and re-applies `dev` if it does not merge. While a branch is applied unmerged, every later apply includes it; branches are applied together only from one local merge, and only if they touch different modules |
 | Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review` |
 | Timebox | 90 minutes per task unless the task says otherwise. Past it, stop and tell the lead |
 | Flagsmith | SaaS, organisation 41656, project "Toggle Wars" (ID `55601`), environment "Development" |
@@ -230,9 +230,10 @@ treats a pointer without `feature_key` as "no active run". The router
 caches the pointer for 30 seconds, so for up to 30 seconds after a terminal
 state it may still serve the old run; that is accepted. A pointer whose run
 item is missing also counts as no active run for `status`, `tick` and
-`alarm`: a no-op whose message names the pointer's run and
-`scripts/reset.py`. `start` still refuses it with `RUN_ACTIVE`, and
-`approve`, `decline` and `check` on that run return `NOT_FOUND`.
+`alarm`: a no-op whose message starts "no active run" and names the
+pointer's run and `scripts/reset.py`. `start` still refuses it with
+`RUN_ACTIVE`, and `approve`, `decline` and `check` on that run return
+`NOT_FOUND`.
 
 Run item: `pk = "RUN#<run_id>"` with:
 
@@ -311,8 +312,12 @@ Rules that hold everywhere:
   (`clear_active`), on condition it is absent or names this run.
 - **An engineer action on a run the pointer does not name returns
   `RUN_ACTIVE`** and names the active run. With no pointer at all,
-  `approve`, `decline` and `check` go ahead, so a run that
-  `scripts/reset.py` orphaned can still be ended.
+  `approve`, `decline` and `check` go ahead, so a run left without a
+  pointer can still be ended, with one exception: a `PLANNED` run with no
+  pointer can never launch, so `approve` and `check` on it return
+  `ILLEGAL_IN_STATE` (the run was reset; start a new one), while `decline`
+  still ends it. `scripts/reset.py` refuses while the pointer names a run
+  in a non-terminal state, unless it is given `--force`.
 - **`tick` and `check` in `RUNNING` or `RESULTS_READY` look at the alarm
   first**, then, in `RUNNING`, at results.
 - **`check` is legal in every non-terminal state**, where it does what a
@@ -346,19 +351,22 @@ How a transition is applied (guard, claim, effect, commit):
    and leaves no `pending`. The one exception is `approve` in
    `AWAITING_RESUME` with a failing probe, which is itself a transition to
    `ROLLED_BACK`. A Bedrock, AWS or Flagsmith call that fails before any
-   claim returns `UPSTREAM_FAILED`.
+   claim returns `UPSTREAM_FAILED`. The health probe is the exception: an
+   invoke error, a timeout, an invalid reply or a failed alarm read fails
+   the probe.
 
 1. Claim: conditional write that sets `pending = <to>` and
    `pending_at = <now>`, on condition `state = <from>` and `pending` is
    absent. If the condition fails, another invocation owns it: re-read and
    return the current status, with `TRANSITION_PENDING` for an engineer
-   action. Do nothing else.
+   action while the transition is still pending. Do nothing else.
    Takeover: a `pending` older than 360 seconds may be taken over by one
    conditional write that sets `pending_at = <now>` on condition
    `state = <from>`, `pending = <to>` and `pending_at` still holding the
    value read. Only the winner runs the effects. `tick` and `check` may
    take over any transition; any other action only one its row lists as a
-   trigger. `decline` never takes over a transition it did not claim.
+   trigger. `decline` never takes over a transition another action
+   claimed.
 2. Effects: run the side effects below. Every effect is idempotent
    (get-or-create by key, set-to-value, publish unless its key is already
    in `notified`).
@@ -366,7 +374,7 @@ How a transition is applied (guard, claim, effect, commit):
    condition `state = <from>`, `pending = <to>` and `pending_at` holding
    the value this invocation wrote. If the condition fails, re-read and
    return the current status, with `TRANSITION_PENDING` for an engineer
-   action.
+   action while the transition is still pending.
 
 If an effect throws, the invocation releases its own claim, moving
 `pending_at` back by 360 seconds on condition the claim is still its own,
@@ -374,7 +382,9 @@ and returns `EFFECT_FAILED`. Its message names the failed effect, the
 command `marshal check <run_id>`, and when that will act. Any later
 `tick`, `check` or repeat of the same action that finds `pending` older
 than 360 seconds resumes from step 2 for that same target state; only an
-invocation that died leaves a claim to wait out.
+invocation that died leaves a claim to wait out. A resumed
+`RUNNING -> RESULTS_READY` reads the last results again and writes the
+report prose inside the effect.
 
 What each transition does (the pointer changes are in the commits above):
 
@@ -406,7 +416,9 @@ What each transition does (the pointer changes are in the commits above):
   the report prose is written): write the report to S3 with a plain put,
   so S3 keeps the report of the latest entry into `RESULTS_READY`; publish
   it to SNS.
-- `RESULTS_READY -> PROMOTED` (guard: the experiment is ended): set
+- `RESULTS_READY -> PROMOTED` (guard, in this order: the alarm is read
+  first, and an alarm in ALARM rolls the run back instead; then the
+  experiment is ended): set
   `assistant_default_model` to `cheaper`; disable the tick schedule. From
   then on the router serves `cheaper` to everyone.
 - Any transition into `HELD`: disable the tick schedule; leave everything
@@ -465,16 +477,19 @@ Error codes: `ILLEGAL_IN_STATE`, `RUN_ACTIVE`, `NOT_FOUND`,
 `EXPERIMENT_NOT_ENDED`, `EFFECT_FAILED`, `BAD_REQUEST`, `TRANSITION_PENDING`,
 `UPSTREAM_FAILED`.
 
+Legality is judged on state first: an action the table does not allow
+from the run's state returns `ILLEGAL_IN_STATE` whatever is pending.
+
 - `TRANSITION_PENDING`: an engineer action lost its claim or commit to
   another invocation, or another transition is pending that it may not
   take over. The message names the pending target, its age and
   `marshal check <run_id>`.
 - `UPSTREAM_FAILED`: a Bedrock, AWS or Flagsmith call failed before any
-  claim, so nothing changed. After a claim, every failure is
+  claim, so nothing changed. After a claim, every effect failure is
   `EFFECT_FAILED`.
 
 `status` with no active run returns `run_id`, `state`, `awaiting`,
-`pending` and `error` all null, and the message "no active run".
+`pending` and `error` all null, and a message that starts "no active run".
 
 Results shape used by the tools (`contracts/schemas/results.json`):
 `{"ready": bool, "variations": {"current": V, "cheaper": V},
@@ -571,7 +586,8 @@ in Flagsmith (created Nov 24, admin, no expiry; delete it after judging). SNS to
 human confirms. The incident address is the root variable
 `incident_email`, marked sensitive because plans are attached to pull
 requests in a public repo. It is kept with `invoker_stub` in the
-git-ignored `infra/terraform.tfvars` that every apply uses.
+git-ignored `infra/terraform.tfvars` that every plan and apply uses; the
+lead copies it into each worktree it creates.
 
 ## 9. Fault injection
 

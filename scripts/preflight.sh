@@ -18,6 +18,7 @@ MODELS="us.anthropic.claude-fable-5-1 us.anthropic.claude-sonnet-5 us.anthropic.
 TERRAFORM_MIN="1.10"
 AGENTCORE_CLI_MAJOR="1"   # design.md section 2: 1.3.0 or later within 1.x
 AGENTCORE_CLI_MIN_MINOR="3"
+LAMBDA_CONCURRENCY_MIN="50"   # 1.1 gate item 6: peak need is about 32
 
 failures=0
 ok() { printf 'ok   %s\n' "$*"; }
@@ -121,6 +122,19 @@ else
     ok "fis answers in $REGION"
   else
     fail "fis did not answer in $REGION"
+  fi
+fi
+
+# 6b. Lambda concurrency: router, answer, probe, judge and the invoker together need about 32.
+if [ "$account_ok" -ne 1 ]; then
+  fail "lambda concurrency: skipped, account check failed"
+else
+  conc=$(aws lambda get-account-settings --region "$REGION" \
+    --query 'AccountLimit.ConcurrentExecutions' --output text 2>/dev/null)
+  if [ "${conc:-0}" -ge "$LAMBDA_CONCURRENCY_MIN" ] 2>/dev/null; then
+    ok "lambda concurrent executions $conc (need $LAMBDA_CONCURRENCY_MIN)"
+  else
+    fail "lambda concurrent executions ${conc:-unknown}, need at least $LAMBDA_CONCURRENCY_MIN"
   fi
 fi
 

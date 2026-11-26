@@ -95,7 +95,7 @@ The agent SHALL NOT promote without the engineer ending the experiment in
 Flagsmith and approving.
 
 #### Scenario: Approve while still running
-- **WHEN** the engineer approves a `RESULTS_READY` run whose experiment has not been ended
+- **WHEN** the engineer approves a `RESULTS_READY` run whose experiment has not been ended, and the alarm is not in ALARM
 - **THEN** the response says to end the experiment in Flagsmith first
 - **AND** the run stays `RESULTS_READY`
 
@@ -124,6 +124,10 @@ that is not legal in the run's current state without side effects.
 - **WHEN** the engineer approves, declines or checks a run that the pointer does not name
 - **THEN** the response carries error `RUN_ACTIVE` naming the active run and nothing changes
 
+#### Scenario: A reset run cannot launch
+- **WHEN** the engineer approves or checks a `PLANNED` run that has no pointer
+- **THEN** the response carries error `ILLEGAL_IN_STATE` and nothing changes, while `decline` still ends it
+
 #### Scenario: Restart within the same minute
 - **WHEN** `start`, `decline` and `start` again happen within one UTC minute
 - **THEN** the second `start` returns `BAD_REQUEST` ("start again next minute") and the declined run is unchanged
@@ -135,7 +139,7 @@ that is not legal in the run's current state without side effects.
 - **AND** a later `tick` or `marshal check` completes the same transition without repeating finished effects
 
 #### Scenario: Decline while a transition is pending
-- **WHEN** the engineer declines a run with a transition still pending
+- **WHEN** the engineer declines a run while another action's transition is still pending
 - **THEN** the response carries error `TRANSITION_PENDING` and nothing changes
 
 #### Scenario: Illegal action
