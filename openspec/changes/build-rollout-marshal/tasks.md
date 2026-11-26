@@ -23,7 +23,9 @@ How to read a task:
 - Workstream agents never run `terraform apply`. They ask the lead. The one
   exception is B's `infra/spike/` in task 1.2 (design.md section 2).
 - A build agent starts only the scratch experiments a task names (1.3, 2.2,
-  3.6, 4.3). The human ends every experiment; no agent ends one (CLAUDE.md).
+  3.6, 4.3); any other start, such as 1.2's spike experiment, needs the
+  human's yes. The human ends every experiment; no agent ends one
+  (CLAUDE.md).
 
 After section 1, workstreams A, B and C run in parallel against the stubs
 their tasks name, not against each other.
@@ -95,8 +97,8 @@ their tasks name, not against each other.
     guards in design.md section 2), `evidence/1.2-sdk-spike.md`.
   - The spike experiment, before B's first Flagsmith call, in the
     Development environment. The lead creates and starts it through the
-    Admin API; the human said yes to this launch on 2026-11-26 (it was a
-    **Human** dashboard step). Feature `spike_flag` (value `current`, one
+    Admin API after this contract change merges; the human said yes to this
+    launch on 2026-11-26. Feature `spike_flag` (value `current`, one
     variation keyed `cheaper` with value `cheaper`); metric `spike_metric`
     (mean of event `spike_event`, higher is better); an experiment on
     `spike_flag` with rollout 100 percent, split 50/50, and `spike_metric`
@@ -406,7 +408,7 @@ their tasks name, not against each other.
     ID. With `STUB=1` it only logs the payload.
   - Tests: both mappings validate against `invoke.json`; an OK or
     INSUFFICIENT_DATA event sends nothing; a transport failure raises (so
-    EventBridge retries) but a well-formed agent response with a non-null
+    Lambda retries the asynchronous event) but a well-formed agent response with a non-null
     `error` does not.
   - Pass: unit tests green. After 4.1 is applied: `aws cloudwatch
     set-alarm-state` to ALARM logs one valid payload, saved to
