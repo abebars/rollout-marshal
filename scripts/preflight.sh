@@ -16,6 +16,8 @@ REPO="abebars/rollout-marshal"
 SECRETS="rm/flagsmith/api-key rm/flagsmith/server-key"
 MODELS="us.anthropic.claude-fable-5-1 us.anthropic.claude-sonnet-5 us.anthropic.claude-haiku-5-5"
 TERRAFORM_MIN="1.10"
+AGENTCORE_CLI_MAJOR="1"   # design.md section 2: 1.3.0 or later within 1.x
+AGENTCORE_CLI_MIN_MINOR="3"
 
 failures=0
 ok() { printf 'ok   %s\n' "$*"; }
@@ -150,12 +152,17 @@ else
   fail "terraform: not installed"
 fi
 
-# 9. AgentCore CLI (npm package @aws/agentcore).
+# 9. AgentCore CLI (npm package @aws/agentcore), 1.3.0 or later within 1.x.
 cli=$(agentcore --version 2>/dev/null | head -1)
-if [ -n "$cli" ]; then
+cli_version=$(printf '%s' "$cli" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+cli_major=$(printf '%s' "$cli_version" | cut -d. -f1)
+cli_minor=$(printf '%s' "$cli_version" | cut -d. -f2)
+if [ -z "$cli" ]; then
+  fail "agentcore cli: not installed or not answering (npm install -g @aws/agentcore)"
+elif [ "$cli_major" = "$AGENTCORE_CLI_MAJOR" ] && [ "${cli_minor:-0}" -ge "$AGENTCORE_CLI_MIN_MINOR" ] 2>/dev/null; then
   ok "agentcore cli $cli"
 else
-  fail "agentcore cli: not installed or not answering (npm install -g @aws/agentcore)"
+  fail "agentcore cli $cli: need $AGENTCORE_CLI_MAJOR.$AGENTCORE_CLI_MIN_MINOR.0 or later within $AGENTCORE_CLI_MAJOR.x (npm package @aws/agentcore)"
 fi
 
 [ "$failures" -eq 0 ]

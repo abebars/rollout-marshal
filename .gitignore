@@ -36,3 +36,10 @@ override.tf.json
 
 # Lambda build output
 *.zip
+
+# AgentCore CLI project (agent/): its CDK app and npm packages
+node_modules/
+cdk.out/
+
+# Agent worktrees that Claude Code creates for the workstream agents
+.claude/worktrees/
