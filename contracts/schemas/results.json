@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/results.json",
+  "title": "Experiment results",
+  "description": "The results shape the agent's tools use (design.md section 7). Task 2.2 maps Flagsmith's response, recorded in task 3.6, onto it. Rates and probabilities are fractions from 0 to 1; helpful_lift_ci_lower is a fraction of relative lift (-0.05 is minus 5 percent).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ready", "variations", "prob_cheaper_not_worse", "helpful_lift_ci_lower"],
+  "properties": {
+    "ready": { "type": "boolean" },
+    "variations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current", "cheaper"],
+      "properties": {
+        "current": { "$ref": "#/$defs/variation" },
+        "cheaper": { "$ref": "#/$defs/variation" }
+      }
+    },
+    "prob_cheaper_not_worse": {
+      "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0, "maximum": 1 }]
+    },
+    "helpful_lift_ci_lower": {
+      "oneOf": [{ "type": "null" }, { "type": "number" }]
+    }
+  },
+  "$defs": {
+    "variation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identities", "helpful_rate", "mean_latency_ms", "mean_cost_micro_usd"],
+      "properties": {
+        "identities": { "type": "integer", "minimum": 0 },
+        "helpful_rate": {
+          "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0, "maximum": 1 }]
+        },
+        "mean_latency_ms": {
+          "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }]
+        },
+        "mean_cost_micro_usd": {
+          "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }]
+        }
+      }
+    }
+  }
+}
