@@ -1,0 +1,45 @@
+{
+  "modules": {
+    "flagsmith": {
+      "loaded": true
+    },
+    "flag_engine": {
+      "loaded": true
+    },
+    "regex": {
+      "loaded": true,
+      "compiled_file": "_regex.cpython-313-aarch64-linux-gnu.so",
+      "compiled": true
+    },
+    "iregexp_check": {
+      "loaded": true,
+      "compiled_file": "iregexp_check.abi3.so",
+      "compiled": true
+    },
+    "charset_normalizer": {
+      "loaded": true,
+      "compiled_file": "md.cpython-313-aarch64-linux-gnu.so",
+      "compiled": true
+    }
+  },
+  "ok": true,
+  "action": "selfcheck",
+  "started_at": "2026-11-26T22:23:55.089357+00:00",
+  "finished_at": "2026-11-26T22:23:58.508308+00:00",
+  "aws_request_id": "dc4a66c7-c4a6-44ec-b5df-a6befffc0fd1",
+  "function_name": "rm-spike-sdk",
+  "container": {
+    "id": "4e3de4e8f51f4fcc8a7235bdfa3c8a8b",
+    "invocation": 1
+  },
+  "versions": {
+    "python": "3.13.18",
+    "machine": "aarch64",
+    "flagsmith": "6.7.0",
+    "flagsmith-flag-engine": "11.1.2",
+    "requests": "2.34.2",
+    "urllib3": "2.8.0",
+    "boto3": "1.42.97",
+    "botocore": "1.42.97"
+  }
+}

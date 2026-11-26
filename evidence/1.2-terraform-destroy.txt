@@ -1,0 +1,348 @@
+# Task 1.2, phase 2: terraform destroy of infra/spike, and the checks that nothing is left
+#
+# Run after the lead's results read (2026-11-26T22:26:51Z), as the lead asked.
+# Commands, run from the repo root at 2026-11-26T22:28Z:
+#   unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; export AWS_PROFILE=abisb_IsbAdminsPS-818928662830
+#   aws sts get-caller-identity --query Account --output text   -> 818928662830
+#   cd infra/spike && terraform destroy -auto-approve -no-color -input=false
+#
+# Output of the destroy follows, unedited.
+
+data.aws_iam_policy_document.assume: Reading...
+data.aws_secretsmanager_secret.sdk_key: Reading...
+data.aws_bedrock_inference_profile.model["us.anthropic.claude-haiku-5-5"]: Reading...
+data.aws_bedrock_inference_profile.model["us.anthropic.claude-sonnet-5"]: Reading...
+data.aws_bedrock_inference_profile.model["us.anthropic.claude-fable-5-1"]: Reading...
+aws_cloudwatch_log_group.spike: Refreshing state... [id=rm-spike-sdk]
+data.aws_iam_policy_document.assume: Read complete after 0s [id=2690255455]
+aws_iam_role.spike: Refreshing state... [id=rm-spike-sdk-role]
+data.aws_secretsmanager_secret.sdk_key: Read complete after 0s [id=arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-dawJYr]
+data.aws_bedrock_inference_profile.model["us.anthropic.claude-haiku-5-5"]: Read complete after 0s
+data.aws_bedrock_inference_profile.model["us.anthropic.claude-sonnet-5"]: Read complete after 0s
+data.aws_bedrock_inference_profile.model["us.anthropic.claude-fable-5-1"]: Read complete after 0s
+data.aws_iam_policy_document.spike: Reading...
+data.aws_iam_policy_document.spike: Read complete after 0s [id=817948354]
+aws_iam_role_policy.spike: Refreshing state... [id=rm-spike-sdk-role:rm-spike-sdk-policy]
+aws_lambda_function.spike: Refreshing state... [id=rm-spike-sdk]
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  - destroy
+
+Terraform will perform the following actions:
+
+  # aws_cloudwatch_log_group.spike will be destroyed
+  - resource "aws_cloudwatch_log_group" "spike" {
+      - arn                         = "arn:aws:logs:us-east-1:818928662830:log-group:rm-spike-sdk" -> null
+      - deletion_protection_enabled = false -> null
+      - id                          = "rm-spike-sdk" -> null
+      - log_group_class             = "STANDARD" -> null
+      - name                        = "rm-spike-sdk" -> null
+      - region                      = "us-east-1" -> null
+      - retention_in_days           = 1 -> null
+      - skip_destroy                = false -> null
+      - tags                        = {} -> null
+      - tags_all                    = {
+          - "project" = "rollout-marshal"
+        } -> null
+        # (2 unchanged attributes hidden)
+    }
+
+  # aws_iam_role.spike will be destroyed
+  - resource "aws_iam_role" "spike" {
+      - arn                   = "arn:aws:iam::818928662830:role/rm-spike-sdk-role" -> null
+      - assume_role_policy    = jsonencode(
+            {
+              - Statement = [
+                  - {
+                      - Action    = "sts:AssumeRole"
+                      - Effect    = "Allow"
+                      - Principal = {
+                          - Service = "lambda.amazonaws.com"
+                        }
+                    },
+                ]
+              - Version   = "2012-10-17"
+            }
+        ) -> null
+      - create_date           = "2026-11-26T22:23:15Z" -> null
+      - force_detach_policies = false -> null
+      - id                    = "rm-spike-sdk-role" -> null
+      - managed_policy_arns   = [] -> null
+      - max_session_duration  = 3600 -> null
+      - name                  = "rm-spike-sdk-role" -> null
+      - path                  = "/" -> null
+      - tags                  = {} -> null
+      - tags_all              = {
+          - "project" = "rollout-marshal"
+        } -> null
+      - unique_id             = "AROA35K7TXEXBL6VH6WI3" -> null
+        # (3 unchanged attributes hidden)
+
+      - inline_policy {
+          - name   = "rm-spike-sdk-policy" -> null
+          - policy = jsonencode(
+                {
+                  - Statement = [
+                      - {
+                          - Action   = "secretsmanager:GetSecretValue"
+                          - Effect   = "Allow"
+                          - Resource = "arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-dawJYr"
+                          - Sid      = "ReadTheSdkKeyOnly"
+                        },
+                      - {
+                          - Action   = "bedrock:InvokeModel"
+                          - Effect   = "Allow"
+                          - Resource = [
+                              - "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-sonnet-5",
+                              - "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-haiku-5-5",
+                              - "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-fable-5-1",
+                            ]
+                          - Sid      = "InvokeTheThreeInferenceProfiles"
+                        },
+                      - {
+                          - Action    = "bedrock:InvokeModel"
+                          - Condition = {
+                              - StringEquals = {
+                                  - "bedrock:InferenceProfileArn" = "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-fable-5-1"
+                                }
+                            }
+                          - Effect    = "Allow"
+                          - Resource  = [
+                              - "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-fable-5-1",
+                              - "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-fable-5-1",
+                              - "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-fable-5-1",
+                            ]
+                          - Sid       = "InvokeModelsViaUsAnthropicClaudeFable51"
+                        },
+                      - {
+                          - Action    = "bedrock:InvokeModel"
+                          - Condition = {
+                              - StringEquals = {
+                                  - "bedrock:InferenceProfileArn" = "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-haiku-5-5"
+                                }
+                            }
+                          - Effect    = "Allow"
+                          - Resource  = [
+                              - "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-haiku-5-5",
+                              - "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-haiku-5-5",
+                              - "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-5-5",
+                            ]
+                          - Sid       = "InvokeModelsViaUsAnthropicClaudeHaiku55"
+                        },
+                      - {
+                          - Action    = "bedrock:InvokeModel"
+                          - Condition = {
+                              - StringEquals = {
+                                  - "bedrock:InferenceProfileArn" = "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-sonnet-5"
+                                }
+                            }
+                          - Effect    = "Allow"
+                          - Resource  = [
+                              - "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-5",
+                              - "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-5",
+                              - "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-5",
+                            ]
+                          - Sid       = "InvokeModelsViaUsAnthropicClaudeSonnet5"
+                        },
+                      - {
+                          - Action   = "bedrock:InvokeModel"
+                          - Effect   = "Allow"
+                          - Resource = "arn:aws:bedrock:us-east-1:818928662830:project/default"
+                          - Sid      = "InvokeInTheDefaultProject"
+                        },
+                      - {
+                          - Action   = [
+                              - "logs:PutLogEvents",
+                              - "logs:CreateLogStream",
+                            ]
+                          - Effect   = "Allow"
+                          - Resource = "arn:aws:logs:us-east-1:818928662830:log-group:rm-spike-sdk:*"
+                          - Sid      = "WriteItsLogs"
+                        },
+                    ]
+                  - Version   = "2012-10-17"
+                }
+            ) -> null
+        }
+    }
+
+  # aws_iam_role_policy.spike will be destroyed
+  - resource "aws_iam_role_policy" "spike" {
+      - id          = "rm-spike-sdk-role:rm-spike-sdk-policy" -> null
+      - name        = "rm-spike-sdk-policy" -> null
+      - policy      = jsonencode(
+            {
+              - Statement = [
+                  - {
+                      - Action   = "secretsmanager:GetSecretValue"
+                      - Effect   = "Allow"
+                      - Resource = "arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-dawJYr"
+                      - Sid      = "ReadTheSdkKeyOnly"
+                    },
+                  - {
+                      - Action   = "bedrock:InvokeModel"
+                      - Effect   = "Allow"
+                      - Resource = [
+                          - "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-sonnet-5",
+                          - "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-haiku-5-5",
+                          - "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-fable-5-1",
+                        ]
+                      - Sid      = "InvokeTheThreeInferenceProfiles"
+                    },
+                  - {
+                      - Action    = "bedrock:InvokeModel"
+                      - Condition = {
+                          - StringEquals = {
+                              - "bedrock:InferenceProfileArn" = "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-fable-5-1"
+                            }
+                        }
+                      - Effect    = "Allow"
+                      - Resource  = [
+                          - "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-fable-5-1",
+                          - "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-fable-5-1",
+                          - "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-fable-5-1",
+                        ]
+                      - Sid       = "InvokeModelsViaUsAnthropicClaudeFable51"
+                    },
+                  - {
+                      - Action    = "bedrock:InvokeModel"
+                      - Condition = {
+                          - StringEquals = {
+                              - "bedrock:InferenceProfileArn" = "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-haiku-5-5"
+                            }
+                        }
+                      - Effect    = "Allow"
+                      - Resource  = [
+                          - "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-haiku-5-5",
+                          - "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-haiku-5-5",
+                          - "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-5-5",
+                        ]
+                      - Sid       = "InvokeModelsViaUsAnthropicClaudeHaiku55"
+                    },
+                  - {
+                      - Action    = "bedrock:InvokeModel"
+                      - Condition = {
+                          - StringEquals = {
+                              - "bedrock:InferenceProfileArn" = "arn:aws:bedrock:us-east-1:818928662830:inference-profile/us.anthropic.claude-sonnet-5"
+                            }
+                        }
+                      - Effect    = "Allow"
+                      - Resource  = [
+                          - "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-5",
+                          - "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-5",
+                          - "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-5",
+                        ]
+                      - Sid       = "InvokeModelsViaUsAnthropicClaudeSonnet5"
+                    },
+                  - {
+                      - Action   = "bedrock:InvokeModel"
+                      - Effect   = "Allow"
+                      - Resource = "arn:aws:bedrock:us-east-1:818928662830:project/default"
+                      - Sid      = "InvokeInTheDefaultProject"
+                    },
+                  - {
+                      - Action   = [
+                          - "logs:PutLogEvents",
+                          - "logs:CreateLogStream",
+                        ]
+                      - Effect   = "Allow"
+                      - Resource = "arn:aws:logs:us-east-1:818928662830:log-group:rm-spike-sdk:*"
+                      - Sid      = "WriteItsLogs"
+                    },
+                ]
+              - Version   = "2012-10-17"
+            }
+        ) -> null
+      - role        = "rm-spike-sdk-role" -> null
+        # (1 unchanged attribute hidden)
+    }
+
+  # aws_lambda_function.spike will be destroyed
+  - resource "aws_lambda_function" "spike" {
+      - architectures                  = [
+          - "arm64",
+        ] -> null
+      - arn                            = "arn:aws:lambda:us-east-1:818928662830:function:rm-spike-sdk" -> null
+      - code_sha256                    = "da9Ld6l0lxx/SO3r1xEcQNLWWHCm4KkDXZ6N2LqsciE=" -> null
+      - filename                       = "./../../app/spike/build/rm-spike-sdk.zip" -> null
+      - function_name                  = "rm-spike-sdk" -> null
+      - handler                        = "app.spike.handler.handler" -> null
+      - id                             = "rm-spike-sdk" -> null
+      - invoke_arn                     = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:818928662830:function:rm-spike-sdk/invocations" -> null
+      - last_modified                  = "2026-11-26T22:23:25.886+0000" -> null
+      - layers                         = [] -> null
+      - memory_size                    = 256 -> null
+      - package_type                   = "Zip" -> null
+      - publish                        = false -> null
+      - qualified_arn                  = "arn:aws:lambda:us-east-1:818928662830:function:rm-spike-sdk:$LATEST" -> null
+      - qualified_invoke_arn           = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:818928662830:function:rm-spike-sdk:$LATEST/invocations" -> null
+      - region                         = "us-east-1" -> null
+      - reserved_concurrent_executions = -1 -> null
+      - response_streaming_invoke_arn  = "arn:aws:apigateway:us-east-1:lambda:path/2021-11-15/functions/arn:aws:lambda:us-east-1:818928662830:function:rm-spike-sdk/response-streaming-invocations" -> null
+      - role                           = "arn:aws:iam::818928662830:role/rm-spike-sdk-role" -> null
+      - runtime                        = "python3.13" -> null
+      - skip_destroy                   = false -> null
+      - source_code_hash               = "da9Ld6l0lxx/SO3r1xEcQNLWWHCm4KkDXZ6N2LqsciE=" -> null
+      - source_code_size               = 1902849 -> null
+      - tags                           = {} -> null
+      - tags_all                       = {
+          - "project" = "rollout-marshal"
+        } -> null
+      - timeout                        = 300 -> null
+      - version                        = "$LATEST" -> null
+        # (7 unchanged attributes hidden)
+
+      - environment {
+          - variables = {
+              - "FLAGSMITH_KEY_SECRET_NAME" = "rm/flagsmith/server-key"
+            } -> null
+        }
+
+      - ephemeral_storage {
+          - size = 512 -> null
+        }
+
+      - logging_config {
+          - log_format            = "Text" -> null
+          - log_group             = "rm-spike-sdk" -> null
+            # (2 unchanged attributes hidden)
+        }
+
+      - tracing_config {
+          - mode = "PassThrough" -> null
+        }
+    }
+
+Plan: 0 to add, 0 to change, 4 to destroy.
+
+Changes to Outputs:
+  - function_name = "rm-spike-sdk" -> null
+  - role_name     = "rm-spike-sdk-role" -> null
+aws_lambda_function.spike: Destroying... [id=rm-spike-sdk]
+aws_lambda_function.spike: Destruction complete after 5s
+aws_iam_role_policy.spike: Destroying... [id=rm-spike-sdk-role:rm-spike-sdk-policy]
+aws_iam_role_policy.spike: Destruction complete after 0s
+aws_cloudwatch_log_group.spike: Destroying... [id=rm-spike-sdk]
+aws_iam_role.spike: Destroying... [id=rm-spike-sdk-role]
+aws_cloudwatch_log_group.spike: Destruction complete after 1s
+aws_iam_role.spike: Destruction complete after 1s
+
+Destroy complete! Resources: 4 destroyed.
+
+# Read-only checks after the destroy, at 2026-11-26T22:28:40Z (same account and profile):
+#
+#   aws lambda get-function --region us-east-1 --function-name rm-spike-sdk
+#     -> ResourceNotFoundException: Function not found: arn:aws:lambda:us-east-1:818928662830:function:rm-spike-sdk
+#   aws lambda list-functions --region us-east-1 --query "Functions[?starts_with(FunctionName, 'rm-spike-')].FunctionName"
+#     -> []
+#   aws iam get-role --role-name rm-spike-sdk-role
+#     -> NoSuchEntity: The role with name rm-spike-sdk-role cannot be found.
+#   aws iam list-roles --query "Roles[?starts_with(RoleName, 'rm-spike-')].RoleName"
+#     -> []
+#   aws logs describe-log-groups --region us-east-1 --log-group-name-prefix rm-spike-
+#     -> []
+#   aws logs describe-log-groups --region us-east-1 --log-group-name-prefix /aws/lambda/rm-spike-
+#     -> []
+#   cd infra/spike && terraform state list
+#     -> (no resources)
