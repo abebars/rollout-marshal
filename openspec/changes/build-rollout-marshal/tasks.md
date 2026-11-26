@@ -71,7 +71,7 @@ their tasks name, not against each other.
     -1` is at or after `2026-11-26T02:30:00Z`; `terraform init` succeeds.
     Goldfish review of this commit happens before it is pushed.
 
-- [ ] 1.1 **Contracts package**
+- [x] 1.1 **Contracts package**
   - Owner: Lead. Needs: 1.0.
   - Files: `contracts/names.py`, `contracts/schemas/{invoke,response,plan,
     run_item,results,judge_payload}.json`,
