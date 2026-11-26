@@ -18,7 +18,12 @@ variation assigns, unless the kill switch is off.
 #### Scenario: No active run
 - **WHEN** there is no `ACTIVE` pointer, or it has no `feature_key`
 - **THEN** the router serves the model named by `assistant_default_model`
-- **AND** records no exposure or event
+- **AND** records no exposure or event, and does not invoke `rm-judge`
+
+#### Scenario: Assigned comes from the flag's value
+- **WHEN** an identity in the experiment is served
+- **THEN** the judge payload's `assigned` is the experiment feature's value (`current` or `cheaper`)
+- **AND** the exposure carries `flag.variant`
 
 ### Requirement: Request budget
 The router MUST make exactly one Flagsmith identity request per answer.
@@ -49,5 +54,5 @@ loads at once.
 - **THEN** exactly 1,500 requests were sent
 
 #### Scenario: Second start
-- **WHEN** a load run is started while another is in progress
-- **THEN** the second is refused
+- **WHEN** a load run is started while another is in progress, from any worktree
+- **THEN** the second is refused, because the first holds `rm-load.lock` in the git common directory

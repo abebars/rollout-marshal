@@ -14,9 +14,10 @@ A latency alarm on the cheaper variant SHALL invoke the agent with an
 - **WHEN** the alarm changes to OK or INSUFFICIENT_DATA
 - **THEN** `rm-invoker` sends nothing
 
-### Requirement: Tick while a run is active
-A schedule SHALL invoke the agent with `tick` every 2 minutes while a run
-is active and MUST be disabled otherwise.
+### Requirement: Tick from launch to a terminal state
+A schedule SHALL invoke the agent with `tick` every 2 minutes from the
+run's launch until it reaches a terminal state, and MUST be disabled
+otherwise.
 
 #### Scenario: Run ends
 - **WHEN** a run reaches `PROMOTED`, `HELD` or `ABORTED`
