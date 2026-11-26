@@ -24,7 +24,12 @@ Read in this order before doing anything:
 - Every name and value comes from `design.md`. Do not invent or rename.
   If the design is wrong, open a contract-change pull request.
 - The agent never promotes a model, resumes traffic or launches an
-  experiment without the human's `approve`.
+  experiment without the human's `approve`. This covers `rm_agent`'s runs.
+  A build agent starts only the scratch experiments a task names: 1.3's on
+  `assistant_model_rspike<HHMM>`, and those on run IDs `rlive<HHMM>` (2.2),
+  `rsmoke<HHMM>` (3.6) and `rfault<HHMM>` (4.3). Any other start needs the
+  human's yes. The human ends every experiment; no agent ends one or calls
+  an end-experiment endpoint.
 - Do not send `temperature`, `top_p` or `top_k` to any Bedrock model.
 - Stay in your workstream's directories (design.md section 12).
 - Technical claims come from official documentation (docs.aws.amazon.com,
@@ -33,9 +38,11 @@ Read in this order before doing anything:
 
 ## Roles
 
-- **Lead (integration)**: one agent. Owns `dev`, `infra/` applies,
-  `contracts/`, the task board and the gates. Starts the workstream agents
-  and the goldfish reviewers. Does not write workstream code.
+- **Lead (integration)**: one agent. Owns `dev`, `infra/` applies (except
+  task 1.2's `infra/spike/`, design.md section 2), `contracts/`, this file
+  (each edit approved by the human), the task board and the gates. Starts
+  the workstream agents and the goldfish reviewers. Does not write
+  workstream code.
 - **Workstream agents A, B, C, D**: one each, in its own git worktree and
   branch `ws-<letter>/<task-id>-<slug>`. Implements one task at a time.
 - **Goldfish reviewers**: fresh agents with no history, started per review

@@ -35,6 +35,12 @@ FLAGSMITH_PROJECT_ID = 55601
 FLAGSMITH_ENVIRONMENT_NAME = "Development"
 FLAGSMITH_MONTHLY_REQUEST_LIMIT = 50_000
 REPO = "github.com/abebars/rollout-marshal"
+AGENTCORE_CLI_PACKAGE = "@aws/agentcore"  # npm; deploys the runtime through its own CDK stack
+AGENTCORE_CLI_COMMAND = "agentcore"
+AGENTCORE_CLI_MIN_VERSION = "1.3.0"  # any 1.x from this version on
+# Task 1.2's exception to the apply rule: B applies and destroys this root, local state.
+SPIKE_INFRA_DIR = "infra/spike/"
+SPIKE_RESOURCE_PREFIX = "rm-spike-"
 
 # ---------------------------------------------------------------------------
 # Section 3. Bedrock models
@@ -64,6 +70,8 @@ STOP_REASON_MAX_TOKENS = "max_tokens"  # always an error, never a result
 ANSWER_TIMEOUT_SECONDS = 25
 ROUTER_TIMEOUT_SECONDS = 29
 JUDGE_TIMEOUT_SECONDS = 30
+INVOKER_TIMEOUT_SECONDS = 300
+FLAGSMITH_ADMIN_TIMEOUT_SECONDS = 30
 
 # ---------------------------------------------------------------------------
 # Section 4. Flagsmith contract
@@ -86,6 +94,7 @@ CONTROL_VALUE = VARIANT_CURRENT  # the feature's own value; Flagsmith reserves t
 TREATMENT_OPTION_KEY = VARIANT_CHEAPER  # an option without a key records no exposures
 TREATMENT_OPTION_VALUE = VARIANT_CHEAPER
 TREATMENT_PERCENT = 50
+EXPERIMENT_ROLLOUT_PERCENT = 100  # of identities, set when the experiment is created
 
 KILL_SWITCH_FEATURE = "assistant_cheaper_enabled"  # boolean
 KILL_SWITCH_DEFAULT_ENABLED = True
@@ -121,14 +130,40 @@ PRIMARY_METRIC = METRIC_HELPFUL_RATE
 GUARDRAIL_METRICS = (METRIC_MEAN_LATENCY_MS, METRIC_MEAN_COST_MICRO_USD)
 METRIC_AGGREGATIONS_AVAILABLE = ("occurrence", "count", "sum", "mean")
 METRIC_AGGREGATION = "mean"
+# Directions in design.md's words (the dashboard's labels); task 1.3 records the API
+# spellings, and 1.4 maps them if they differ.
+METRIC_DIRECTION_HIGHER = "higher is better"
+METRIC_DIRECTION_LOWER = "lower is better"
+# Full definitions, so a get-or-create can check what it found: event, aggregation and
+# direction must all match.
 METRIC_DEFINITIONS = {
-    METRIC_HELPFUL_RATE: {"event": EVENT_HELPFUL, "aggregation": METRIC_AGGREGATION},
-    METRIC_MEAN_LATENCY_MS: {"event": EVENT_LATENCY_MS, "aggregation": METRIC_AGGREGATION},
+    METRIC_HELPFUL_RATE: {
+        "event": EVENT_HELPFUL,
+        "aggregation": METRIC_AGGREGATION,
+        "direction": METRIC_DIRECTION_HIGHER,
+    },
+    METRIC_MEAN_LATENCY_MS: {
+        "event": EVENT_LATENCY_MS,
+        "aggregation": METRIC_AGGREGATION,
+        "direction": METRIC_DIRECTION_LOWER,
+    },
     METRIC_MEAN_COST_MICRO_USD: {
         "event": EVENT_COST_MICRO_USD,
         "aggregation": METRIC_AGGREGATION,
+        "direction": METRIC_DIRECTION_LOWER,
     },
 }
+# The expected direction each metric gets when it is attached to an experiment.
+EXPECTED_DIRECTION_NOT_DECREASE = "should not decrease"
+EXPECTED_DIRECTION_NOT_INCREASE = "should not increase"
+EXPERIMENT_EXPECTED_DIRECTIONS = {
+    METRIC_HELPFUL_RATE: EXPECTED_DIRECTION_NOT_DECREASE,
+    METRIC_MEAN_LATENCY_MS: EXPECTED_DIRECTION_NOT_INCREASE,
+    METRIC_MEAN_COST_MICRO_USD: EXPECTED_DIRECTION_NOT_INCREASE,
+}
+# Every Flagsmith name a spike creates starts with this, except task 1.3's experiment
+# feature (experiment_feature_key(scratch_run_id("spike", now))).
+SPIKE_NAME_PREFIX = "spike_"
 
 IDENTITY_COUNT = 150
 IDENTITY_FIRST = "user-001"
@@ -333,6 +368,9 @@ TRANSITIONS = (
 LEGAL_TRANSITIONS = frozenset((t.source, t.target) for t in TRANSITIONS)
 
 CHECK_LEGAL_STATES = (STATE_RUNNING, STATE_ROLLED_BACK)
+# design.md's sentence, not the full set: by the general no-op rule an alarm is also a
+# no-op in PLANNED and with no active run. Which actions return an error instead is
+# ACTIONS_WITH_LEGALITY_ERRORS.
 ALARM_NOOP_STATES = (STATE_AWAITING_RESUME, STATE_ROLLED_BACK, STATE_RESULTS_READY)
 PENDING_STALE_SECONDS = 60  # a pending claim older than this may be resumed
 RESULTS_EMBARGO_SECONDS = 600  # no results read in the first 600 s after first_running_at
@@ -405,7 +443,11 @@ INVOKER_FUNCTION = "rm-invoker"  # sends alarm and tick
 AGENT_RUNTIME_ARN_PARAMETER = "/rm/agent-runtime-arn"
 INVOKER_STUB_VARIABLE = "invoker_stub"  # Terraform root variable, set by the lead
 INVOKER_STUB_ENV = "STUB"
-INVOKER_STUB_ON = "1"  # with STUB=1 rm-invoker only logs the payload
+INVOKER_STUB_ON = "1"  # with STUB=1 rm-invoker only logs the payload, never reads the ARN
+# One InvokeAgentRuntime client setting for the CLI and rm-invoker (botocore
+# read_timeout and total_max_attempts): under INVOKER_TIMEOUT_SECONDS, no client retry.
+AGENT_CLIENT_READ_TIMEOUT_SECONDS = 290
+AGENT_CLIENT_MAX_ATTEMPTS = 1
 TICK_SCHEDULE = "rm-tick"
 TICK_INTERVAL_MINUTES = 2  # EventBridge Scheduler, enabled only while a run is active
 
@@ -424,12 +466,33 @@ AGENT_TOOLS = (
 )
 GATEWAY_FALLBACK_AFTER_MINUTES = 90  # then connect straight to FLAGSMITH_MCP_URL
 
+# AgentCore pieces. GATEWAY_SETUP_SCRIPT gets or creates each one by name.
+GATEWAY_SETUP_SCRIPT = "agent/scripts/setup_gateway.py"
+GATEWAY_NAME = "rm-gateway"
+GATEWAY_PROTOCOL = "MCP"
+GATEWAY_INBOUND_AUTH = "AWS_IAM"  # no Cognito pool
+GATEWAY_SIGV4_PROXY_PACKAGE = "mcp-proxy-for-aws"  # how the agent signs its Gateway calls
+GATEWAY_INVOKE_ACTION = "bedrock-agentcore:InvokeGateway"  # granted to the runtime's role
+GATEWAY_ROLE = "rm-gateway-role"  # the Gateway's service role; Lambda targets use it
+GATEWAY_CREDENTIAL_PROVIDER = "rm-flagsmith-api-key"  # holds SECRET_FLAGSMITH_API_KEY's value
+GATEWAY_TARGET_FLAGSMITH = "flagsmith"  # MCP server target for FLAGSMITH_MCP_URL
+GATEWAY_TARGET_FLAGSMITH_ADMIN = "flagsmith-admin"  # Lambda target, once 2.2 deploys its function
+# A target's name shapes the Gateway's tool names, so these never change.
+GATEWAY_TARGETS = (GATEWAY_TARGET_FLAGSMITH, GATEWAY_TARGET_FLAGSMITH_ADMIN)
+GATEWAY_API_KEY_HEADER = "Authorization"
+GATEWAY_API_KEY_PREFIX = "Api-Key "  # whether the Gateway adds the space itself: task 1.3
+
 # ---------------------------------------------------------------------------
 # Section 8. Secrets and notifications
 # ---------------------------------------------------------------------------
 SECRET_FLAGSMITH_API_KEY = "rm/flagsmith/api-key"  # organisation API key (MCP, Admin API)
 SECRET_FLAGSMITH_SERVER_KEY = "rm/flagsmith/server-key"  # SDK key for rm-router, rm-judge
 FLAGSMITH_API_KEY_NAME = "rollout-marshal-agent"
+# Local scripts that read SECRET_FLAGSMITH_API_KEY at run time, besides
+# BOOTSTRAP_FLAGSMITH_SCRIPT and GATEWAY_SETUP_SCRIPT.
+SEED_EXPERIMENT_SCRIPT = "scripts/seed_experiment.py"
+RESET_SCRIPT = "scripts/reset.py"
+INJECT_FAULT_SCRIPT = "scripts/inject_fault.sh"  # in its flag fallback
 
 # ---------------------------------------------------------------------------
 # Section 9. Fault injection

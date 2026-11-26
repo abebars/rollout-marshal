@@ -20,7 +20,12 @@ How to read a task:
 - Evidence files go in `evidence/<task-id>-<name>` and include the exact
   commands that produced them.
 - Timebox: 90 minutes unless the task says otherwise.
-- Workstream agents never run `terraform apply`. They ask the lead.
+- Workstream agents never run `terraform apply`. They ask the lead. The one
+  exception is B's `infra/spike/` in task 1.2 (design.md section 2).
+- A build agent starts only the scratch experiments a task names (1.3, 2.2,
+  3.6, 4.3); any other start, such as 1.2's spike experiment, needs the
+  human's yes. The human ends every experiment; no agent ends one
+  (CLAUDE.md).
 
 After section 1, workstreams A, B and C run in parallel against the stubs
 their tasks name, not against each other.
@@ -83,39 +88,85 @@ their tasks name, not against each other.
   - Gate: **Human approves this pull request** before 1.2 and 1.3 start.
 
 - [ ] 1.2 **Spike: Bedrock and Flagsmith SDK from Lambda**
-  - Owner: B. Needs: 1.1. Timebox: 2 hours, plus waiting for the warehouse.
+  - Owner: B. Needs: 1.1. B's first apply waits for the 1.1 gate's
+    contract change to merge, and B's first Flagsmith call for the spike
+    experiment to be running. Timebox: 2 hours, plus waiting for the
+    warehouse.
   - Files: `app/spike/handler.py`, `infra/spike/main.tf` (its own tiny
-    root with local state, applied and later destroyed by B; the one
-    exception to the apply rule), `evidence/1.2-sdk-spike.md`.
-  - Do: one Lambda that calls Converse on all three models, then calls
-    `get_identity_flags`, `track_exposure_event`, `track_event` and
-    `flush_events` for identity `user-001` against a throwaway feature
-    `spike_flag` (value `current`, one keyed option `cheaper`), with the
-    outcome event sent from a second invocation to prove the join.
-  - Pass: the evidence file records the three responses with latency and
-    token counts; the exact SDK signatures used; how a numeric value is
-    attached to an event; the request fields that set thinking effort `low` and
-    that disable thinking, per model, each with a response that came back
-    with text; and an API read (or, failing that, a **Human** dashboard
-    check) showing the Development warehouse has received at least one
-    event, with how long it took. `infra/spike` is destroyed afterwards.
+    root with local state, applied and later destroyed by B under the
+    guards in design.md section 2), `evidence/1.2-sdk-spike.md`.
+  - The spike experiment, before B's first Flagsmith call, in the
+    Development environment. The lead creates and starts it through the
+    Admin API after this contract change merges; the human said yes to this
+    launch on 2026-11-26. Feature `spike_flag` (value `current`, one
+    variation keyed `cheaper` with value `cheaper`); metric `spike_metric`
+    (mean of event `spike_event`, higher is better); an experiment on
+    `spike_flag` with rollout 100 percent, split 50/50, and `spike_metric`
+    as primary metric with expected direction "should not decrease".
+  - Do: one function, `rm-spike-sdk` (arm64, a timeout of a few minutes),
+    that reads the SDK key from `rm/flagsmith/server-key` at run time.
+    - Converse: effort `low` on Fable 5.1 and on Sonnet 5 at `maxTokens`
+      2000; thinking disabled on Haiku 5.5 at `maxTokens` 200, with no
+      effort field; thinking disabled on Sonnet 5 as well. Fable 5.1 cannot
+      disable thinking; record that, with the AWS model card link.
+    - Invocation 1, the router's role: one client calls
+      `get_identity_flags` for `user-001` to `user-150`, then
+      `track_exposure_event` when the flag reports the identity in the
+      experiment, then `flush_events()`. It records `flag.value` and
+      `flag.variant` for an identity in each arm, and returns every
+      identity's arm.
+    - Invocation 2, the judge's role: a new client sends one `spike_event`
+      per identity through `track_event`, with numeric values that differ
+      by arm, taken from invocation 1's assignments so that it makes no
+      identity requests; then `flush_events()`. Record each arm's expected
+      mean.
+  - Pass: the evidence file records each Converse response, with latency,
+    token counts and `stopReason` `end_turn`; the exact SDK signatures
+    used; how a numeric value travels on an event; the request fields that
+    set effort `low` and that disable thinking, per model, each with a
+    response that came back with text; what `flag.variant` says for each
+    arm; and an API read (or, failing that, a **Human** dashboard check)
+    showing the Development warehouse has received at least one event,
+    with how long it took. The lead then refreshes and reads the
+    experiment's results through the Admin API into
+    `evidence/1.4-results-sample.json`.
+    **Human**, after that read: both variations show at least 50
+    identities and each arm's `spike_metric` mean matches what B sent.
+    The human then ends the experiment, and the file records the status
+    read afterwards. `infra/spike` is destroyed before the review. If no
+    results arrive within the timebox (warehouse wait included), B records
+    what did arrive, and the
+    join moves to 3.6 only with the human's written acceptance at Gate 1.
 
 - [ ] 1.3 **Spike: agent to Flagsmith**
-  - Owner: A. Needs: 1.1. Timebox: 2 hours.
-  - Files: `agent/spike/agent.py`, `agent/scripts/setup_gateway.py`,
+  - Owner: A. Needs: 1.1. A's first deploy or Flagsmith call waits for the
+    1.1 gate's contract change to merge. Timebox: 2 hours.
+  - Files: `agent/spike/agent.py`, `agent/scripts/setup_gateway.py`, the
+    AgentCore CLI project under `agent/`,
     `evidence/1.3-flagsmith-agent-spike.md`.
-  - Do: a hello-world Strands agent on AgentCore Runtime; an AgentCore
-    Gateway with the Flagsmith MCP server as a target using the API key
-    (created by the idempotent `setup_gateway.py`); the agent creates
-    feature `assistant_model_rspike` (value `current`, one keyed option
-    `cheaper` at 50 percent), one metric
-    and one experiment through MCP; starts it through the Admin API;
-    tries to change the feature while it runs; changes a different
-    boolean feature while it runs; reads status, exposures and results.
+  - Do: a hello-world Strands agent deployed as `rm_agent` on AgentCore
+    Runtime, and the Gateway pieces of design.md section 7 (`rm-gateway`,
+    `rm-gateway-role`, `rm-flagsmith-api-key`, target `flagsmith`),
+    created by the idempotent `setup_gateway.py`. The agent calls the MCP
+    tools by name, not through the model, to create:
+    - feature `assistant_model_rspike<HHMM>`, a new key on every attempt
+      (`experiment_feature_key(scratch_run_id("spike", now))`; if that key
+      already exists, wait for the next UTC minute), value `current`, one
+      option keyed `cheaper` at 50 percent;
+    - metric `spike_mcp_metric`, mean of `spike_event`, higher is better;
+    - one experiment, rollout 100 percent, with `spike_mcp_metric`
+      expected "should not decrease".
+
+    A local script starts the experiment through the Admin API. Then try
+    to change the feature while it runs, create the boolean feature
+    `spike_kill_switch` and toggle it while the experiment runs, and read
+    status, exposures and results. No agent calls an end-experiment endpoint.
   - Pass: the evidence file answers every row of design.md section 13
-    owned by 1.3, with the request and response for each. **Human** ends
-    the spike experiment in the dashboard; the file records the status
-    read afterwards.
+    owned by 1.3, with the request and response for each; the row on
+    ending an experiment through an API is "documented, not exercised",
+    citing the Flagsmith pages. It also lists the Gateway's MCP tool names
+    and every feature key created. **Human** ends every spike experiment
+    started; the file records the status read afterwards.
   - Past 90 minutes without working Gateway auth: switch to the direct
     MCP fallback (design.md section 7) and record it.
 
@@ -123,8 +174,17 @@ their tasks name, not against each other.
   - Owner: Lead. Needs: 1.2, 1.3.
   - Do: a contract-change pull request updating design.md and
     `contracts/` wherever a spike contradicted them; every section 13 row
-    owned by 1.2 or 1.3 marked `verified` or `corrected`.
-  - Pass: `make test` green; no such row left open. **Gate 1** runs here.
+    owned by 1.2, 1.3 or 1.4 marked `verified` or `corrected`; the row on
+    ending an experiment through an API stays `documented, not exercised`.
+    If 1.2's join moved to 3.6, split that row: the 1.2 parts `verified`,
+    the join a new row owned by 3.6.
+    `evidence/1.4-results-sample.json`, read during 1.2, records which of
+    lift, credible interval and win probability Flagsmith returns, and in
+    what units; 2.2's results mapping starts from it.
+  - Pass: `make test` green; no such row left open. If the sample has no
+    lift and no credible interval, the **Human** decides at Gate 1: keep a
+    promote path, or accept that every clean run recommends hold.
+    **Gate 1** runs here.
 
 ## 2. Workstream A: experiment agent
 
@@ -319,7 +379,9 @@ their tasks name, not against each other.
     identities; CloudWatch has `AnswerLatencyMs` datapoints for both
     variants; the baseline p95 for `cheaper`, the Flagsmith request
     count before and after (to see whether events count), and the raw
-    results response (`evidence/3.6-results.json`) are recorded. **Human** ends the smoke experiment.
+    results response (`evidence/3.6-results.json`) are recorded. If 1.2's
+    join moved here, both variations also show non-null values for all
+    three metrics. **Human** ends the smoke experiment.
 
 ## 4. Workstream C: signals and fault
 
@@ -346,7 +408,7 @@ their tasks name, not against each other.
     ID. With `STUB=1` it only logs the payload.
   - Tests: both mappings validate against `invoke.json`; an OK or
     INSUFFICIENT_DATA event sends nothing; a transport failure raises (so
-    EventBridge retries) but a well-formed agent response with a non-null
+    Lambda retries the asynchronous event) but a well-formed agent response with a non-null
     `error` does not.
   - Pass: unit tests green. After 4.1 is applied: `aws cloudwatch
     set-alarm-state` to ALARM logs one valid payload, saved to

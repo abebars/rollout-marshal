@@ -208,6 +208,15 @@ NOT_A_NAME = {
     "flag.experiment.in_experiment": "SDK attribute read before SDK_EXPOSURE_CALL",
     "InvokeAgentRuntime": "AWS API operation used by the CLI and rm-invoker",
     "cli/": "directory; design.md section 12 owns paths",
+    "agent/": "directory; design.md section 12 owns paths",
+    "assistant_model_rspike<HHMM>": (
+        "example: experiment_feature_key(scratch_run_id('spike', now)); "
+        "test_spike_rules_match_design checks it"
+    ),
+    "CreateApiKeyCredentialProvider": "AWS API operation GATEWAY_SETUP_SCRIPT calls",
+    "aws sts get-caller-identity": "the account check CLAUDE.md requires before any AWS write",
+    "total_max_attempts": "botocore retry setting; the value is AGENT_CLIENT_MAX_ATTEMPTS",
+    "apiKey": "request field of CreateApiKeyCredentialProvider",
     "evidence/": "directory; design.md section 12 owns paths",
     "s3://rm-reports-818928662830/runs/<run_id>/report.md": (
         "REPORTS_BUCKET + REPORT_KEY_TEMPLATE; test_report_location checks it"
@@ -429,8 +438,21 @@ def test_lambda_timeouts_match_design():
     assert line == (
         f"answer functions {names.ANSWER_TIMEOUT_SECONDS} seconds, "
         f"router {names.ROUTER_TIMEOUT_SECONDS} seconds, "
-        f"judge {names.JUDGE_TIMEOUT_SECONDS} seconds"
+        f"judge {names.JUDGE_TIMEOUT_SECONDS} seconds, "
+        f"`{names.INVOKER_FUNCTION}` {names.INVOKER_TIMEOUT_SECONDS} seconds, "
+        f"`{names.FLAGSMITH_ADMIN_FUNCTION}` {names.FLAGSMITH_ADMIN_TIMEOUT_SECONDS} seconds"
     )
+
+
+def test_agent_client_setting_matches_design():
+    prose = re.sub(r"\s+", " ", section(7))
+    attempts = {1: "one"}[names.AGENT_CLIENT_MAX_ATTEMPTS]
+    assert (
+        f"read timeout {names.AGENT_CLIENT_READ_TIMEOUT_SECONDS} seconds and {attempts} attempt "
+        f"(`total_max_attempts` {names.AGENT_CLIENT_MAX_ATTEMPTS})" in prose
+    )
+    assert names.AGENT_CLIENT_READ_TIMEOUT_SECONDS < names.INVOKER_TIMEOUT_SECONDS
+    assert f"with `STUB={names.INVOKER_STUB_ON}` it only logs the payload and never reads" in prose
 
 
 def test_run_item_attributes_match_design():
@@ -620,8 +642,9 @@ def test_run_id_uses_utc():
 
 
 def test_scratch_word_must_be_letters():
-    with pytest.raises(ValueError):
-        names.scratch_run_id("spike1", FIXED)
+    for bad in ("spike1", ""):
+        with pytest.raises(ValueError):
+            names.scratch_run_id(bad, FIXED)
 
 
 def test_templates():
@@ -663,6 +686,13 @@ def test_definitions_are_consistent():
     assert set(names.METRIC_DEFINITIONS) == set(names.METRICS)
     assert {d["event"] for d in names.METRIC_DEFINITIONS.values()} == set(names.EVENTS)
     assert names.METRIC_AGGREGATION in names.METRIC_AGGREGATIONS_AVAILABLE
+    assert tuple(names.EXPERIMENT_EXPECTED_DIRECTIONS) == names.METRICS
+    expected = {
+        names.METRIC_DIRECTION_HIGHER: names.EXPECTED_DIRECTION_NOT_DECREASE,
+        names.METRIC_DIRECTION_LOWER: names.EXPECTED_DIRECTION_NOT_INCREASE,
+    }
+    for metric, definition in names.METRIC_DEFINITIONS.items():
+        assert names.EXPERIMENT_EXPECTED_DIRECTIONS[metric] == expected[definition["direction"]]
     assert set(names.PERMANENT_FEATURE_DEFINITIONS) == set(names.PERMANENT_FEATURES)
     assert names.DEFAULT_MODEL_DEFAULT in names.DEFAULT_MODEL_VALUES
     assert set(names.MODEL_BY_VARIANT) == set(names.VARIANTS)
@@ -711,9 +741,11 @@ def design_payloads() -> list[dict]:
     out = []
     for line in section(7, keep_fences=True).splitlines():
         if line.startswith('{"action"'):
-            if "<id or omitted for the active run>" in line:
-                out.append({"action": "status", "run_id": "r202611271530"})
-                out.append({"action": "status"})
+            optional_id = "<id or omitted for the active run>"
+            if optional_id in line:
+                parsed = json.loads(line.replace(optional_id, fills["<id>"]))
+                out.append(parsed)
+                out.append({k: v for k, v in parsed.items() if k != "run_id"})
                 continue
             for k, v in fills.items():
                 line = line.replace(k, v)
@@ -929,6 +961,8 @@ def test_run_items_validate():
         {"created_at": "2026-11-27T15:30:05+0000"},
         {"created_at": "2026-11-27T15:30:05Z"},
         {"created_at": "2026-11-27T15:30:05.123456+00:00"},
+        {"updated_at": "2026-11-27T15:30:05.123Z"},
+        {"updated_at": "2026-11-27T15:30:05.5Z"},
         {"history": []},
         {
             "history": [
@@ -1110,9 +1144,10 @@ def test_alarm_at_rejects_impossible_or_offsetless_times(at):
 
 def test_every_fenced_block_and_multi_line_span_has_a_check():
     """A new fenced block or multi-line span in design.md needs its own check."""
-    fenced = {n: len(fenced_blocks(n)) for n in range(2, 12) if fenced_blocks(n)}
+    every = sections(keep_fences=True)
+    fenced = {n: len(fenced_blocks(n)) for n in every if fenced_blocks(n)}
     assert fenced == {5: 1, 7: 1}
-    starts = sorted(s.split(None, 1)[0] for n in range(2, 12) for s in multi_line_spans(section(n)))
+    starts = sorted(s.split(None, 1)[0] for n in every for s in multi_line_spans(section(n)))
     assert starts == sorted(["{run_id,", '{"run_id":', '{"ready":', "V"])
 
 
@@ -1138,8 +1173,9 @@ def test_rule_constants_match_their_design_sentences():
     kwargs = ", ".join(f"`{k}={v}`" for k, v in names.FLAGSMITH_CLIENT_OPTIONS.items())
     assert f"remote evaluation, {kwargs}" in prose
     definitions = "; ".join(
-        f"`{metric}` = {d['aggregation']} of `{d['event']}`"
-        + (" (primary)" if metric == names.PRIMARY_METRIC else "")
+        f"`{metric}` = {d['aggregation']} of `{d['event']}` ("
+        + ("primary, " if metric == names.PRIMARY_METRIC else "")
+        + f"{d['direction']})"
         for metric, d in names.METRIC_DEFINITIONS.items()
     )
     assert definitions in prose
@@ -1354,6 +1390,115 @@ def test_list_constants_match_their_design_lists():
     assert tuple(re.findall(r'"(\w+)"', alarm)) == names.ALARM_STATES
 
 
+# ---------------------------------------------------------------------------
+# The spike decisions from the 1.1 gate (contract change a)
+# ---------------------------------------------------------------------------
+def test_agentcore_cli_matches_design():
+    major = names.AGENTCORE_CLI_MIN_VERSION.split(".")[0]
+    assert (
+        f"| AgentCore CLI | npm package `{names.AGENTCORE_CLI_PACKAGE}`, command "
+        f"`{names.AGENTCORE_CLI_COMMAND}`, version {names.AGENTCORE_CLI_MIN_VERSION} or later "
+        f"within {major}.x." in DESIGN
+    )
+    minor = names.AGENTCORE_CLI_MIN_VERSION.split(".")[1]
+    assert names.AGENTCORE_CLI_MIN_VERSION.split(".")[2] == "0"  # preflight checks major.minor
+    preflight = (ROOT / "scripts/preflight.sh").read_text()
+    assert f'AGENTCORE_CLI_MAJOR="{major}"' in preflight
+    assert f'AGENTCORE_CLI_MIN_MINOR="{minor}"' in preflight
+
+
+def test_spike_rules_match_design():
+    prose = re.sub(r"\s+", " ", DESIGN)
+    assert (
+        f"agent B applies and destroys `{names.SPIKE_INFRA_DIR}`, a separate root whose "
+        "local state is never committed" in prose
+    )
+    assert f"Every resource name starts with `{names.SPIKE_RESOURCE_PREFIX}`." in prose
+    assert names.SPIKE_RESOURCE_PREFIX.startswith(names.RESOURCE_PREFIX)
+    assert names.SPIKE_INFRA_DIR.startswith(names.INFRA_DIR)
+    assert (
+        f"every name created in Flagsmith starts with `{names.SPIKE_NAME_PREFIX}`: features, "
+        "metrics and events" in prose
+    )
+    key = names.experiment_feature_key(names.scratch_run_id("spike", FIXED))
+    assert key == "assistant_model_rspike1530"
+    assert f"`{key.removesuffix('1530')}<HHMM>`" in prose
+    for name in (*names.FEATURE_KEYS, *names.METRICS, *names.EVENTS):
+        assert not name.startswith(names.SPIKE_NAME_PREFIX), name
+
+
+def test_experiment_rollout_and_directions_match_design():
+    rows = {r[0]: r[1] for r in table_rows(section(4), "| Thing | Name or value |")}
+    assert rows["Experiment rollout"] == (
+        f"{names.EXPERIMENT_ROLLOUT_PERCENT} percent of identities, set when the experiment "
+        "is created; a wrong one is fixed by hand on the experiment page"
+    )
+    prose = re.sub(r"\s+", " ", DESIGN)  # section 13's copies of the same values
+    assert f"50/50, rollout {names.EXPERIMENT_ROLLOUT_PERCENT} percent" in prose
+    assert f"the option's {names.TREATMENT_PERCENT} percent allocation" in prose
+    keys = list(names.METRIC_DEFINITIONS[names.PRIMARY_METRIC])
+    assert f"definition on {', '.join(keys[:-1])} and {keys[-1]}." in prose
+    assert "permanent feature is checked on type only" in prose
+    assert set(next(iter(names.PERMANENT_FEATURE_DEFINITIONS.values()))) == {"type", "default"}
+    values = listed(names.DEFAULT_MODEL_VALUES, "or")
+    assert f"default-model feature holds a string value, {values}." in prose
+    expected = "; ".join(f"`{m}`: {d}" for m, d in names.EXPERIMENT_EXPECTED_DIRECTIONS.items())
+    assert rows["Expected direction per experiment metric"] == expected
+
+
+def test_agentcore_pieces_match_design():
+    rows = table_rows(section(7), "| Piece | Name | Notes |")
+    pieces = {piece: ticks(name)[0] for piece, name, _ in rows}
+    notes = {piece: note for piece, _, note in rows}
+    assert pieces == {
+        "Runtime": names.AGENT_RUNTIME_NAME,
+        "Gateway": names.GATEWAY_NAME,
+        "Gateway service role": names.GATEWAY_ROLE,
+        "Credential provider": names.GATEWAY_CREDENTIAL_PROVIDER,
+        "MCP server target": names.GATEWAY_TARGET_FLAGSMITH,
+        "Lambda target": names.GATEWAY_TARGET_FLAGSMITH_ADMIN,
+    }
+    assert names.GATEWAY_TARGETS == (pieces["MCP server target"], pieces["Lambda target"])
+    gateway = notes["Gateway"]
+    assert (
+        f"Protocol `{names.GATEWAY_PROTOCOL}`, inbound auth `{names.GATEWAY_INBOUND_AUTH}`"
+        in gateway
+    )
+    assert f"SigV4 through `{names.GATEWAY_SIGV4_PROXY_PACKAGE}`" in gateway
+    assert f"`{names.GATEWAY_INVOKE_ACTION}` on the Gateway" in gateway
+    assert f"from `{names.SECRET_FLAGSMITH_API_KEY}`" in notes["Credential provider"]
+    assert notes["MCP server target"] == (
+        f"`{names.FLAGSMITH_MCP_URL}`, API-key outbound auth, header "
+        f"`{names.GATEWAY_API_KEY_HEADER}`, prefix `{names.GATEWAY_API_KEY_PREFIX}`"
+    )
+    assert notes["Lambda target"].startswith(f"Lambda `{names.FLAGSMITH_ADMIN_FUNCTION}`")
+    assert names.FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE == (
+        f"{names.GATEWAY_API_KEY_HEADER}: {names.GATEWAY_API_KEY_PREFIX}<key>"
+    )
+    assert f"its ARN and `{names.AGENT_RUNTIME_ARN_PARAMETER}` never change" in notes["Runtime"]
+    roles = re.sub(r"\s+", " ", section(7))
+    assert f"except the Gateway service role: it is always `{names.GATEWAY_ROLE}`" in roles
+    prose = re.sub(r"\s+", " ", section(7))
+    assert f"`{names.GATEWAY_SETUP_SCRIPT}` gets or creates each one by name" in prose
+
+
+def test_flagsmith_key_readers_match_design():
+    rows = table_rows(section(8), "| Name | Holds | Read by |")
+    assert ticks(rows[0][2]) == [
+        names.FLAGSMITH_ADMIN_FUNCTION,
+        names.GATEWAY_SETUP_SCRIPT,
+        names.BOOTSTRAP_FLAGSMITH_SCRIPT,
+        names.SEED_EXPERIMENT_SCRIPT,
+        names.RESET_SCRIPT,
+        names.INJECT_FAULT_SCRIPT,
+    ]
+    assert ticks(rows[1][2]) == [
+        names.ROUTER_FUNCTION,
+        names.JUDGE_FUNCTION,
+        names.ANSWER_CHEAPER_FUNCTION,
+    ]
+
+
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
@@ -1383,6 +1528,8 @@ TIED_BY = {
     "ALARM_NOOP_STATES": test_rule_constants_match_their_design_sentences,
     "CLI_ACTIONS": test_rule_constants_match_their_design_sentences,
     "METRICS": test_definitions_are_consistent,
+    "EXPERIMENT_EXPECTED_DIRECTIONS": test_experiment_rollout_and_directions_match_design,
+    "GATEWAY_TARGETS": test_agentcore_pieces_match_design,
     "FEATURE_KEYS": test_feature_keys_match_design,
     "JUDGE_PAYLOAD_FIELDS": test_judge_payload_fields_match_design,
     "CW_DIMENSION_SETS": test_cloudwatch_metrics_match_design,
@@ -1454,6 +1601,7 @@ def test_required_lists_are_pinned():
     assert run["properties"]["incident"]["required"] == ["started_at", "alarm_name"]
     assert run["$defs"]["history_entry"]["required"] == list(names.HISTORY_FIELDS)
     invoke = contracts.load_schema("invoke")
+    status_keys = set(next(p for p in design_payloads() if p["action"] == names.ACTION_STATUS))
     for payload in design_payloads():
         action = payload["action"]
         branch = next(
@@ -1468,7 +1616,7 @@ def test_required_lists_are_pinned():
             )
             optional = "omitted" in status_line  # "<id or omitted for the active run>"
             assert branch["required"] == (["action"] if optional else ["action", "run_id"])
-            assert set(branch["properties"]) == {"action", "run_id"}
+            assert set(branch["properties"]) == status_keys
         else:
             assert branch["required"] == list(payload), action
             assert set(branch["properties"]) == set(payload), action
@@ -1571,7 +1719,10 @@ def schema_types(node: dict, root: dict) -> set[str]:
 def design_field_types(span: str) -> dict[str, set[str]]:
     flat = re.sub(r"\s+", " ", span)
     pairs = re.findall(r'"(\w+)": (.*?)(?=, "\w+":|\}\s*$|\}\}$)', flat)
-    return {field: declared_types(kind) for field, kind in pairs}
+    out: dict[str, set[str]] = {}
+    for field, kind in pairs:
+        out.setdefault(field, declared_types(kind))  # keep the first: the top-level field
+    return out
 
 
 def test_field_types_match_design():
@@ -1589,6 +1740,13 @@ def test_field_types_match_design():
         declared = design_field_types(span)
         for field in fields:
             assert declared[field] == schema_types(props[field], schema), field
+    flat = re.sub(r"\s+", " ", response_span)
+    error_span = re.search(r'"error": null \| (\{.*?\})\}$', flat).group(1)
+    error_props = resp["properties"]["error"]["oneOf"][1]["properties"]
+    declared = design_field_types(error_span)
+    assert set(declared) == set(names.ERROR_FIELDS)
+    for field in names.ERROR_FIELDS:
+        assert declared[field] == schema_types(error_props[field], resp), field
 
 
 def test_helpers_reject_bad_input():
@@ -1700,5 +1858,112 @@ def test_dynamo_helpers_convert_every_level():
         }
     )
     assert back == {"a": [0.1, {"b": [0.3, 2]}], "c": 3, "g": 1, "s": {4}}
+    assert all(type(v) is int for v in back["s"])  # Decimal("4") == 4, so check the type
     assert type(back["a"][0]) is float and type(back["a"][1]["b"][0]) is float
     assert type(back["a"][1]["b"][1]) is int and type(back["g"]) is int  # whole numbers are int
+
+
+# ---------------------------------------------------------------------------
+# Test gaps the 1.1 review panel found (each one survived a mutation)
+# ---------------------------------------------------------------------------
+def test_plan_schema_pins_every_injected_value():
+    """Every plan field but the model's prose is a const equal to the value built from names."""
+
+    def consts(node, path):
+        out = {}
+        for key, child in node["properties"].items():
+            if key in ("hypothesis", "summary"):
+                continue
+            if "const" in child:
+                out[key] = child["const"]
+            else:
+                assert child.get("type") == "object", f"{path}.{key}: neither a const nor an object"
+                out[key] = consts(child, f"{path}.{key}")
+        return out
+
+    expected = {k: v for k, v in plan().items() if k not in ("hypothesis", "summary")}
+    assert consts(contracts.load_schema("plan"), "plan") == expected
+
+
+def test_every_at_field_is_the_one_stored_form():
+    run = contracts.load_schema("run_item")
+    utc = {"$ref": "#/$defs/utc"}
+    top = [k for k in names.RUN_ITEM_ATTRIBUTES if k.endswith("_at")]
+    assert top == ["pending_at", "last_refresh_at", "first_running_at", "created_at", "updated_at"]
+    for key in top:
+        assert run["properties"][key] == utc, key
+    for key in ("started_at", "cleared_at"):
+        assert run["properties"]["incident"]["properties"][key] == utc, key
+    assert run["$defs"]["history_entry"]["properties"]["at"] == utc
+
+
+def test_both_variations_use_the_variation_shape():
+    props = contracts.load_schema("results")["properties"]["variations"]["properties"]
+    assert props == {v: {"$ref": "#/$defs/variation"} for v in names.VARIANTS}
+
+
+def test_every_node_with_properties_is_a_closed_object():
+    """Keyed on properties or required, not on a type line that a loosening edit can delete."""
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            exempt = path.endswith((".if", ".then")) or path.rsplit(".", 1)[-1] in (
+                "history_first",  # allOf of the closed history_entry
+                "history_later",
+            )
+            if ("properties" in node or "required" in node) and not exempt:
+                assert node.get("type") == "object", path
+                assert node.get("additionalProperties") is False, path
+            for key, child in node.items():
+                walk(child, f"{path}.{key}")
+        elif isinstance(node, list):
+            for i, child in enumerate(node):
+                walk(child, f"{path}[{i}]")
+
+    for name in names.SCHEMA_NAMES:
+        walk(contracts.load_schema(name), name)
+
+
+GOOD_VARIATION = {
+    "identities": 75,
+    "helpful_rate": 0.9,
+    "mean_latency_ms": 4200.5,
+    "mean_cost_micro_usd": 8100.0,
+}
+
+
+@pytest.mark.parametrize(
+    "schema, instance",
+    [
+        ("run_item", lambda: run_item(metric_ids={"helpful_rate": "7"})),
+        ("run_item", lambda: run_item(metric_ids={"helpful_rate": -1})),
+        ("run_item", lambda: run_item(experiment_id=-1)),
+        ("run_item", lambda: run_item(prompt="")),
+        ("plan", lambda: plan(summary="")),
+        ("results", lambda: results(prob_cheaper_not_worse=-0.2)),
+        (
+            "results",
+            lambda: results(
+                variations={
+                    "current": GOOD_VARIATION,
+                    "cheaper": {**GOOD_VARIATION, "identities": -3},
+                }
+            ),
+        ),
+        (
+            "results",
+            lambda: results(
+                variations={
+                    "current": GOOD_VARIATION,
+                    "cheaper": {**GOOD_VARIATION, "mean_cost_micro_usd": -1.0},
+                }
+            ),
+        ),
+        ("judge_payload", lambda: judge_payload(input_tokens=180.5)),
+        ("judge_payload", lambda: judge_payload(output_tokens="95")),
+        ("judge_payload", lambda: judge_payload(latency_ms=-5)),
+        ("judge_payload", lambda: judge_payload(question="")),
+    ],
+)
+def test_schema_bounds_and_types_are_pinned(schema, instance):
+    invalid(schema, instance())
