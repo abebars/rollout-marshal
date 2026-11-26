@@ -563,7 +563,7 @@ def test_numbers_in_design_rules():
     prose = re.sub(r"\s+", " ", DESIGN)
     assert f"first {names.RESULTS_EMBARGO_SECONDS} seconds after" in prose
     assert f"older than {names.PENDING_STALE_SECONDS} seconds" in prose
-    assert f"at most once every {names.RESULTS_REFRESH_MIN_SECONDS // 60} minutes" in prose
+    assert f"at most once every {names.RESULTS_REFRESH_MIN_SECONDS / 60:g} minutes" in prose
     assert f"at least {names.MIN_IDENTITIES_PER_VARIATION} identities" in prose
     assert f"probe is {names.PROBE_INVOKES} direct invokes" in prose
     assert f"at most {round(names.GUARDRAIL_MAX_LATENCY_RATIO * 100)} percent" in prose
@@ -1073,16 +1073,21 @@ def test_every_fenced_block_and_multi_line_span_has_a_check():
     assert starts == sorted(["{run_id,", '{"run_id":', '{"ready":', "V"])
 
 
+def listed(items, last: str) -> str:
+    """`a`, `b` or `c` (the whole tuple, so an added or dropped item fails)."""
+    quoted = [f"`{i}`" for i in items]
+    return f"{', '.join(quoted[:-1])} {last} {quoted[-1]}" if len(quoted) > 1 else quoted[0]
+
+
 def test_rule_constants_match_their_design_sentences():
     """Booleans, maps and rule sets the value checks cannot tie to a label."""
     prose = re.sub(r"\s+", " ", DESIGN)
     on_off = "enabled" if names.KILL_SWITCH_DEFAULT_ENABLED else "disabled"
     assert f"`{names.KILL_SWITCH_FEATURE}`, default {on_off}" in prose
     assert f"`{names.KILL_SWITCH_FEATURE}` (boolean kill switch, default {on_off})" in prose
-    assert (
-        f"`{names.DEFAULT_MODEL_FEATURE}` (string value, `{names.DEFAULT_MODEL_VALUES[0]}` or "
-        f"`{names.DEFAULT_MODEL_VALUES[1]}`, default `{names.DEFAULT_MODEL_DEFAULT}`)" in prose
-    )
+    values = listed(names.DEFAULT_MODEL_VALUES, "or")
+    default = names.DEFAULT_MODEL_DEFAULT
+    assert f"`{names.DEFAULT_MODEL_FEATURE}` (string value, {values}, default `{default}`)" in prose
     assert names.PERMANENT_FEATURE_DEFINITIONS == {
         names.KILL_SWITCH_FEATURE: {"type": "boolean", "default": True},
         names.DEFAULT_MODEL_FEATURE: {"type": "string", "default": names.VARIANT_CURRENT},
@@ -1104,13 +1109,9 @@ def test_rule_constants_match_their_design_sentences():
     assert names.GUARDRAIL_MAX_COST_RATIO == 1.0
     legal = " and ".join(f"`{s}`" for s in names.CHECK_LEGAL_STATES)
     assert f"**`check` is legal in {legal} only**" in prose
-    noop = names.ALARM_NOOP_STATES
-    assert f"**An alarm in `{noop[0]}`, `{noop[1]}` or `{noop[2]}` is a no-op.**" in prose
-    errs = names.ACTIONS_WITH_LEGALITY_ERRORS
-    assert (
-        f"Only `{errs[0]}`, `{errs[1]}`, `{errs[2]}` and `{errs[3]}` return an error when not "
-        "legal in the current state" in prose
-    )
+    assert f"**An alarm in {listed(names.ALARM_NOOP_STATES, 'or')} is a no-op.**" in prose
+    errs = listed(names.ACTIONS_WITH_LEGALITY_ERRORS, "and")
+    assert f"Only {errs} return an error when not legal in the current state" in prose
     cli = ", ".join(f"`{a}`" for a in names.CLI_ACTIONS)
     assert f"| `{names.CLI_NAME}` CLI (`cli/`) | {cli} |" in DESIGN
     models = {role: ticks(m)[0] for role, m, _ in table_rows(section(3), "| Role |")}
@@ -1133,7 +1134,7 @@ def test_rule_constants_match_their_design_sentences():
     )
     assert f"Free: {names.FLAGSMITH_MONTHLY_REQUEST_LIMIT:,} API requests a month" in prose
     assert f"| Timebox | {names.TASK_TIMEBOX_MINUTES} minutes per task" in DESIGN
-    assert f"Timebox: {names.FIS_TIMEBOX_MINUTES // 60} hours." in prose
+    assert f"Timebox: {names.FIS_TIMEBOX_MINUTES / 60:g} hours." in prose
     assert f"not working after {names.GATEWAY_FALLBACK_AFTER_MINUTES} minutes of task 1.3" in prose
     assert f"environment flags (cached {names.DEFAULT_MODEL_CACHE_SECONDS} seconds)" in prose
     assert f"The router caches the pointer for {names.POINTER_CACHE_SECONDS} seconds" in prose
@@ -1166,6 +1167,15 @@ def test_extra_keys_are_rejected_on_every_payload(payload):
 @pytest.mark.parametrize(
     "history",
     [
+        [
+            {
+                "at": "2026-11-27T15:30:05Z",
+                "from": None,
+                "to": "PLANNED",
+                "actor": "agent",
+                "reason": "start",
+            }
+        ],
         [
             {
                 "at": "2026-11-27T15:30:05Z",
@@ -1204,6 +1214,43 @@ def test_extra_keys_are_rejected_on_every_payload(payload):
 )
 def test_history_starts_with_the_start_transition_only(history):
     invalid("run_item", run_item(history=history))
+
+
+def test_history_first_entry_is_transitions_row_zero():
+    schema = contracts.load_schema("run_item")["$defs"]["history_first"]["properties"]
+    start = names.TRANSITIONS[0]
+    assert (schema["from"]["const"], schema["to"]["const"], schema["actor"]["const"]) == (
+        start.source,
+        start.target,
+        start.actor,
+    )
+
+
+def test_constants_holding_booleans_or_none_are_pinned():
+    """The value checks skip booleans and None, so the constants holding them are listed
+    here, and each is tied to design.md by its own test."""
+
+    def holds(value, kind):
+        if kind is None and value is None:
+            return True
+        if kind is bool and isinstance(value, bool):
+            return True
+        if isinstance(value, dict):
+            return any(holds(v, kind) for v in value.values())
+        if isinstance(value, list | tuple | set | frozenset):
+            return any(holds(v, kind) for v in value)
+        return False
+
+    public = {a: v for a, v in vars(names).items() if a.isupper() and not a.startswith("_")}
+    assert {a for a, v in public.items() if holds(v, bool)} == {
+        "KILL_SWITCH_DEFAULT_ENABLED",  # test_rule_constants_match_their_design_sentences
+        "FLAGSMITH_CLIENT_OPTIONS",  # same test: `enable_events=True`
+        "PERMANENT_FEATURE_DEFINITIONS",  # same test
+    }
+    assert {a for a, v in public.items() if holds(v, None)} == {
+        "TRANSITIONS",  # test_transitions_match_design: the "(none)" row
+        "LEGAL_TRANSITIONS",  # same test
+    }
 
 
 def test_history_with_later_transitions_validates():
