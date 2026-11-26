@@ -1,0 +1,46 @@
+[project]
+name = "rollout-marshal"
+version = "0.1.0"
+description = "An agent that runs a Bedrock model migration experiment end to end with Flagsmith, with a human approving each risky step."
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+# One group per workstream so parallel worktrees do not need to edit this
+# lead-owned file. Ask the lead to add a dependency.
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "jsonschema>=4.23",
+  "ruff>=0.8",
+  "boto3>=1.40",
+  "moto>=5.1",
+]
+app = [
+  "flagsmith>=6.6.0",
+]
+agent = [
+  "strands-agents",
+  "bedrock-agentcore",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev", "app", "agent"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "--import-mode=importlib -m 'not live'"
+markers = [
+  "live: calls deployed AWS or Flagsmith resources; run explicitly with: uv run pytest -m live",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# Ruff 0.17 also formats Python blocks inside Markdown. Keep it to .py files so
+# make lint and make fmt never touch design.md, docs/ or evidence/.
+extend-exclude = ["*.md"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

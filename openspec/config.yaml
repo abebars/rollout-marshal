@@ -1,0 +1,20 @@
+schema: spec-driven
+
+context: |
+  Rollout Marshal: an agent that runs a Bedrock model migration experiment
+  with Flagsmith, built for the Toggle Wars hackathon (Track 2).
+  Stack: Python 3.13, Strands Agents on Amazon Bedrock AgentCore Runtime,
+  AWS Lambda (arm64), Terraform, Flagsmith SaaS.
+  AWS account 818928662830, region us-east-1 only.
+  The contract for every shared name and value is
+  openspec/changes/build-rollout-marshal/design.md.
+
+rules:
+  tasks:
+    - One pull request per task, into dev
+    - Write the failing test before the code
+    - A task is done only when its Pass check is green and a goldfish reviewer approved it
+  specs:
+    - Use WHEN/THEN scenarios; each scenario maps to at least one test
+  design:
+    - Changes need a contract-change pull request and the human's approval
