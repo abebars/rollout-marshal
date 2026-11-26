@@ -135,6 +135,7 @@ NOOP_RESPONSE = {
 ERROR_RESPONSES = [
     agent_response(
         state=names.STATE_RUNNING,
+        pending=names.STATE_ROLLED_BACK,
         error={"code": names.ERROR_EFFECT_FAILED, "message": "SNS publish failed; pending kept."},
     ),
     agent_response(
@@ -528,6 +529,7 @@ def test_a_well_formed_response_with_an_error_does_not_raise(response, caplog):
         json.dumps(agent_response(message=None)).encode(),
         json.dumps(agent_response(run_id=202611271530)).encode(),
         json.dumps(agent_response(state=[names.STATE_RUNNING])).encode(),
+        json.dumps(agent_response(pending=5)).encode(),
     ],
     ids=[
         "empty",
@@ -543,6 +545,7 @@ def test_a_well_formed_response_with_an_error_does_not_raise(response, caplog):
         "message-null",
         "run-id-number",
         "state-list",
+        "pending-number",
     ],
 )
 def test_a_reply_that_is_not_a_response_raises(reply):
