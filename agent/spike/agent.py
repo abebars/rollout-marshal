@@ -64,7 +64,8 @@ API_EXPECTED_DIRECTION = {names.EXPECTED_DIRECTION_NOT_DECREASE: "not_decrease"}
 API_STATUS_COMPLETED = "completed"
 METRIC_DEFINITION_VERSION = 1
 
-# Ruling 1 at the 1.1 gate: effort low is approved for the agent's own calls.
+# Effort low for the agent's own calls: contract change b (PR #3, gate decision B12) names
+# it AGENT_THINKING_EFFORT; this local constant stands in until that lands in contracts.
 AGENT_THINKING_EFFORT = names.ANSWER_THINKING_EFFORT
 
 HELLO_SYSTEM_PROMPT = "You are rm_agent, a deployment check. Answer in one short sentence."
@@ -786,22 +787,29 @@ def gateway_tools() -> FlagsmithTools:
     return FlagsmithTools(client)
 
 
-def direct_tools() -> FlagsmithTools:
+def authorization_header(key: str) -> dict[str, str]:
+    """Flagsmith's API-key header, with exactly one space between the prefix and the key.
+
+    Task 1.3 found the prefix is stored trimmed and the space must be added, and 1.4 sets
+    GATEWAY_API_KEY_PREFIX to "Api-Key"; this is right with or without a trailing space.
+    """
+    return {names.GATEWAY_API_KEY_HEADER: f"{names.GATEWAY_API_KEY_PREFIX.strip()} {key}"}
+
+
+def direct_tools(secrets: Any = None) -> FlagsmithTools:
     """Design.md section 7's fallback: straight to the Flagsmith MCP server with the key.
 
     Used only when the payload asks for transport "direct", and only works once the
     runtime role may read the secret, which is granted only if the fallback is taken.
+    ``secrets`` is a Secrets Manager client, given by tests.
     """
-    import boto3
+    if secrets is None:
+        import boto3
 
-    secret = boto3.client("secretsmanager", region_name=names.REGION).get_secret_value(
-        SecretId=names.SECRET_FLAGSMITH_API_KEY
-    )
+        secrets = boto3.client("secretsmanager", region_name=names.REGION)
+    secret = secrets.get_secret_value(SecretId=names.SECRET_FLAGSMITH_API_KEY)
     key = secret["SecretString"]
-    client = MCPClient(
-        url=names.FLAGSMITH_MCP_URL,
-        headers={names.GATEWAY_API_KEY_HEADER: names.GATEWAY_API_KEY_PREFIX + key},
-    )
+    client = MCPClient(url=names.FLAGSMITH_MCP_URL, headers=authorization_header(key))
     tools = FlagsmithTools(client, prefix="")
     tools.redact.add(key)
     return tools

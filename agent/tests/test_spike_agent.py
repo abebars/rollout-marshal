@@ -780,6 +780,37 @@ def test_tools_lists_names_and_input_schemas():
     )
 
 
+@pytest.mark.parametrize("prefix", ["Api-Key ", "Api-Key"])
+def test_direct_transport_sends_the_key_after_exactly_one_space(monkeypatch, prefix):
+    # The real direct_tools(), with the secret read stubbed and MCPClient recorded.
+    import boto3
+    from botocore.stub import Stubber
+
+    fake_key = "fake-org-key-0123456789"
+    monkeypatch.setattr(spike.names, "GATEWAY_API_KEY_PREFIX", prefix)
+    made = []
+    monkeypatch.setattr(spike, "MCPClient", lambda **kwargs: made.append(kwargs) or object())
+    secrets = boto3.Session(
+        aws_access_key_id="testing", aws_secret_access_key="testing", region_name=names.REGION
+    ).client("secretsmanager")
+    stub = Stubber(secrets)
+    stub.add_response(
+        "get_secret_value",
+        {"SecretString": fake_key, "Name": names.SECRET_FLAGSMITH_API_KEY},
+        {"SecretId": names.SECRET_FLAGSMITH_API_KEY},
+    )
+    with stub:
+        tools = spike.direct_tools(secrets=secrets)
+    assert made == [
+        {
+            "url": names.FLAGSMITH_MCP_URL,
+            "headers": {names.GATEWAY_API_KEY_HEADER: "Api-Key " + fake_key},
+        }
+    ]
+    assert tools.prefix == ""
+    assert fake_key in tools.redact.secrets
+
+
 def test_the_module_never_names_an_end_experiment_tool_or_endpoint():
     source = open(spike.__file__).read()
     assert not re.search(r"(complete|end|stop|finish|conclude)_experiment", source)

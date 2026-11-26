@@ -238,6 +238,57 @@ def test_spike_metric_names_match_the_agents():
     )
 
 
+class _StubbedSession:
+    """Stands in for boto3.Session: real botocore clients, answered by Stubbers."""
+
+    def __init__(self, account=names.ACCOUNT_ID, secret=ORG_KEY):
+        import boto3
+        from botocore.stub import Stubber
+
+        real = boto3.Session(
+            aws_access_key_id="testing", aws_secret_access_key="testing", region_name=names.REGION
+        )
+        self.clients = {"sts": real.client("sts"), "secretsmanager": real.client("secretsmanager")}
+        self.stubs = {name: Stubber(client) for name, client in self.clients.items()}
+        self.stubs["sts"].add_response(
+            "get_caller_identity",
+            {"Account": account, "Arn": f"arn:aws:sts::{account}:assumed-role/x/y", "UserId": "u"},
+            {},
+        )
+        if account == names.ACCOUNT_ID:
+            self.stubs["secretsmanager"].add_response(
+                "get_secret_value",
+                {"SecretString": secret, "Name": names.SECRET_FLAGSMITH_API_KEY},
+                {"SecretId": names.SECRET_FLAGSMITH_API_KEY},
+            )
+        for stub in self.stubs.values():
+            stub.activate()
+
+    def client(self, name):
+        return self.clients[name]
+
+
+@pytest.mark.parametrize("prefix", ["Api-Key ", "Api-Key"])
+def test_the_real_client_sends_the_key_after_exactly_one_space(monkeypatch, prefix):
+    # 1.3 found the prefix is stored trimmed and 1.4 sets it to "Api-Key", so the header
+    # must come out the same either way.
+    monkeypatch.setattr(admin_api.names, "GATEWAY_API_KEY_PREFIX", prefix)
+    session = _StubbedSession()
+    client, key = admin_api._client(session)
+    assert client.headers[names.GATEWAY_API_KEY_HEADER] == "Api-Key " + ORG_KEY
+    assert key == ORG_KEY
+    for stub in session.stubs.values():
+        stub.assert_no_pending_responses()
+
+
+def test_the_real_client_refuses_another_account_before_reading_the_secret():
+    session = _StubbedSession(account="111122223333")
+    with pytest.raises(admin_api.Refused, match=names.ACCOUNT_ID):
+        admin_api._client(session)
+    for stub in session.stubs.values():
+        stub.assert_no_pending_responses()
+
+
 def test_json_bodies_are_printed_redacted():
     recorder, lines = Recorder(), []
     _api(recorder, lines).status(EXPERIMENT_ID)

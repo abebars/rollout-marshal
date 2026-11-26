@@ -249,10 +249,20 @@ def swagger(word: str | None, out: Callable[[str], None] = print) -> None:
             out(f"{','.join(sorted(m.upper() for m in item if m != 'parameters'))} {path}")
 
 
-def _client() -> tuple[httpx.Client, str]:
-    import boto3
+def authorization_header(key: str) -> dict[str, str]:
+    """Flagsmith's API-key header, with exactly one space between the prefix and the key.
 
-    session = boto3.Session(region_name=names.REGION)
+    Task 1.3 found the prefix is stored trimmed and the space must be added, and 1.4 sets
+    GATEWAY_API_KEY_PREFIX to "Api-Key"; this is right with or without a trailing space.
+    """
+    return {names.GATEWAY_API_KEY_HEADER: f"{names.GATEWAY_API_KEY_PREFIX.strip()} {key}"}
+
+
+def _client(session: Any = None) -> tuple[httpx.Client, str]:
+    if session is None:
+        import boto3
+
+        session = boto3.Session(region_name=names.REGION)
     account = session.client("sts").get_caller_identity()["Account"]
     if account != names.ACCOUNT_ID:
         raise Refused(f"caller account is {account}; this script runs only in {names.ACCOUNT_ID}")
@@ -261,9 +271,7 @@ def _client() -> tuple[httpx.Client, str]:
     )
     key = usable_key(secret.get("SecretString"))
     client = httpx.Client(
-        base_url=API_BASE_URL,
-        headers={names.GATEWAY_API_KEY_HEADER: names.GATEWAY_API_KEY_PREFIX + key},
-        timeout=TIMEOUT_SECONDS,
+        base_url=API_BASE_URL, headers=authorization_header(key), timeout=TIMEOUT_SECONDS
     )
     return client, key
 
