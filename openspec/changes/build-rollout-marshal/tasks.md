@@ -326,7 +326,7 @@ their tasks name, not against each other.
     section 3.
   - Pass: `pytest agent/tests/test_planner.py` green.
 
-- [ ] 2.4 **AWS tools: signals, probe, schedule, notify, report**
+- [x] 2.4 **AWS tools: signals, probe, schedule, notify, report**
   - Needs: 1.1. Files: `agent/runtime/rm_agent/tools/{signals,probe,
     schedule,notify,report}.py`, tests in `agent/tests/`.
   - Produces: `alarm_state(name) -> "OK" | "ALARM" | "INSUFFICIENT_DATA"`
