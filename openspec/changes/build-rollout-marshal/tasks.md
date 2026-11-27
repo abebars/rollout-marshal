@@ -416,11 +416,15 @@ their tasks name, not against each other.
     `last_refresh_at` through a conditional update. 2.5 adds that helper
     to `agent/runtime/rm_agent/state.py`, beside 2.1's writes, since no
     commit carries it then.
+  - `approve` carries `awaiting` (design.md section 7, contract change c5):
+    the handler refuses a mismatch with `ILLEGAL_IN_STATE`, its messages name
+    `marshal approve <run_id> <awaiting>`, and the CLI sends the value as its
+    second argument (a 2.6 follow-up in this task's pull request).
   - Pass: `pytest agent/tests/test_handlers.py agent/tests/test_state.py` green.
 
 - [x] 2.6 **CLI**
   - Needs: 1.1. Files: `cli/marshal.py`, `cli/tests/test_cli.py`.
-  - Produces: `marshal start "<prompt>"`, `approve <run_id>`,
+  - Produces: `marshal start "<prompt>"`, `approve <run_id> <awaiting>`,
     `decline <run_id>`, `status [run_id]`, `check <run_id>`; one payload
     per call, a new session ID each time, through the `InvokeAgentRuntime`
     client setting shared with `rm-invoker` (read timeout 290 seconds, one

@@ -545,7 +545,10 @@ How a transition is applied (guard, claim, effect, commit):
 If an effect throws, the invocation releases its own claim, moving
 `pending_at` back by 360 seconds on condition the claim is still its own,
 and returns `EFFECT_FAILED`. Its message names the failed effect, the
-command `marshal check <run_id>`, and when that will act. The release
+command `marshal check <run_id>`, and when that will act (for a `PLANNED`
+run with no pointer, which `check` may not act on:
+`marshal decline <run_id>`, or, with a launch pending on it, start a new
+one). The release
 retries once on a transaction conflict while the claim is still its own.
 Any later `tick`, `check` or repeat of the same action that finds
 `pending` older than 360 seconds resumes from step 2 for that same target
@@ -637,13 +640,22 @@ which is longer than the 33 character minimum). Payload schema
 
 ```json
 {"action": "start", "prompt": "<text>", "actor": "engineer"}
-{"action": "approve", "run_id": "<id>", "actor": "engineer"}
+{"action": "approve", "run_id": "<id>", "awaiting": "<launch, resume or promotion>", "actor": "engineer"}
 {"action": "decline", "run_id": "<id>", "actor": "engineer"}
 {"action": "status", "run_id": "<id or omitted for the active run>"}
 {"action": "check", "run_id": "<id>", "actor": "engineer"}
 {"action": "alarm", "alarm_name": "rm-cheaper-latency-p95", "alarm_state": "ALARM", "at": "<ISO 8601>"}
 {"action": "tick"}
 ```
+
+`approve` names what it approves: `awaiting` is the value the run's last
+response gave, `launch`, `resume` or `promotion`. Legality includes it: an
+`approve` whose `awaiting` is not the one the run's state gives returns
+`ILLEGAL_IN_STATE`, naming what the run awaits, and changes nothing. So an
+alarm between the engineer's read and the approve cannot turn one approval
+into another (task 2.5's review). The CLI takes it as the second argument,
+`marshal approve <run_id> <awaiting>`, and every message that asks for an
+approval names the command with its value.
 
 Response (`contracts/schemas/response.json`):
 `{"run_id": str | null, "state": str | null, "message": str,
@@ -663,7 +675,8 @@ pending: an action the table does not allow from the run's state returns
   another invocation, or another transition is pending that it may not
   take over. The message names the pending target, its age and
   `marshal check <run_id>` (for a `PLANNED` run with no pointer: the run
-  was reset; start a new one).
+  was reset; `marshal decline <run_id>` ends it unless a launch is pending
+  on it; start a new one).
 - `UPSTREAM_FAILED`: a Bedrock, AWS or Flagsmith call failed before any
   claim, so nothing changed. After a claim, every effect failure, and a
   commit that fails other than by a lost race, is `EFFECT_FAILED`.
