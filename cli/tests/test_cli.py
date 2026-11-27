@@ -21,7 +21,15 @@ import botocore.endpoint
 import botocore.httpsession
 import pytest
 from botocore.awsrequest import AWSResponse
-from botocore.exceptions import ClientError, NoCredentialsError, ReadTimeoutError
+from botocore.exceptions import (
+    ClientError,
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    NoCredentialsError,
+    ReadTimeoutError,
+    ResponseStreamingError,
+)
 
 import contracts
 from cli import marshal
@@ -144,9 +152,17 @@ ENGINEER = names.ACTOR_ENGINEER
     "argv, payload",
     [
         (["start", PROMPT], {"action": names.ACTION_START, "prompt": PROMPT, "actor": ENGINEER}),
-        (
-            ["approve", RUN_ID],
-            {"action": names.ACTION_APPROVE, "run_id": RUN_ID, "actor": ENGINEER},
+        *(
+            (
+                ["approve", RUN_ID, awaiting],
+                {
+                    "action": names.ACTION_APPROVE,
+                    "run_id": RUN_ID,
+                    "awaiting": awaiting,
+                    "actor": ENGINEER,
+                },
+            )
+            for awaiting in names.AWAITING_VALUES
         ),
         (
             ["decline", RUN_ID],
@@ -156,7 +172,14 @@ ENGINEER = names.ACTOR_ENGINEER
         (["status", RUN_ID], {"action": names.ACTION_STATUS, "run_id": RUN_ID}),
         (["check", RUN_ID], {"action": names.ACTION_CHECK, "run_id": RUN_ID, "actor": ENGINEER}),
     ],
-    ids=["start", "approve", "decline", "status", "status-run", "check"],
+    ids=[
+        "start",
+        *(f"approve-{awaiting}" for awaiting in names.AWAITING_VALUES),
+        "decline",
+        "status",
+        "status-run",
+        "check",
+    ],
 )
 def test_each_command_sends_one_invoke_payload(argv, payload):
     ssm, runtime = FakeSsm(), FakeRuntime(response())
@@ -205,7 +228,7 @@ def test_main_makes_the_engineers_clients_when_none_are_passed(monkeypatch):
 @pytest.mark.parametrize("code", names.ERROR_CODES)
 def test_a_response_with_an_error_code_exits_1(code, capsys):
     reply = response(error={"code": code, "message": "Not now."})
-    assert marshal.main(["approve", RUN_ID], ssm=FakeSsm(), agent=FakeRuntime(reply)) == (
+    assert marshal.main(["approve", RUN_ID, "launch"], ssm=FakeSsm(), agent=FakeRuntime(reply)) == (
         names.CLI_EXIT_ERROR
     )
     assert f"{code}: Not now." in capsys.readouterr().out
@@ -224,8 +247,13 @@ def test_a_response_with_an_error_code_exits_1(code, capsys):
         ["start", " \n\t"],
         ["start", PROMPT, "extra"],
         ["approve"],
-        ["approve", "R202611271530"],
-        ["approve", "r123"],
+        ["approve", "R202611271530", "launch"],
+        ["approve", "r123", "launch"],
+        ["approve", RUN_ID],  # what it approves is required (contract change c5)
+        ["approve", RUN_ID, "bogus"],
+        ["approve", RUN_ID, "Launch"],
+        ["approve", RUN_ID, "launch", "extra"],
+        ["decline", RUN_ID, "launch"],
         ["decline", "not-a-run"],
         ["check"],
         ["check", RUN_ID, RUN_ID],
@@ -266,7 +294,7 @@ def test_it_prints_the_run_state_message_awaiting_pending_and_error(capsys):
         pending=names.STATE_PROMOTED,
         error={"code": names.ERROR_TRANSITION_PENDING, "message": "Another call holds it."},
     )
-    marshal.main(["approve", RUN_ID], ssm=FakeSsm(), agent=FakeRuntime(reply))
+    marshal.main(["approve", RUN_ID, "promotion"], ssm=FakeSsm(), agent=FakeRuntime(reply))
     assert capsys.readouterr().out.splitlines() == [
         f"run:      {RUN_ID}",
         "state:    RESULTS_READY",
@@ -402,9 +430,63 @@ def test_an_invoke_that_fails_exits_1(error, said, capsys):
     assert captured.out == "" and said in captured.err
 
 
+LOOK = f"look with `{names.CLI_NAME} {names.ACTION_STATUS} {RUN_ID}`"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "Not allowed."}},
+            "InvokeAgentRuntime",
+        ),
+        ConnectionClosedError(endpoint_url=ENDPOINT),
+        ResponseStreamingError(error="the stream broke"),
+        ReadTimeoutError(endpoint_url=ENDPOINT),
+    ],
+    ids=["client-error", "connection-closed", "response-streaming", "read-timeout"],
+)
+def test_a_failure_once_the_request_went_out_says_to_look_first(error, capsys):
+    argv = ["approve", RUN_ID, "promotion"]
+    assert marshal.main(argv, ssm=FakeSsm(), agent=FakeRuntime(error=error)) == 1
+    assert LOOK in capsys.readouterr().err
+
+
+def test_a_reply_that_is_not_a_response_says_to_look_first(capsys):
+    argv = ["approve", RUN_ID, "promotion"]
+    assert marshal.main(argv, ssm=FakeSsm(), agent=FakeRuntime(body=b"oops")) == 1
+    assert LOOK in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        EndpointConnectionError(endpoint_url=ENDPOINT),
+        ConnectTimeoutError(endpoint_url=ENDPOINT),
+        NoCredentialsError(),
+    ],
+    ids=["endpoint-connection", "connect-timeout", "no-credentials"],
+)
+def test_a_failure_before_the_request_went_out_gives_no_hint(error, capsys):
+    argv = ["approve", RUN_ID, "promotion"]
+    assert marshal.main(argv, ssm=FakeSsm(), agent=FakeRuntime(error=error)) == 1
+    err = capsys.readouterr().err
+    assert err and "look with" not in err
+
+
+def test_a_missing_profile_exits_1_cleanly(monkeypatch, capsys):
+    """The clients are made inside the try, so ProfileNotFound is a failure, not a
+    traceback."""
+    monkeypatch.setenv("AWS_PROFILE", "no-such-profile")
+    assert marshal.main(["status"]) == names.CLI_EXIT_ERROR
+    captured = capsys.readouterr()
+    assert captured.out == "" and "ProfileNotFound" in captured.err
+
+
 def test_a_read_timeout_says_the_action_may_have_run_and_how_to_look(capsys):
     timeout = ReadTimeoutError(endpoint_url=ENDPOINT)
-    assert marshal.main(["approve", RUN_ID], ssm=FakeSsm(), agent=FakeRuntime(error=timeout)) == 1
+    argv = ["approve", RUN_ID, "promotion"]
+    assert marshal.main(argv, ssm=FakeSsm(), agent=FakeRuntime(error=timeout)) == 1
     err = capsys.readouterr().err
     assert f"{names.AGENT_CLIENT_READ_TIMEOUT_SECONDS} s" in err
     assert f"{names.CLI_NAME} {names.ACTION_STATUS} {RUN_ID}" in err
@@ -481,11 +563,13 @@ def test_the_real_client_sends_the_payload_and_its_reply_is_read(signed, capsys)
             ENDPOINT, 200, {"Content-Type": "application/json"}, RawBody(json.dumps(reply).encode())
         ),
     )
-    assert marshal.main(["approve", RUN_ID], ssm=FakeSsm(), agent=client) == names.CLI_EXIT_OK
+    argv = ["approve", RUN_ID, names.AWAITS_RESUME]
+    assert marshal.main(argv, ssm=FakeSsm(), agent=client) == names.CLI_EXIT_OK
     (request,) = attempts
     assert json.loads(request.body) == {
         "action": names.ACTION_APPROVE,
         "run_id": RUN_ID,
+        "awaiting": names.AWAITS_RESUME,
         "actor": names.ACTOR_ENGINEER,
     }
     assert urllib.parse.quote(RUNTIME_ARN, safe="") in request.url
@@ -511,9 +595,10 @@ def test_the_real_client_makes_one_attempt(signed, answer, monkeypatch, capsys):
     monkeypatch.setenv("AWS_MAX_ATTEMPTS", "5")  # cannot add retries back
     client = marshal.new_agent_client()
     attempts = signed(client, answer)
-    assert marshal.main(["status"], ssm=FakeSsm(), agent=client) == names.CLI_EXIT_ERROR
+    assert marshal.main(["status", RUN_ID], ssm=FakeSsm(), agent=client) == names.CLI_EXIT_ERROR
     assert len(attempts) == 1
-    assert capsys.readouterr().out == ""
+    captured = capsys.readouterr()
+    assert captured.out == "" and LOOK in captured.err  # a 500 and a timeout both went out
 
 
 def test_the_cli_imports_nothing_from_signals():

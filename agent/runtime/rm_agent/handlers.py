@@ -105,6 +105,14 @@ def is_invoke_payload(payload: Any) -> bool:
             and isinstance(prompt, str)
             and len(prompt) >= 1
         )
+    if action == names.ACTION_APPROVE:  # approve names what it approves (contract change c5)
+        return (
+            keys == {"action", "run_id", "awaiting", "actor"}
+            and engineer
+            and _is_run_id(payload["run_id"])
+            and isinstance(payload["awaiting"], str)
+            and payload["awaiting"] in names.AWAITING_VALUES
+        )
     if action in _RUN_ACTIONS:
         return keys == {"action", "run_id", "actor"} and engineer and _is_run_id(payload["run_id"])
     if action == names.ACTION_STATUS:
@@ -732,6 +740,17 @@ def _engineer(payload: dict, tools: Tools) -> dict:
         return _response(
             run,
             f"{action} is not legal for run {run_id} in {run.state}",
+            names.ERROR_ILLEGAL_IN_STATE,
+        )
+    awaited = names.awaiting_for(run.state)
+    if action == names.ACTION_APPROVE and payload["awaiting"] != awaited:
+        # An approval of one thing never becomes another, such as an alarm between the
+        # engineer's read and the approve (design.md section 7, contract change c5).
+        return _response(
+            run,
+            f"run {run_id} is {run.state} and awaits {awaited}, not {payload['awaiting']}: "
+            f"nothing was changed. Read `marshal status {run_id}` first; "
+            f"{_approve_command(run_id, awaited)} approves the {awaited}.",
             names.ERROR_ILLEGAL_IN_STATE,
         )
     if action == names.ACTION_CHECK:

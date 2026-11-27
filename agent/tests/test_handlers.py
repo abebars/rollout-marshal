@@ -273,8 +273,17 @@ class World:
     def start(self) -> dict:
         return self.handle({"action": "start", "prompt": PROMPT, "actor": "engineer"})
 
-    def engineer(self, action: str, run_id: str = RUN_ID) -> dict:
-        return self.handle({"action": action, "run_id": run_id, "actor": "engineer"})
+    def engineer(self, action: str, run_id: str = RUN_ID, awaiting: str | None = None) -> dict:
+        payload = {"action": action, "run_id": run_id, "actor": "engineer"}
+        if action == "approve":  # it names what it approves (contract change c5)
+            if awaiting is None:
+                try:
+                    current = state.load_run(run_id).state
+                except state.NotFound:
+                    current = None
+                awaiting = names.awaiting_for(current) or names.AWAITS_LAUNCH
+            payload["awaiting"] = awaiting
+        return self.handle(payload)
 
     def tick(self) -> dict:
         return self.handle({"action": "tick"})
@@ -1093,6 +1102,54 @@ def test_approve_in_results_ready_needs_the_experiment_ended(world, status):
 
 
 # ---------------------------------------------------------------------------
+# approve names what it approves (contract change c5)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source", [names.STATE_PLANNED, names.STATE_AWAITING_RESUME, names.STATE_RESULTS_READY]
+)
+def test_an_approve_for_what_the_run_does_not_await_is_illegal(world, source):
+    world.to(source)
+    before = world.run()
+    awaited = names.awaiting_for(source)
+    for wrong in [value for value in names.AWAITING_VALUES if value != awaited]:
+        response = world.engineer("approve", awaiting=wrong)
+        assert error_code(response) == names.ERROR_ILLEGAL_IN_STATE, wrong
+        message = response["error"]["message"]
+        assert f"awaits {awaited}" in message and "nothing was changed" in message
+        assert f"marshal approve {RUN_ID} {awaited}" in message
+    assert world.run() == before and world.log == []
+
+
+def test_approve_promotion_after_an_alarm_moved_the_run_to_awaiting_resume_is_illegal(world):
+    """The engineer read RESULTS_READY; an alarm and a tick moved the run on before the
+    approve arrived. The approval of a promotion never resumes the experiment."""
+    world.to(names.STATE_RESULTS_READY)
+    assert world.alarm_event()["state"] == names.STATE_ROLLED_BACK
+    world.clock.advance(1)
+    assert world.tick()["state"] == names.STATE_AWAITING_RESUME
+    world.log.clear()
+    before = world.run()
+    response = world.engineer("approve", awaiting=names.AWAITS_PROMOTION)
+    assert error_code(response) == names.ERROR_ILLEGAL_IN_STATE
+    assert f"awaits {names.AWAITS_RESUME}" in response["error"]["message"]
+    assert world.run() == before and world.log == []
+
+
+def test_every_request_for_an_approval_names_what_it_approves(world):
+    world.to(names.STATE_AWAITING_RESUME)
+    resume = f"marshal approve {RUN_ID} {names.AWAITS_RESUME}"
+    assert resume in world.status()["message"]
+    assert any(resume in p["Message"] for p in world.publishes())  # the resume request
+    world.engineer("approve")
+    world.clock.advance(EMBARGO + 1)  # results are read only after the embargo
+    assert world.tick()["state"] == names.STATE_RESULTS_READY
+    promotion = f"marshal approve {RUN_ID} {names.AWAITS_PROMOTION}"
+    assert promotion in world.status()["message"]
+    world.flagsmith.status = names.EXPERIMENT_STATUS_PAUSED
+    assert promotion in world.engineer("approve")["error"]["message"]
+
+
+# ---------------------------------------------------------------------------
 # The hard rule: no launch, resume or promotion without the engineer's approve
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("action", ["tick", "check"])
@@ -1338,6 +1395,9 @@ def test_a_resumed_results_ready_reads_the_results_and_writes_the_prose_in_the_e
         {"action": "start", "prompt": PROMPT, "actor": "agent"},
         {"action": "approve", "run_id": "R1", "actor": "engineer"},
         {"action": "approve", "run_id": RUN_ID},
+        {"action": "approve", "run_id": RUN_ID, "actor": "engineer"},
+        {"action": "approve", "run_id": RUN_ID, "awaiting": "anything", "actor": "engineer"},
+        {"action": "decline", "run_id": RUN_ID, "awaiting": "launch", "actor": "engineer"},
         {"action": "status", "run_id": RUN_ID, "actor": "engineer"},
         {"action": "tick", "extra": 1},
         {
@@ -1367,7 +1427,13 @@ def test_the_payload_check_agrees_with_invoke_json():
     at = "2026-11-27T15:42:05.989+0000"
     payloads = [
         {"action": "start", "prompt": PROMPT, "actor": "engineer"},
+        {"action": "approve", "run_id": RUN_ID, "awaiting": "launch", "actor": "engineer"},
+        {"action": "approve", "run_id": RUN_ID, "awaiting": "resume", "actor": "engineer"},
+        {"action": "approve", "run_id": RUN_ID, "awaiting": "promotion", "actor": "engineer"},
         {"action": "approve", "run_id": RUN_ID, "actor": "engineer"},
+        {"action": "approve", "run_id": RUN_ID, "awaiting": "Launch", "actor": "engineer"},
+        {"action": "approve", "run_id": RUN_ID, "awaiting": None, "actor": "engineer"},
+        {"action": "check", "run_id": RUN_ID, "awaiting": "resume", "actor": "engineer"},
         {"action": "decline", "run_id": RUN_ID, "actor": "engineer"},
         {"action": "check", "run_id": RUN_ID, "actor": "engineer"},
         {"action": "status"},
