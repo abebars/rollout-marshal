@@ -1846,8 +1846,12 @@ PINNED_RULE_SENTENCES = (
     "metrics through the Admin API tool",
     "A variation's `identities` is the sum of its `new_identities` in the same response's "
     "exposures timeseries, not `n`",
-    "except for the credential provider and the `flagsmith` target, which CLI 1.3.0 cannot create "
-    "with API-key auth",
+    "the credential provider, because the CLI either stores the key in its local env file or takes "
+    "it from a JSON-keyed secret, and `rm/flagsmith/api-key` holds a bare string; and the "
+    "`flagsmith` target, which CLI 1.3.0 cannot create with API-key auth",
+    "Results are read through the Admin API tool; MCP's results read returned nothing before a "
+    "refresh",
+    "that the Gateway adds the space is inferred, not observed",
     "**One run at a time.** `start` is refused while the pointer exists, that is, while a run is "
     "active.",
 )
@@ -1871,6 +1875,7 @@ def test_other_files_repeat_the_rules():
         f"`{names.CW_DIMENSION_VARIANT}={names.VARIANT_CHEAPER}`" in claude
     )
     assert "An empty result means unknown, not zero" in claude
+    assert "ask the human to read the Usage page after each load" in claude
     spec = re.sub(
         r"\s+",
         " ",
@@ -1880,6 +1885,10 @@ def test_other_files_repeat_the_rules():
     )
     assert (
         "a second `alarm` action arrives while the run is `ROLLED_BACK` or `AWAITING_RESUME`"
+        in spec
+    )
+    assert (
+        "and SHALL create the metrics and start the experiment through the Flagsmith Admin API"
         in spec
     )
     assert set(names.ALARM_NOOP_STATES) == {names.STATE_ROLLED_BACK, names.STATE_AWAITING_RESUME}
@@ -1893,7 +1902,13 @@ def test_other_files_repeat_the_rules():
     assert "`notify(run_id, subject, body, dedupe_key) -> message_id`" in tasks
     deployed = names.AGENT_RUNTIME_DEPLOYED_NAME
     assert f"The deployed runtime is `{deployed}`" in tasks
-    assert f"runtime/{deployed}-*" in tasks
+    assert (
+        f"arn:aws:bedrock-agentcore:{names.REGION}:{names.ACCOUNT_ID}:runtime/{deployed}-*" in tasks
+    )
+    assert (
+        "The agent creates the flag and experiment through the Flagsmith MCP server, and the "
+        "metrics and the start through the Admin API." in tasks
+    )
     assert "`helpful_lift_ci_lower` from `ci_low`" in tasks
     assert f"maps the results' `{names.CONTROL_LABEL}` arm to `{names.VARIANT_CURRENT}`" in tasks
     for line in (

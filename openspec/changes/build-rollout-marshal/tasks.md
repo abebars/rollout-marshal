@@ -424,10 +424,13 @@ their tasks name, not against each other.
     payload's `assigned` is the flag's value, while the exposure sends
     `flag.variant` (`control` or `cheaper`), and only when the identity is
     in the experiment and `flag.variant` is set; every metric carries
-    exactly the `Variant` dimension set. A test with a slow fake events
-    API records how long the router then takes (the SDK retries a flush
-    for about 12 seconds or more, per 1.2's evidence); if it can pass 29
-    seconds, tell the lead, and a contract change sets the rule.
+    exactly the `Variant` dimension set. A test runs the real SDK against
+    a slow local events endpoint, as 1.2's
+    `app/spike/tests/test_sdk_events.py` does against its fake on
+    127.0.0.1, and records how long the flush takes (about 12 seconds or
+    more, per 1.2's evidence). If that flush plus the cheaper answer under
+    the 10-second fault can pass 29 seconds, tell the lead, and a contract
+    change sets the rule.
   - Pass: unit tests green.
 
 - [ ] 3.3 **Judge**
@@ -656,8 +659,8 @@ their tasks name, not against each other.
 ## Definition of done
 
 - [ ] One prompt produces a plan and waits for approval.
-- [ ] The agent creates the flag, metrics and experiment through the
-  Flagsmith MCP server and starts it through the Admin API.
+- [ ] The agent creates the flag and experiment through the Flagsmith MCP
+  server, and the metrics and the start through the Admin API.
 - [ ] An injected fault triggers an automatic rollback and an incident
   email.
 - [ ] Resume and promotion each wait for a human decision.

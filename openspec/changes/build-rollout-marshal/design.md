@@ -585,9 +585,11 @@ Agent tools:
 
 AgentCore pieces. `agent/scripts/setup_gateway.py` gets or creates each one
 by name, so it is safe to repeat; the CLI's gateway commands may be used
-instead under the same names, except for the credential provider and the
-`flagsmith` target, which CLI 1.3.0 cannot create with API-key auth (task
-1.3):
+instead under the same names, except for two pieces (task 1.3): the
+credential provider, because the CLI either stores the key in its local env
+file or takes it from a JSON-keyed secret, and `rm/flagsmith/api-key` holds
+a bare string; and the `flagsmith` target, which CLI 1.3.0 cannot create
+with API-key auth:
 
 | Piece | Name | Notes |
 | --- | --- | --- |
