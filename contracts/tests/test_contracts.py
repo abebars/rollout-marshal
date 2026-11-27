@@ -3300,6 +3300,13 @@ def test_contract_c4_fis_names_and_logging():
         "never DEBUG, because at DEBUG the Flagsmith SDK logs identifiers and botocore logs "
         "response bodies, the server key among them (tasks 3.2 and 3.3's reviews)." in sec5
     )
+    assert (
+        "the FIS extension layer (its arm64 ARN is published in SSM; the module pins "
+        f"`{names.FIS_EXTENSION_LAYER_ARN}`, task 4.3's read, and warns when SSM moves on, so no "
+        "new release changes the cheaper function alone mid-project)" in sec9
+    )
+    layer = names.FIS_EXTENSION_LAYER_ARN.split(":")
+    assert layer[3] == names.REGION and layer[6] == f"aws-fis-extension-{names.LAMBDA_ARCHITECTURE}"
     assert names.FIS_CONFIG_BUCKET.endswith(
         f"-{names.ACCOUNT_ID}"
     )  # as the account's other buckets

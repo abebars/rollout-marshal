@@ -711,6 +711,9 @@ FIS_SLOW_POLL_SECONDS = 10
 FIS_TIMEBOX_MINUTES = 120
 # Section 9's names (task 4.3, contract change c4). The configuration sits in the
 # bucket's FIS_CONFIG_PREFIX folder; the read policy goes on the cheaper function's role.
+# The extension layer is pinned (task 4.3's SSM read, PR #23's review); the module warns when
+# SSM's /aws/service/fis/lambda-extension/AWS-FIS-extension-arm64/1.x.x moves on.
+FIS_EXTENSION_LAYER_ARN = "arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441"
 FIS_CONFIG_BUCKET = "rm-fis-config-818928662830"
 FIS_CONFIG_PREFIX = "FisConfigs"  # the AWS FIS Lambda actions guide's example folder
 FIS_ROLE = "rm-fis-role"

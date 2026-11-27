@@ -257,6 +257,7 @@
   "FIS_CONFIG_READ_POLICY": "rm-fis-config-read",
   "FIS_DELAY_MS": 10000,
   "FIS_DURATION_MINUTES": 6,
+  "FIS_EXTENSION_LAYER_ARN": "arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441",
   "FIS_INVOCATION_PERCENTAGE": 100,
   "FIS_ROLE": "rm-fis-role",
   "FIS_ROLE_POLICY": "rm-fis-actions",

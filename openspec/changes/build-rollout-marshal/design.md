@@ -857,7 +857,10 @@ lead copies it into each worktree it creates.
 FIS experiment template `rm-delay-cheaper`: action
 `aws:lambda:invocation-add-delay` on `rm-answer-cheaper`, 100 percent of
 invocations, added delay 10000 ms, duration 6 minutes. The function needs
-the FIS extension layer (its arm64 ARN is published in SSM), the S3
+the FIS extension layer (its arm64 ARN is published in SSM; the module
+pins `arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441`,
+task 4.3's read, and warns when SSM moves on, so no new release changes
+the cheaper function alone mid-project), the S3
 configuration bucket, the IAM policies and the environment variables from
 the AWS FIS Lambda actions guide, with
 `AWS_FIS_SLOW_POLL_INTERVAL_SECONDS=10` so the fault starts quickly.
@@ -969,5 +972,5 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | Metric aggregation types available (occurrence, count, sum, mean) | 1.3 | verified |
 | Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the dashboard shows the level, 95 percent), `chance_to_win`; no "not worse" field |
 | An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); verified for usage, with a lag: `usage-data/total-count/` read 0 eleven to 25 minutes after 1.2's 150 identity requests (task 1.3) and 150 at 01:10Z the next day (`evidence/gate-1-review.md`), so a read lags by more than 25 minutes |
-| FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | open |
+| FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | verified: `invocationPercentage`, `startupDelayMilliseconds`, `duration` and target key `Functions` (`aws fis get-action`); layer `aws-fis-extension-arm64:441` from SSM (`evidence/4.3-fis.md`) |
 | Bedrock prices for the three models | 3.3 | verified: resolved from the pricing page's own price files, not seen displayed (`evidence/3.3-prices.md`) |
