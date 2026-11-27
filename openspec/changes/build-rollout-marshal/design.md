@@ -856,10 +856,13 @@ The runtime's role is the CLI stack's own: `AgentCore-rm-default` creates
 it with the Bedrock, logging and Gateway grants. Task 2.7's Terraform reads
 its ARN from the stack's export `AgentCore-rm-default-rm-agent-RoleArn` and
 attaches
-inline policy `rm-agent-runtime-tools`: read and write on `rm-runs`,
-publish to `rm-incidents`, get and put on the reports bucket, read alarms
-and metrics, invoke `rm-answer-cheaper` for the probe, and get and update
-`rm-tick` with pass-role on `rm-scheduler-role`.
+inline policy `rm-agent-runtime-tools`, each statement on its exact
+resource and only what the tools call (task 2.7): get, put, update and
+delete on `rm-runs`, which also authorise its transactions; publish to
+`rm-incidents`; put under the reports bucket's runs/ prefix; describe the
+alarm `rm-cheaper-latency-p95`; invoke `rm-answer-cheaper` for the probe;
+and get and update `rm-tick`, with pass-role on `rm-scheduler-role` to
+`scheduler.amazonaws.com` only.
 
 A target's name shapes the tool names the Gateway gives its tools, so these
 names never change: the Flagsmith tools appear as `flagsmith___<tool>`, all
