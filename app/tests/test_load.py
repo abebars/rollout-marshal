@@ -6,6 +6,12 @@ inside a temporary git repository with a second worktree. They take that reposit
 rm-load.lock, never this one's, which a real load or a test run in another worktree may
 hold.
 
+Every request is signed with SigV4 for execute-api (contract change c1). The credentials
+are dummies. For this process and the script's, the AWS environment is replaced: test
+keys, config and credentials files at /dev/null, instance metadata off. So no test can
+find or use real credentials. FakeApi keeps each request as it arrived, and the tests
+recompute its signature from those bytes by the algorithm AWS documents.
+
 Identities are <run_id>-user-001 to <run_id>-user-150, so every run's are new to Flagsmith
 (the lead's Gate 1 decision, contract change c). Until that change widens the identity
 pattern in contracts/schemas/answer_request.json, which still allows only user-001 to
@@ -15,6 +21,8 @@ rule, its identity against the run-identity spelling.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import importlib.util
 import json
 import os
@@ -33,6 +41,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
+from botocore.credentials import Credentials
 from jsonschema import Draft202012Validator
 
 from contracts import load_schema, names
@@ -48,6 +57,20 @@ REFUSAL_SECONDS = 10
 # Scratch run IDs (design.md section 4's pattern), only ever sent to FakeApi.
 RUN_ID = "rloadtest1200"
 OTHER_RUN_ID = "rloadtest1201"
+
+# Dummy credentials. Key and secret differ, so a signature made with the wrong one fails.
+ACCESS_KEY = "testing"
+SECRET_KEY = "testing-secret"
+SESSION_TOKEN = "testing-session-token"
+TEST_CREDENTIALS = Credentials(ACCESS_KEY, SECRET_KEY)
+DUMMY_KEYS = {"AWS_ACCESS_KEY_ID": ACCESS_KEY, "AWS_SECRET_ACCESS_KEY": SECRET_KEY}
+# Every other source in botocore's credential chain, pointed at nothing.
+NO_AWS_SOURCES = {
+    "AWS_CONFIG_FILE": os.devnull,
+    "AWS_SHARED_CREDENTIALS_FILE": os.devnull,
+    "AWS_EC2_METADATA_DISABLED": "true",
+    "BOTO_CONFIG": os.devnull,
+}
 
 
 def _import_load():
@@ -83,13 +106,29 @@ def _check_body(body: dict, run_id: str) -> None:
     assert _run_identity_spelling(run_id).fullmatch(body[load.IDENTITY_FIELD]), body
 
 
+def _is_aws_variable(name: str) -> bool:
+    return name.startswith("AWS_") or name == "BOTO_CONFIG"
+
+
+@pytest.fixture(autouse=True)
+def _hermetic(monkeypatch):
+    """No proxy for 127.0.0.1, and only the dummy AWS credentials anywhere."""
+    monkeypatch.setenv("NO_PROXY", LOOPBACK)
+    monkeypatch.setenv("no_proxy", LOOPBACK)
+    for name in [name for name in os.environ if _is_aws_variable(name)]:
+        monkeypatch.delenv(name)
+    for name, value in {**NO_AWS_SOURCES, **DUMMY_KEYS}.items():
+        monkeypatch.setenv(name, value)
+
+
 # ---------------------------------------------------------------------------
 # The fake assistant API
 # ---------------------------------------------------------------------------
 class Received(NamedTuple):
     method: str
     path: str
-    content_type: str | None
+    headers: dict[str, str]  # names in lower case
+    raw: bytes  # the body exactly as it arrived
     body: dict
 
 
@@ -154,8 +193,9 @@ class FakeApi:
 
             def do_POST(self) -> None:
                 length = int(self.headers.get("Content-Length", "0"))
-                body = json.loads(self.rfile.read(length))
-                received = Received(self.command, self.path, self.headers["Content-Type"], body)
+                raw = self.rfile.read(length)
+                headers = {name.lower(): value for name, value in self.headers.items()}
+                received = Received(self.command, self.path, headers, raw, json.loads(raw))
                 with fake._cond:
                     fake.received.append(received)
                     fake.in_flight += 1
@@ -174,7 +214,7 @@ class FakeApi:
                     with fake._cond:
                         fake.in_flight -= 1
                         fake._cond.notify_all()
-                status = fake.status_for(body)
+                status = fake.status_for(received.body)
                 data = json.dumps({"status": status}).encode()
                 try:
                     self.send_response(status)
@@ -188,18 +228,88 @@ class FakeApi:
         return Handler
 
 
-@pytest.fixture(autouse=True)
-def _no_proxy(monkeypatch):
-    """Requests to the fake go straight to 127.0.0.1, whatever proxy this machine sets."""
-    monkeypatch.setenv("NO_PROXY", LOOPBACK)
-    monkeypatch.setenv("no_proxy", LOOPBACK)
-
-
 @pytest.fixture
 def fake_api() -> Iterator[FakeApi]:
     fake = FakeApi().start()
     yield fake
     fake.stop()
+
+
+def _run(url: str, bodies: list[dict], **kwargs):
+    """run_load in this process, with the dummy credentials unless a test passes its own."""
+    kwargs.setdefault("credentials", TEST_CREDENTIALS)
+    return load.run_load(url, bodies, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# SigV4, recomputed from the request as the server received it
+# ---------------------------------------------------------------------------
+def _authorization(received: Received) -> dict[str, str]:
+    """Credential, SignedHeaders and Signature from an AWS4-HMAC-SHA256 Authorization header."""
+    algorithm, _, fields = received.headers["authorization"].partition(" ")
+    assert algorithm == "AWS4-HMAC-SHA256"
+    return dict(field.strip().split("=", 1) for field in fields.split(","))
+
+
+def _expected_signature(received: Received, secret_key: str, body: bytes | None = None) -> str:
+    """The SigV4 signature for the request as it arrived, by the algorithm in
+    docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv-create-signed-request.html:
+    a canonical request, a string to sign, a key derived from the secret, then HMAC-SHA256.
+    It uses no AWS library. body, when given, replaces the body that arrived.
+
+    The canonical query is the query's pairs sorted, which is right for FakeApi's URL: one
+    pair of unreserved characters.
+    """
+    authorization = _authorization(received)
+    scope = authorization["Credential"].split("/", 1)[1]  # YYYYMMDD/region/service/aws4_request
+    signed_headers = authorization["SignedHeaders"]
+    path, _, query = received.path.partition("?")
+    canonical_headers = "".join(
+        f"{name}:{' '.join(received.headers[name].split())}\n" for name in signed_headers.split(";")
+    )
+    payload = received.raw if body is None else body
+    canonical_request = "\n".join(
+        [
+            received.method,
+            path,
+            "&".join(sorted(query.split("&"))) if query else "",
+            canonical_headers,
+            signed_headers,
+            hashlib.sha256(payload).hexdigest(),
+        ]
+    )
+    string_to_sign = "\n".join(
+        [
+            "AWS4-HMAC-SHA256",
+            received.headers["x-amz-date"],
+            scope,
+            hashlib.sha256(canonical_request.encode()).hexdigest(),
+        ]
+    )
+    key = f"AWS4{secret_key}".encode()
+    for part in scope.split("/"):
+        key = hmac.new(key, part.encode(), hashlib.sha256).digest()
+    return hmac.new(key, string_to_sign.encode(), hashlib.sha256).hexdigest()
+
+
+def _check_signed(received: Received, token: str | None = None) -> None:
+    """Signed with SigV4 by the dummy credentials, for execute-api in the contract's region,
+    over the exact bytes that arrived."""
+    authorization = _authorization(received)
+    amz_date = received.headers["x-amz-date"]
+    assert re.fullmatch(r"\d{8}T\d{6}Z", amz_date)
+    assert authorization["Credential"] == (
+        f"{ACCESS_KEY}/{amz_date[:8]}/{names.REGION}/{load.API_SIGV4_SERVICE}/aws4_request"
+    )
+    signed = authorization["SignedHeaders"].split(";")
+    assert signed == sorted(signed)
+    assert {"content-type", "host", "x-amz-date"} <= set(signed)
+    if token is None:
+        assert "x-amz-security-token" not in received.headers
+    else:
+        assert received.headers["x-amz-security-token"] == token
+        assert "x-amz-security-token" in signed
+    assert authorization["Signature"] == _expected_signature(received, SECRET_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -229,15 +339,26 @@ GIT_SETTINGS = (
 )
 
 
-def _env(**extra: str) -> dict[str, str]:
+def _env(**extra: str | None) -> dict[str, str]:
     """The environment for git and for the script's copies.
 
-    No GIT_* variable passes, so no git command here can act on this repository, and
-    127.0.0.1 is never sent through a proxy.
+    No GIT_* variable passes, so no git command here can act on this repository. The AWS
+    environment is the dummy one, and 127.0.0.1 is never sent through a proxy. An extra
+    value of None removes that variable.
     """
-    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("GIT_") and not _is_aws_variable(key)
+    }
     env.update(NO_PROXY=LOOPBACK, no_proxy=LOOPBACK, PYTHONDONTWRITEBYTECODE="1")
-    env.update(extra)
+    env.update(NO_AWS_SOURCES)
+    env.update(DUMMY_KEYS)
+    for key, value in extra.items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
     return env
 
 
@@ -312,7 +433,7 @@ class Loads:
         questions: int,
         run_id: str = RUN_ID,
         cwd: Path | None = None,
-        **env: str,
+        **env: str | None,
     ) -> subprocess.Popen:
         args = [sys.executable, str(checkout / names.LOAD_SCRIPT)]
         args += ["--users", str(users), "--questions", str(questions), "--url", self.url]
@@ -348,6 +469,13 @@ def loads(fake_api) -> Iterator[Loads]:
     started = Loads(fake_api.url)
     yield started
     started.kill_all()
+
+
+def _nothing_secret_printed(done: Finished, url: str) -> None:
+    """No URL, key, secret or token in what the script printed."""
+    printed = done.out + done.err
+    for value in (url, ACCESS_KEY, SECRET_KEY, SESSION_TOKEN, "Signature="):
+        assert value not in printed
 
 
 # ---------------------------------------------------------------------------
@@ -424,6 +552,7 @@ def test_plan_refuses_what_the_run_ids_identities_or_questions_cannot_cover(
 
 
 GOOD_ARGS = ["--users", "1", "--questions", "1", "--url", "http://127.0.0.1:9/"]
+OTHER_REGION_URL = "https://abc1234567.execute-api.eu-west-1.amazonaws.com/ask"
 
 
 @pytest.mark.parametrize(
@@ -433,6 +562,11 @@ GOOD_ARGS = ["--users", "1", "--questions", "1", "--url", "http://127.0.0.1:9/"]
         ["--users", "1", "--questions", "two", "--url", "http://127.0.0.1:9/", "--run-id", RUN_ID],
         ["--users", "1", "--questions", "1", "--url", "ftp://127.0.0.1/", "--run-id", RUN_ID],
         ["--users", "1", "--questions", "1", "--url", "not a url", "--run-id", RUN_ID],
+        # Plain http only to this machine: a signed request carries the session token.
+        ["--users", "1", "--questions", "1", "--url", "http://api.example.invalid/ask"]
+        + ["--run-id", RUN_ID],
+        # An API in another region: this project runs only in us-east-1.
+        ["--users", "1", "--questions", "1", "--url", OTHER_REGION_URL, "--run-id", RUN_ID],
         ["--users", "1", "--questions", "1", "--run-id", RUN_ID],  # no --url
         GOOD_ARGS,  # no --run-id
         [*GOOD_ARGS, "--run-id", "smoke0412"],
@@ -444,21 +578,70 @@ def test_bad_arguments_exit_as_a_usage_error(argv, capsys):
     with pytest.raises(SystemExit) as exited:
         load.parse_args(argv)
     assert exited.value.code == load.EXIT_USAGE
-    capsys.readouterr()
+    err = capsys.readouterr().err
+    if "--url" in argv:
+        assert argv[argv.index("--url") + 1] not in err  # never printed, even when refused
 
 
 def test_good_arguments_parse():
     args = load.parse_args([*GOOD_ARGS, "--run-id", RUN_ID])
     assert (args.users, args.questions, args.run_id) == (1, 1, RUN_ID)
     assert names.is_run_id(RUN_ID) and names.is_run_id(OTHER_RUN_ID)
+    # Parsing only: nothing is sent to these.
+    for url in (
+        "https://abc1234567.execute-api.us-east-1.amazonaws.com/ask",
+        "http://localhost:9/",
+    ):
+        assert load.parse_args(
+            ["--users", "1", "--questions", "1", "--url", url, "--run-id", RUN_ID]
+        )
+
+
+@pytest.mark.parametrize(
+    ("url", "region"),
+    [
+        ("https://abc1234567.execute-api.us-east-1.amazonaws.com/ask", "us-east-1"),
+        ("http://127.0.0.1:9/route", names.REGION),  # no region in the host
+        ("https://api.example.invalid/ask", names.REGION),
+    ],
+)
+def test_the_signing_region_comes_from_the_host_or_the_contract(url, region):
+    assert load.signing_region(url) == region == names.REGION
+
+
+def test_a_host_in_another_region_is_refused():
+    with pytest.raises(ValueError, match="eu-west-1"):
+        load.signing_region(OTHER_REGION_URL)
+
+
+def test_the_credentials_come_from_the_shell():
+    frozen = load.aws_credentials().get_frozen_credentials()
+    assert (frozen.access_key, frozen.secret_key, frozen.token) == (ACCESS_KEY, SECRET_KEY, None)
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        {"AWS_ACCESS_KEY_ID": None, "AWS_SECRET_ACCESS_KEY": None},  # none at all
+        {"AWS_PROFILE": "rm-no-such-profile"},  # a profile that cannot be loaded
+    ],
+)
+def test_without_usable_credentials_there_is_nothing_to_sign_with(monkeypatch, setting):
+    for name, value in setting.items():
+        if value is None:
+            monkeypatch.delenv(name)
+        else:
+            monkeypatch.setenv(name, value)
+    with pytest.raises(load.NoCredentials):
+        load.aws_credentials()
 
 
 # ---------------------------------------------------------------------------
-# Sending: the count, the concurrency, failures
+# Sending: the count, the concurrency, the signature, failures
 # ---------------------------------------------------------------------------
 def test_sends_each_planned_request_once_to_the_url_as_given(fake_api):
     bodies = load.plan(RUN_ID, 7, 4, load.load_questions())
-    tally = load.run_load(fake_api.url, bodies)
+    tally = _run(fake_api.url, bodies)
 
     assert (tally.sent, tally.ok, tally.failed, tally.interrupted) == (28, 28, 0, False)
     assert len(fake_api.received) == 28
@@ -467,16 +650,65 @@ def test_sends_each_planned_request_once_to_the_url_as_given(fake_api):
         return json.dumps(body, sort_keys=True)
 
     assert Counter(key(r.body) for r in fake_api.received) == Counter(key(b) for b in bodies)
-    assert {(r.method, r.path, r.content_type) for r in fake_api.received} == {
+    assert {(r.method, r.path, r.headers["content-type"]) for r in fake_api.received} == {
         ("POST", "/route/under/test?stage=fake", "application/json")
     }
+    assert load.API_ROUTE_KEY.split()[0] == "POST"
+
+
+def test_every_request_is_signed_for_execute_api_over_the_bytes_sent(fake_api):
+    _run(fake_api.url, load.plan(RUN_ID, 5, 2, load.load_questions()))
+
+    assert len(fake_api.received) == 10
+    for received in fake_api.received:
+        _check_signed(received)
+
+
+def test_a_session_token_is_sent_and_signed(fake_api):
+    credentials = Credentials(ACCESS_KEY, SECRET_KEY, SESSION_TOKEN)
+    _run(fake_api.url, load.plan(RUN_ID, 3, 1, load.load_questions()), credentials=credentials)
+
+    assert len(fake_api.received) == 3
+    for received in fake_api.received:
+        _check_signed(received, token=SESSION_TOKEN)
+
+
+def test_a_changed_body_fails_the_signature_check(fake_api):
+    _run(fake_api.url, load.plan(RUN_ID, 1, 1, load.load_questions()))
+    [received] = fake_api.received
+    signature = _authorization(received)["Signature"]
+
+    assert signature == _expected_signature(received, SECRET_KEY)
+    changed = received.raw.replace(b"user-001", b"user-002")
+    assert changed != received.raw
+    assert signature != _expected_signature(received, SECRET_KEY, body=changed)
+    assert signature != _expected_signature(received, "another-secret")
+
+
+def test_each_request_is_signed_when_it_is_sent_not_when_it_is_planned(fake_api):
+    """A signature is good for minutes and a full load takes about fifteen, so each request
+    is signed as it goes out. Here the second ten wait more than a second for the first."""
+    fake_api.gate = threading.Event()
+    bodies = load.plan(RUN_ID, 20, 1, load.load_questions())
+    runner = threading.Thread(target=_run, args=(fake_api.url, bodies))
+    runner.start()
+    assert fake_api.wait_for(names.LOAD_MAX_CONCURRENCY)
+    time.sleep(1.1)
+    fake_api.gate.set()
+    runner.join(WAIT_SECONDS)
+
+    first, rest = fake_api.received[:10], fake_api.received[10:]
+    assert len(rest) == 10
+    assert max(r.headers["x-amz-date"] for r in first) < min(r.headers["x-amz-date"] for r in rest)
+    for received in fake_api.received:
+        _check_signed(received)
 
 
 def test_never_more_requests_in_flight_than_the_contract_allows(fake_api):
     fake_api.overlap = names.LOAD_MAX_CONCURRENCY
     bodies = load.plan(RUN_ID, 15, 2, load.load_questions())  # 30 requests: 3 rounds of 10
 
-    tally = load.run_load(fake_api.url, bodies)
+    tally = _run(fake_api.url, bodies)
 
     assert tally.sent == tally.ok == len(fake_api.received) == len(bodies)
     # Reached, so the server could see overlap, and never passed.
@@ -488,7 +720,7 @@ def test_error_replies_count_as_failed_and_are_never_retried(fake_api):
         return 502 if int(body[load.IDENTITY_FIELD].rsplit("-", 1)[1]) % 2 else 200
 
     fake_api.status_for = odd_users_fail
-    tally = load.run_load(fake_api.url, load.plan(RUN_ID, 10, 3, load.load_questions()))
+    tally = _run(fake_api.url, load.plan(RUN_ID, 10, 3, load.load_questions()))
 
     assert (tally.sent, tally.ok, tally.failed) == (30, 15, 15)
     assert tally.reasons == Counter({"HTTP 502": 15})
@@ -501,7 +733,7 @@ def test_an_unreachable_api_fails_every_request_exactly_once():
         port = spare.getsockname()[1]
     # Nothing listens on that port any more.
     bodies = load.plan(RUN_ID, 3, 2, load.load_questions())
-    tally = load.run_load(f"http://{LOOPBACK}:{port}/", bodies)
+    tally = _run(f"http://{LOOPBACK}:{port}/", bodies)
 
     assert (tally.sent, tally.ok, tally.failed) == (6, 0, 6)
     assert tally.reasons == Counter({"ConnectionRefusedError": 6})
@@ -510,7 +742,7 @@ def test_an_unreachable_api_fails_every_request_exactly_once():
 def test_a_request_with_no_reply_times_out_and_counts_as_failed(fake_api):
     fake_api.gate = threading.Event()  # set only at teardown: no reply comes in the run
     bodies = load.plan(RUN_ID, 2, 1, load.load_questions())
-    tally = load.run_load(fake_api.url, bodies, timeout=0.2)
+    tally = _run(fake_api.url, bodies, timeout=0.2)
 
     assert (tally.sent, tally.ok, tally.failed) == (2, 0, 2)
     assert tally.reasons == Counter({"timeout": 2})
@@ -529,12 +761,38 @@ def test_full_run_sends_exactly_users_times_questions_and_prints_the_counts(
     assert done.code == load.EXIT_OK, done.err
     assert _summary(done.out) == f"sent={users * per_user} ok={users * per_user} failed=0"
     assert f"run {RUN_ID}" in done.out
+    _nothing_secret_printed(done, fake_api.url)
     assert len(fake_api.received) == users * per_user == 1500
     for received in fake_api.received:
         _check_body(received.body, RUN_ID)
+        _check_signed(received)  # with the keys from the shell's environment
     # Exactly users 1 to 150 of this run, each asking 10 questions.
     per_identity = Counter(r.body[load.IDENTITY_FIELD] for r in fake_api.received)
     assert per_identity == dict.fromkeys(_expected_identities(RUN_ID, users), per_user)
+
+
+def test_a_session_token_from_the_shell_is_sent_and_signed(temp_repo, fake_api, loads):
+    done = loads.run(temp_repo.main, users=2, questions=1, AWS_SESSION_TOKEN=SESSION_TOKEN)
+
+    assert done.code == load.EXIT_OK, done.err
+    _nothing_secret_printed(done, fake_api.url)
+    assert len(fake_api.received) == 2
+    for received in fake_api.received:
+        _check_signed(received, token=SESSION_TOKEN)
+
+
+def test_without_credentials_it_refuses_to_start_and_sends_nothing(temp_repo, fake_api, loads):
+    done = loads.run(
+        temp_repo.main, users=1, questions=1, AWS_ACCESS_KEY_ID=None, AWS_SECRET_ACCESS_KEY=None
+    )
+
+    assert done.code == load.EXIT_USAGE
+    assert "no AWS credentials" in done.err
+    assert done.out == ""
+    _nothing_secret_printed(done, fake_api.url)
+    assert fake_api.received == []
+    # Refused before the lock was even taken.
+    assert not (temp_repo.common_dir / names.LOAD_LOCK_NAME).exists()
 
 
 def test_failures_print_their_reasons_and_exit_non_zero(temp_repo, fake_api, loads):
@@ -544,6 +802,7 @@ def test_failures_print_their_reasons_and_exit_non_zero(temp_repo, fake_api, loa
     assert done.code == load.EXIT_FAILED
     assert _summary(done.out) == "sent=2 ok=0 failed=2"
     assert "HTTP 500 x2" in done.out
+    _nothing_secret_printed(done, fake_api.url)
     assert len(fake_api.received) == 2
 
 
@@ -584,6 +843,7 @@ def test_a_second_start_is_refused_from_any_worktree_or_directory(
         assert names.LOAD_LOCK_NAME in refused.err
         assert f"pid {first.pid}" in refused.err
         assert refused.out == ""
+        _nothing_secret_printed(refused, fake_api.url)
     assert len(fake_api.received) == 1  # the refused starts sent nothing
 
     # One lock for the whole repository, in the git common directory, not one per worktree.

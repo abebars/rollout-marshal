@@ -16,10 +16,16 @@ Gateway's 30 second limit, a refused connection. A line before the summary count
 failures by kind. sent counts every request the script started, so it is the number the
 answer budget counts (design.md section 11: ask the human before 7,500 in all).
 
-Each request POSTs {"question": ..., "identity": ...} to --url exactly as given, route
-included. Those are the answer request's two fields (contracts/schemas/answer_request.json),
-which rm-router passes to the answer function. The script never prints the URL, so its
-output can go into a public evidence file.
+Each request POSTs one answer request, {"question": ..., "identity": ...}
+(contracts/schemas/answer_request.json), to --url exactly as given. That URL is the full URL
+of the HTTP API's only route, POST /ask, as the app module's output ask_url gives it. The
+route uses AWS_IAM authorization, so every request is signed with SigV4 for execute-api in
+us-east-1, from the shell's AWS credentials, found the way the AWS CLI finds them (contract
+change c1, design.md section 11). Each is signed as it goes out, over the exact bytes sent.
+A shell with no usable credentials is refused before anything is sent. A signed request
+carries the session token, so plain http is allowed only to a server on this machine. The
+script never prints the URL, a key or a signature, so its output can go into a public
+evidence file.
 
 One load at a time. Before it sends anything, the script takes rm-load.lock: an exclusive
 flock(2) on a file in the repository's git common directory. The directory is found from
@@ -33,16 +39,18 @@ Ctrl-C stops a load: nothing more is sent, the requests in flight finish, and th
 are printed. The script never runs unattended (design.md section 11): someone watches every
 load until it ends.
 
-Exit status: 0 every request ok, 1 some failed, 2 bad arguments, 3 refused (the lock),
-130 interrupted.
+Exit status: 0 every request ok, 1 some failed, 2 bad arguments or no AWS credentials,
+3 refused (the lock), 130 interrupted.
 """
 
 from __future__ import annotations
 
 import argparse
 import fcntl
+import ipaddress
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -55,11 +63,29 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import botocore.session
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from botocore.credentials import Credentials
+from botocore.exceptions import BotoCoreError, ClientError
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(ROOT))  # the repo root, for contracts
 
 from contracts import names  # noqa: E402
+
+# The HTTP API's contract, from contract change c1. Until c1 merges, these are kept here
+# with the values it gives names.py.
+API_ROUTE_KEY = "POST /ask"  # names.API_ROUTE_KEY after c1
+API_AUTHORIZATION_TYPE = "AWS_IAM"  # names.API_AUTHORIZATION_TYPE after c1
+API_SIGV4_SERVICE = "execute-api"  # names.API_SIGV4_SERVICE after c1
+APP_ASK_URL_OUTPUT = "ask_url"  # names.APP_ASK_URL_OUTPUT after c1
+API_METHOD = API_ROUTE_KEY.split()[0]
+CONTENT_TYPE = "application/json"
+# An API Gateway endpoint names its region: https://{api-id}.execute-api.{region}.amazonaws.com
+# (docs.aws.amazon.com/apigateway/latest/developerguide/how-to-call-api.html).
+EXECUTE_API_HOST = re.compile(r"[a-z0-9]+\.execute-api\.([a-z0-9-]+)\.amazonaws\.com")
 
 QUESTIONS_PATH = ROOT / names.QUESTIONS_FILE
 QUESTION_FIELD, IDENTITY_FIELD = names.ANSWER_REQUEST_FIELDS
@@ -79,6 +105,10 @@ EXIT_INTERRUPTED = 130  # 128 + SIGINT, the shell's convention
 
 class LoadRefused(RuntimeError):
     """The load must not start: another load holds the lock, or the lock cannot be taken."""
+
+
+class NoCredentials(RuntimeError):
+    """The shell has no usable AWS credentials, so no request could be signed."""
 
 
 # ---------------------------------------------------------------------------
@@ -107,10 +137,10 @@ def _require_run_id(run_id: str) -> str:
     return run_id
 
 
-def run_identity(run_id: str, n: int) -> str:
+def run_identity(run_id: str, n: int) -> str:  # names.run_identity after c1
     """<run_id>-user-NNN, identity n of a run.
 
-    Contract change c adds names.run_identity; this then becomes a call to it.
+    Contract change c1 adds names.run_identity, which does the same; this then calls it.
     """
     return f"{_require_run_id(run_id)}-{names.identity(n)}"
 
@@ -247,15 +277,65 @@ def _kind(error: object) -> str:
     return "URLError"
 
 
-def send(url: str, body: dict[str, str], timeout: float) -> str | None:
-    """POST one request. None when the reply is HTTP 2xx, else why it failed."""
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+def signing_region(url: str) -> str:
+    """The region requests to url are signed for: the one an execute-api host names, else
+    names.REGION. Any other region is refused, as this project runs only in us-east-1."""
+    match = EXECUTE_API_HOST.fullmatch(urllib.parse.urlsplit(url).hostname or "")
+    region = match.group(1) if match else names.REGION
+    if region != names.REGION:
+        raise ValueError(
+            f"the URL's host is in {region}, and this project runs only in {names.REGION}"
+        )
+    return region
+
+
+def aws_credentials() -> Credentials:
+    """The shell's AWS credentials, found the way the AWS CLI finds them.
+
+    They are loaded once here, so a missing or expired sign-in stops the load before it
+    sends anything. NoCredentials names only the error's kind, never its text.
+    """
     try:
+        credentials = botocore.session.Session().get_credentials()
+        if credentials is not None:
+            credentials.get_frozen_credentials()
+    except (BotoCoreError, ClientError) as err:
+        raise NoCredentials(f"cannot load AWS credentials ({type(err).__name__})") from None
+    if credentials is None:
+        raise NoCredentials("no AWS credentials in this shell")
+    return credentials
+
+
+def signed_request(
+    url: str, data: bytes, credentials: Credentials, region: str
+) -> urllib.request.Request:
+    """A POST of data to url, signed with SigV4 for execute-api in region.
+
+    The signature covers the Host header urllib sends, the content type, X-Amz-Date, the
+    session token when there is one, and the SHA-256 of data, the exact bytes sent. A
+    frozen copy of the credentials keeps key, secret and token together, refreshed first if
+    they are about to expire.
+    """
+    request = urllib.request.Request(url, data=data, method=API_METHOD)
+    to_sign = AWSRequest(
+        method=API_METHOD,
+        url=url,
+        data=data,
+        headers={"Host": request.host, "Content-Type": CONTENT_TYPE},
+    )
+    SigV4Auth(credentials.get_frozen_credentials(), API_SIGV4_SERVICE, region).add_auth(to_sign)
+    for name, value in to_sign.headers.items():
+        request.add_header(name, value)
+    return request
+
+
+def send(
+    url: str, body: dict[str, str], *, credentials: Credentials, region: str, timeout: float
+) -> str | None:
+    """Sign one request as it goes out and POST it. None when the reply is HTTP 2xx, else
+    why it failed."""
+    try:
+        request = signed_request(url, json.dumps(body).encode(), credentials, region)
         with urllib.request.urlopen(request, timeout=timeout) as reply:
             reply.read()
             status = reply.status
@@ -270,18 +350,24 @@ def send(url: str, body: dict[str, str], timeout: float) -> str | None:
 
 
 def run_load(
-    url: str, bodies: list[dict[str, str]], *, timeout: float = REQUEST_TIMEOUT_SECONDS
+    url: str,
+    bodies: list[dict[str, str]],
+    *,
+    credentials: Credentials,
+    timeout: float = REQUEST_TIMEOUT_SECONDS,
 ) -> Tally:
-    """Send every body once, at most LOAD_MAX_CONCURRENCY at a time, and count the outcomes.
+    """Send every body once, signed, at most LOAD_MAX_CONCURRENCY at a time, and count the
+    outcomes.
 
     Ctrl-C cancels every request not yet sent, waits for the ones in flight, and returns the
     tally marked interrupted.
     """
+    region = signing_region(url)
     tally = Tally()
 
     def one(body: dict[str, str]) -> None:
         tally.started()
-        tally.finished(send(url, body, timeout))
+        tally.finished(send(url, body, credentials=credentials, region=region, timeout=timeout))
 
     pool = ThreadPoolExecutor(max_workers=names.LOAD_MAX_CONCURRENCY, thread_name_prefix="load")
     try:
@@ -313,10 +399,33 @@ def _count(value: str) -> int:
     return number
 
 
-def _http_url(value: str) -> str:
-    parts = urllib.parse.urlsplit(value)
-    if parts.scheme not in ("http", "https") or not parts.hostname:
+def _is_loopback(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _api_url(value: str) -> str:
+    """An --url value. No error quotes it: the URL is never printed."""
+    try:
+        parts = urllib.parse.urlsplit(value)
+        host = parts.hostname
+    except ValueError:
+        raise argparse.ArgumentTypeError("not a URL") from None
+    if parts.scheme not in ("http", "https") or not host:
         raise argparse.ArgumentTypeError("must be an http:// or https:// URL")
+    if parts.scheme == "http" and not _is_loopback(host):
+        raise argparse.ArgumentTypeError(
+            "must be https://, because a signed request carries the session token;"
+            " plain http is only for a test server on this machine"
+        )
+    try:
+        signing_region(value)
+    except ValueError as err:
+        raise argparse.ArgumentTypeError(str(err)) from None
     return value
 
 
@@ -352,9 +461,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--url",
-        type=_http_url,
+        type=_api_url,
         required=True,
-        help="the assistant API's URL, route included; requests go to it as given",
+        help=f"the full URL of the API's route, {API_ROUTE_KEY}, as the app module's output"
+        f" {APP_ASK_URL_OUTPUT} gives it; requests go to it as given",
     )
     return parser
 
@@ -372,6 +482,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(err))  # exits with EXIT_USAGE
 
     try:
+        credentials = aws_credentials()
+    except NoCredentials as err:
+        print(
+            f"load.py: refused to start: {err}. The route takes {API_AUTHORIZATION_TYPE}"
+            " authorization, so every request is signed with SigV4: sign in (for example,"
+            " set AWS_PROFILE and run aws sso login), then start again.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    try:
         lock = take_lock(lock_path())
     except LoadRefused as err:
         print(f"load.py: refused to start: {err}", file=sys.stderr)
@@ -385,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
             f" of run {args.run_id}, at most {names.LOAD_MAX_CONCURRENCY} at a time",
             flush=True,
         )
-        tally = run_load(args.url, bodies)
+        tally = run_load(args.url, bodies, credentials=credentials)
 
     if tally.reasons:
         print("failed: " + ", ".join(f"{kind} x{n}" for kind, n in tally.reasons.most_common()))
