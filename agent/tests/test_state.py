@@ -103,7 +103,6 @@ def make_plan() -> dict:
         },
         "recommendation_rule": {
             "after_incident": names.RECOMMEND_HOLD_RERUN,
-            "promote_min_prob_not_worse": names.PROMOTE_MIN_PROB_NOT_WORSE,
             "promote_min_helpful_lift_ci_lower": names.PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER,
         },
     }
