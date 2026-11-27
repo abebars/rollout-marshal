@@ -2543,7 +2543,8 @@ PINNED_RULE_SENTENCES = (
     "so a throttle is not hidden in the measured latency. Errors are typed by exception class, "
     "and Lambda reports the class name as `errorType`:",
     "Their messages carry no question, reply or key. That `errorType` is the simple class name is "
-    "unverified until the first deployed invoke (task 3.5 or 3.6).",
+    "still unverified: 3.6 had no answer errors, so the first real failure's log settles it "
+    "(Gate 2, G13; contract change c8).",
     "`AnswerLatencyMs` is emitted for every answer invoke, success or error, because a slow "
     "failure must reach the alarm.",
     "On any answer error there is no judge hand-off and no outcome.",
@@ -2999,14 +3000,38 @@ def test_contract_c8_after_the_runs():
         f"smallest one-minute headroom seen is T − {worst} = {round(threshold - worst, 1)} ms. "
         f"T stays {threshold} ms (contract change c8)." in sec5
     )
-    assert "so `n` counts identities (contract change c8)." in flat_section(7)
+    assert (
+        "in the sample each identity sent one event. Task 3.6 settled whether `n` counts "
+        "identities or events: each metric's `n` was 65 and 85, the arms' identities, against "
+        "130 and 170 answers, so `n` counts identities (contract change c8)." in flat_section(7)
+    )
     assert "stays open until task 3.6" not in DESIGN
-    assert names.ANSWER_BUDGET == 300 + 300 + 2 * 1_500
+    assert (
+        "That `errorType` is the simple class name is still unverified: 3.6 had no answer "
+        "errors, so the first real failure's log settles it (Gate 2, G13; contract change c8)."
+        in flat_section(5)
+    )
+    smoke, fault, full = (
+        p.users * p.questions for p in (names.LOAD_SMOKE, names.LOAD_FAULT, names.LOAD_FULL)
+    )
+    sec11 = flat_section(11)
+    assert (
+        f"Budget for the event: {smoke} + {fault} + 2 x {full:,} = {names.ANSWER_BUDGET:,} answers"
+        in sec11
+    )
+    assert smoke + fault + 2 * full == names.ANSWER_BUDGET
+    assert "| Full run (5.1, and the one further run in 5.2) | 150 x 10 | 1,500 |" in section(11)
     rows = {row[0]: row[2] for row in table_rows(section(13), "| Claim | Task | Result |")}
     events = rows["Whether Flagsmith event calls count toward the 50,000 request cap"]
-    assert events.startswith("documented, not observed: docs.flagsmith.com/")
+    assert events.startswith("open; inferred from the docs, not observed: docs.flagsmith.com/")
+    assert "event calls are on neither list" in events
     emf = rows["p95 alarms on embedded-metric custom metrics with a dimension behave as designed"]
-    assert emf.startswith("verified by 4.3's fault run")
+    assert emf.startswith(
+        f"verified by 4.3's fault run: `{names.ROUTER_FUNCTION}`'s EMF "
+        f"`{names.CW_METRIC_ANSWER_LATENCY_MS}` with `Variant=cheaper` took `{names.ALARM_NAME}` "
+        "to ALARM 2 min 58.8 s after FIS's start, and back to OK after the fault ended"
+    )
+    assert names.CW_METRIC_EMITTER[names.CW_METRIC_ANSWER_LATENCY_MS] == names.ROUTER_FUNCTION
 
 
 # Every tuple, list, dict or set constant names the test that ties it to its

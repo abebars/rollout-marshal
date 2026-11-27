@@ -267,8 +267,8 @@ Lambda reports the class name as `errorType`:
   reply, a malformed event and an unknown `MODEL_ID`.
 
 Their messages carry no question, reply or key. That `errorType` is the
-simple class name is unverified until the first deployed invoke (task 3.5
-or 3.6).
+simple class name is still unverified: 3.6 had no answer errors, so the
+first real failure's log settles it (Gate 2, G13; contract change c8).
 
 `rm-router` is the Lambda integration of the HTTP API's route (`POST /ask`,
 section 11), with payload format version `2.0`, and answers:
@@ -742,9 +742,10 @@ mean is sum / n) and, for `cheaper`, its `lift` (relative, a fraction),
 metric's `ci_low`. Flagsmith has no "not worse" probability, so the
 shape carries none. A variation's `identities` is the sum of its
 `new_identities` in the same response's exposures timeseries, not `n`:
-in the sample each identity sent one event. Task 3.6 settled it: each
-metric's `n` was 65 and 85, the arms' identities, against 130 and 170
-answers, so `n` counts identities (contract change c8). Results are read through
+in the sample each identity sent one event. Task 3.6 settled whether `n`
+counts identities or events: each metric's `n` was 65 and 85, the arms'
+identities, against 130 and 170 answers, so `n` counts identities
+(contract change c8). Results are read through
 the Admin API tool; MCP's results read returned nothing before a refresh
 (task 1.3).
 Task 2.2 maps Flagsmith's result fields onto this shape, starting from the
@@ -1023,8 +1024,8 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | The API spellings of a metric's direction and of an experiment metric's expected direction | 1.3 | verified: `up`, `down`, `informational`; `increase`, `decrease`, `not_increase`, `not_decrease` |
 | Whether the AgentCore CLI can add an MCP server target with API-key outbound auth | 1.3 | verified: no (CLI 1.3.0 refuses it); `agent/scripts/setup_gateway.py` uses the AWS API |
 | How a feature's state changes in an environment with v2 feature versioning (added by 1.4) | 1.3 | verified: create a version, update its default state, publish it (four MCP calls, in `evidence/1.3-flagsmith-agent-spike.md`) |
-| Whether Flagsmith event calls count toward the 50,000 request cap | 3.6 | documented, not observed: docs.flagsmith.com/administration-and-security/billing-api-usage lists `/flags`, `/identities` and `/environment-document` as billable, and event calls are not on that list. 3.6's before-and-after read could not show it, because the total lags by about a day. The lead re-reads the closed 2026-11-27 daily row after 5.2 (contract change c8) |
-| p95 alarms on embedded-metric custom metrics with a dimension behave as designed | 4.1 | verified by 4.3's fault run: the answer functions' EMF `AnswerLatencyMs` with `Variant=cheaper` took `rm-cheaper-latency-p95` to ALARM 2 min 58.8 s after FIS's start, and back to OK after the fault ended (`evidence/4.3-fis.md`). 4.1's own test used `put-metric-data` (`evidence/4.1-alarm.md`) (contract change c8) |
+| Whether Flagsmith event calls count toward the 50,000 request cap | 3.6 | open; inferred from the docs, not observed: docs.flagsmith.com/administration-and-security/billing-api-usage lists `/flags`, `/identities` and `/environment-document` as billable, and Admin API, SDK Flag Analytics and real-time stream requests as not billable; event calls are on neither list. 3.6's before-and-after read could not show it: neither read had taken in the smoke by 08:45Z (the total had taken in nothing from 2026-11-27; it may add each day only after it closes, not proven). The lead re-reads the closed 2026-11-27 daily row after 5.2 (contract change c8) |
+| p95 alarms on embedded-metric custom metrics with a dimension behave as designed | 4.1 | verified by 4.3's fault run: `rm-router`'s EMF `AnswerLatencyMs` with `Variant=cheaper` took `rm-cheaper-latency-p95` to ALARM 2 min 58.8 s after FIS's start, and back to OK after the fault ended (`evidence/4.3-fis.md`). 4.1's own test used `put-metric-data` (`evidence/4.1-alarm.md`) (contract change c8) |
 | Admin API paths for starting an experiment and refreshing results | 1.3 | verified: `start/` with name and hypothesis; `results/refresh/` (202, then 429 inside 5 minutes); `results/` |
 | Whether an experiment can be ended through any API | 1.3 | documented, not exercised: Flagsmith's published spec lists `complete/`; no agent calls it |
 | Whether the feature is locked while its experiment runs, and what "locked" blocks | 1.3 | corrected: the API accepted all three writes 1.3 tried on a running experiment's feature (its option, state and description) and 1.3 put them back; the experiment's rollout read back unchanged |
