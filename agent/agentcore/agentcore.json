@@ -7,8 +7,8 @@
       "name": "rm_agent",
       "build": "CodeZip",
       "modelProvider": "Bedrock",
-      "entrypoint": "agent.py",
-      "codeLocation": "spike",
+      "entrypoint": "main.py",
+      "codeLocation": "runtime",
       "runtimeVersion": "PYTHON_3_13",
       "protocol": "HTTP"
     }

@@ -1,4 +1,4 @@
-"""Unit tests for agent/scripts/setup_gateway.py (task 1.3).
+"""Unit tests for agent/scripts/setup_gateway.py (tasks 1.3 and 2.7).
 
 botocore's Stubber stands in for AWS: no request leaves the process, and every
 request is checked against the real service model, so a mistyped parameter
@@ -48,6 +48,8 @@ GATEWAY_ID = f"{names.GATEWAY_NAME}-abcde12345"
 GATEWAY_ARN = f"arn:aws:bedrock-agentcore:{REGION}:{ACCOUNT}:gateway/{GATEWAY_ID}"
 GATEWAY_URL = f"https://{GATEWAY_ID}.gateway.bedrock-agentcore.{REGION}.amazonaws.com/mcp"
 TARGET_ID = "TGT1234567"
+ADMIN_TARGET_ID = "ADM1234567"
+ADMIN_ARN = f"arn:aws:lambda:{REGION}:{ACCOUNT}:function:{names.FLAGSMITH_ADMIN_FUNCTION}"
 
 
 def _clients():
@@ -254,6 +256,67 @@ def _get_target(stubs, **kwargs):
     )
 
 
+def _admin_target_body(status="READY", configuration=None, credentials=None):
+    return {
+        "gatewayArn": GATEWAY_ARN,
+        "targetId": ADMIN_TARGET_ID,
+        "createdAt": NOW,
+        "updatedAt": NOW,
+        "status": status,
+        "name": names.GATEWAY_TARGET_FLAGSMITH_ADMIN,
+        "targetConfiguration": configuration or sg.admin_target_configuration(),
+        "credentialProviderConfigurations": credentials
+        or [{"credentialProviderType": "GATEWAY_IAM_ROLE"}],
+        "lastSynchronizedAt": NOW,
+    }
+
+
+def _admin_targets_listed(stubs, present=True):
+    """The listing the admin target's lookup reads: flagsmith, and the admin target if any."""
+    items = [
+        {
+            "targetId": TARGET_ID,
+            "name": names.GATEWAY_TARGET_FLAGSMITH,
+            "status": "READY",
+            "createdAt": NOW,
+            "updatedAt": NOW,
+        }
+    ]
+    if present:
+        items.append(
+            {
+                "targetId": ADMIN_TARGET_ID,
+                "name": names.GATEWAY_TARGET_FLAGSMITH_ADMIN,
+                "status": "READY",
+                "createdAt": NOW,
+                "updatedAt": NOW,
+            }
+        )
+    stubs.control.add_response(
+        "list_gateway_targets", {"items": items}, {"gatewayIdentifier": GATEWAY_ID}
+    )
+
+
+def _get_admin_target(stubs, **kwargs):
+    stubs.control.add_response(
+        "get_gateway_target",
+        _admin_target_body(**kwargs),
+        {"gatewayIdentifier": GATEWAY_ID, "targetId": ADMIN_TARGET_ID},
+    )
+
+
+def _found_up_to_the_admin_target(stubs):
+    """Every piece found, as on a second run, up to the admin target's lookup."""
+    _caller(stubs)
+    _provider_found(stubs)
+    _role_found(stubs)
+    _put_role_policy(stubs)
+    _gateway_listed(stubs)
+    _get_gateway(stubs)
+    _targets_listed(stubs)
+    _get_target(stubs)
+
+
 def _run(clients, **kwargs):
     lines = []
     summary = sg.run(clients, out=lines.append, sleep=lambda _s: None, **kwargs)
@@ -317,6 +380,21 @@ def test_creates_every_piece_once_when_nothing_exists():
             },
         )
         _get_target(stubs, status="READY")
+        _admin_targets_listed(stubs, present=False)
+        stubs.control.add_response(
+            "create_gateway_target",
+            _admin_target_body(status="CREATING"),
+            {
+                "gatewayIdentifier": GATEWAY_ID,
+                "name": names.GATEWAY_TARGET_FLAGSMITH_ADMIN,
+                "description": ANY,
+                "targetConfiguration": sg.admin_target_configuration(),
+                "credentialProviderConfigurations": [
+                    {"credentialProviderType": "GATEWAY_IAM_ROLE"}
+                ],
+            },
+        )
+        _get_admin_target(stubs, status="READY")
 
         summary, output = _run(clients)
         stubs.assert_done()
@@ -326,7 +404,10 @@ def test_creates_every_piece_once_when_nothing_exists():
         names.GATEWAY_ROLE,
         names.GATEWAY_NAME,
         names.GATEWAY_TARGET_FLAGSMITH,
+        names.GATEWAY_TARGET_FLAGSMITH_ADMIN,
     ]
+    assert summary["admin_target"]["status"] == "READY"
+    assert summary["admin_target"]["lambdaArn"] == ADMIN_ARN
     assert summary["gateway"]["url"] == GATEWAY_URL
     assert summary["target"]["status"] == "READY"
     assert FAKE_KEY not in output
@@ -344,6 +425,8 @@ def test_second_run_creates_nothing_and_never_reads_the_secret():
         _get_gateway(stubs)
         _targets_listed(stubs)
         _get_target(stubs)
+        _admin_targets_listed(stubs)
+        _get_admin_target(stubs)
 
         summary, _ = _run(clients)
         stubs.assert_done()  # no get_secret_value and no create_* call was stubbed
@@ -368,6 +451,7 @@ def test_plan_makes_no_writes():
         names.GATEWAY_ROLE,
         names.GATEWAY_NAME,
         names.GATEWAY_TARGET_FLAGSMITH,
+        names.GATEWAY_TARGET_FLAGSMITH_ADMIN,
     ]
     assert "plan" in output
 
@@ -419,6 +503,8 @@ def test_found_target_with_the_prefix_stored_trimmed_counts_as_the_same():
         _get_gateway(stubs)
         _targets_listed(stubs)
         _get_target(stubs, prefix=names.GATEWAY_API_KEY_PREFIX.strip())
+        _admin_targets_listed(stubs)
+        _get_admin_target(stubs)
         summary, _ = _run(clients)
         stubs.assert_done()
     assert summary["created"] == []
@@ -484,7 +570,7 @@ def test_trust_policy_lets_only_this_accounts_rm_gateway_assume_the_role():
     assert statement["Condition"]["ArnLike"] == {"aws:SourceArn": gateways}
 
 
-def test_role_policy_grants_only_the_api_key_path():
+def test_role_policy_grants_only_the_api_key_path_and_the_admin_function():
     policy = sg.role_policy(PROVIDER_ARN, SECRET_ARN)
     actions = {
         action: statement["Resource"]
@@ -495,7 +581,9 @@ def test_role_policy_grants_only_the_api_key_path():
         "bedrock-agentcore:GetWorkloadAccessToken",
         "bedrock-agentcore:GetResourceApiKey",
         "secretsmanager:GetSecretValue",
+        "lambda:InvokeFunction",
     }
+    assert actions["lambda:InvokeFunction"] == [ADMIN_ARN]
     assert actions["secretsmanager:GetSecretValue"] == [SECRET_ARN]
     assert PROVIDER_ARN in actions["bedrock-agentcore:GetResourceApiKey"]
     directory = f"arn:aws:bedrock-agentcore:{REGION}:{ACCOUNT}:workload-identity-directory/default"
@@ -504,3 +592,113 @@ def test_role_policy_grants_only_the_api_key_path():
         f"{directory}/workload-identity/{names.GATEWAY_NAME}-*",
     ]
     assert all(statement["Effect"] == "Allow" for statement in policy["Statement"])
+
+
+# ---------------------------------------------------------------------------
+# The flagsmith-admin target (task 2.7)
+# ---------------------------------------------------------------------------
+def test_the_admin_tools_are_the_functions_with_their_descriptions_and_arguments():
+    definitions = sg.admin_tool_definitions()
+    assert [d["name"] for d in definitions] == list(names.FLAGSMITH_ADMIN_TOOLS)
+    for definition in definitions:
+        tool = definition["name"]
+        assert definition["description"] == sg.admin.TOOL_DESCRIPTIONS[tool] != ""
+        schema = definition["inputSchema"]
+        assert schema["type"] == "object"
+        assert schema["required"] == list(sg.admin.TOOL_ARGUMENTS[tool])
+        assert set(schema["properties"]) == set(sg.admin.TOOL_ARGUMENTS[tool])
+    types = {k: v["type"] for d in definitions for k, v in d["inputSchema"]["properties"].items()}
+    assert types == {"environment_api_key": "string", "experiment_id": "integer"}
+    configuration = sg.admin_target_configuration()["mcp"]["lambda"]
+    assert configuration["lambdaArn"] == ADMIN_ARN
+    assert configuration["toolSchema"]["inlinePayload"] == definitions
+
+
+def test_the_docstring_gives_the_prefix_as_api_key():
+    assert f"prefix ``{names.GATEWAY_API_KEY_PREFIX}``" in sg.__doc__
+    assert "``Api-Key ``" not in sg.__doc__
+
+
+def _lambda(arn=ADMIN_ARN, tools=None):
+    """A Lambda target's configuration as GetGatewayTarget returns it."""
+    tools = sg.admin_tool_definitions() if tools is None else tools
+    return {
+        "configuration": {
+            "mcp": {"lambda": {"lambdaArn": arn, "toolSchema": {"inlinePayload": tools}}}
+        }
+    }
+
+
+def _experiment_id_as_string():
+    tools = sg.admin_tool_definitions()
+    for tool in tools:
+        if "experiment_id" in tool["inputSchema"]["properties"]:
+            tool["inputSchema"]["properties"]["experiment_id"]["type"] = "string"
+    return tools
+
+
+@pytest.mark.parametrize(
+    "change, said",
+    [
+        (_lambda(arn=ADMIN_ARN + "-other"), "function"),
+        (_lambda(tools=sg.admin_tool_definitions()[:4]), "tools"),
+        (_lambda(tools=_experiment_id_as_string()), "tools"),
+        ({"credentials": [{"credentialProviderType": "API_KEY"}]}, "outbound auth"),
+    ],
+    ids=["other-function", "a-tool-missing", "an-argument-retyped", "other-auth"],
+)
+def test_a_found_admin_target_that_differs_stops(change, said):
+    clients = _clients()
+    with Stubs(clients) as stubs:
+        _found_up_to_the_admin_target(stubs)
+        _admin_targets_listed(stubs)
+        _get_admin_target(stubs, **change)
+        with pytest.raises(sg.SetupError, match=said):
+            _run(clients)
+        stubs.assert_done()
+
+
+def test_a_failed_admin_target_sync_is_reported_not_hidden():
+    clients = _clients()
+    with Stubs(clients) as stubs:
+        _found_up_to_the_admin_target(stubs)
+        _admin_targets_listed(stubs)
+        _get_admin_target(stubs, status="FAILED")
+        with pytest.raises(
+            sg.SetupError, match=f"{names.GATEWAY_TARGET_FLAGSMITH_ADMIN} is FAILED"
+        ):
+            _run(clients)
+        stubs.assert_done()
+
+
+def test_plan_on_the_spikes_gateway_would_add_only_the_admin_target_and_the_policy():
+    """2.7's live run: 1.3 made the provider, role, Gateway and flagsmith target."""
+    clients = _clients()
+    with Stubs(clients) as stubs:
+        _caller(stubs)
+        _provider_found(stubs)
+        _role_found(stubs)  # no put_role_policy: a plan writes nothing
+        _gateway_listed(stubs)
+        _get_gateway(stubs)
+        _targets_listed(stubs)
+        _get_target(stubs)
+        _admin_targets_listed(stubs, present=False)
+        summary, output = _run(clients, plan_only=True)
+        stubs.assert_done()
+    assert summary["created"] == []
+    assert summary["would_create"] == [names.GATEWAY_TARGET_FLAGSMITH_ADMIN]
+    assert summary["admin_target"] is None
+    assert f"would set inline policy {names.GATEWAY_ROLE}" in output
+
+
+def test_the_role_may_invoke_rm_flagsmith_admin_and_no_other_function():
+    policy = sg.role_policy(PROVIDER_ARN, SECRET_ARN)
+    invoke = [s for s in policy["Statement"] if "lambda:InvokeFunction" in s["Action"]]
+    assert invoke == [
+        {
+            "Sid": "InvokeFlagsmithAdmin",
+            "Effect": "Allow",
+            "Action": ["lambda:InvokeFunction"],
+            "Resource": [ADMIN_ARN],
+        }
+    ]
