@@ -14,6 +14,7 @@ from pathlib import Path
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from botocore.stub import ANY, Stubber
 
 from contracts import names
@@ -721,10 +722,10 @@ def _admin_create_params():
     }
 
 
-def _refused(stubs, message=NOT_YET):
+def _refused(stubs, message=NOT_YET, code="ValidationException"):
     stubs.control.add_client_error(
         "create_gateway_target",
-        service_error_code="ValidationException",
+        service_error_code=code,
         service_message=message,
         http_status_code=400,
         expected_params=_admin_create_params(),
@@ -775,3 +776,26 @@ def test_any_other_refusal_of_the_admin_target_is_not_retried():
         with pytest.raises(Exception, match="inlinePayload"):
             _run_counting_sleeps(clients)
         stubs.assert_done()
+
+
+def test_an_access_denied_with_the_same_text_is_raised_at_once():
+    """Only a ValidationException is the propagation refusal. An AccessDeniedException that
+    carries the same words is a real denial: one create call, no sleep, the error raised."""
+    clients = _clients()
+    creates: list[str] = []
+    clients.control.meta.events.register(
+        "before-parameter-build.bedrock-agentcore-control.CreateGatewayTarget",
+        lambda **_kwargs: creates.append("create"),
+    )
+    sleeps: list[float] = []
+    with Stubs(clients) as stubs:
+        _found_up_to_the_admin_target(stubs)
+        _admin_targets_listed(stubs, present=False)
+        _refused(stubs, code="AccessDeniedException")
+        with pytest.raises(ClientError) as raised:
+            sg.run(clients, out=lambda _line: None, sleep=sleeps.append)
+        stubs.assert_done()
+    assert raised.value.response["Error"]["Code"] == "AccessDeniedException"
+    assert "lacks permission to invoke Lambda" in str(raised.value)
+    assert creates == ["create"]
+    assert sleeps == []
