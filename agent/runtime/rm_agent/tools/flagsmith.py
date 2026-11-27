@@ -18,7 +18,8 @@ state, publish it), which Development requires (task 1.3). A found feature's sta
 value are never reset (Gate 1, rule 5): a reset of assistant_default_model would undo a
 promotion.
 
-This module imports only contracts and the standard library. The MCP client (Strands'
+This module imports only contracts, the standard library, and opentelemetry's
+suppress_instrumentation where it is installed (untraced.py). The MCP client (Strands'
 MCPClient, call_tool_sync) and the Lambda client are passed in.
 """
 
