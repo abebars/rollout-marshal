@@ -537,6 +537,9 @@ their tasks name, not against each other.
     `Variant` dimension set; `prices.json` carries a source URL and date.
   - A test asserts each `answer_helpful` value is an `int` in {0, 1}, never
     a bool. 1.2 showed `True` travels as the string `"True"`.
+  - design.md section 5 holds the judge's write order, its typed errors, its
+    Bedrock timeouts, the 13 second reserve and the prices file's shape;
+    section 13 records the price check.
   - Pass: unit tests green.
 
 - [x] 3.4 **Load script**

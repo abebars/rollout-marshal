@@ -267,6 +267,15 @@ CW_METRIC_EMITTER = {
     CW_METRIC_ANSWER_HELPFUL: JUDGE_FUNCTION,
 }
 
+# Task 3.3's judge and its prices file (contract change c4, design.md section 5).
+JUDGE_REPLY_FIELD = "helpful"  # the judge model's reply: {"helpful": true} or false
+JUDGE_ERROR_THROTTLED = "JudgeThrottled"  # Bedrock's ThrottlingException, by its error code
+JUDGE_ERROR_FAILED = "JudgeFailed"  # any other failure before the first event is tracked
+JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS = 5
+JUDGE_BEDROCK_READ_TIMEOUT_SECONDS = 10
+JUDGE_FLUSH_RESERVE_SECONDS = 13  # one SDK send and 1 s more, left before the CloudWatch write
+PRICES_FIELDS = ("source_url", "retrieved_on", "currency", "per_million_tokens")
+PRICE_FIELDS = ("input", "output")  # US dollars per million tokens
 PRICES_FILE = "app/prices.json"  # copied from the AWS Bedrock pricing page, with URL and date
 
 # The answer functions' interface (schemas answer_request and answer_response).

@@ -228,8 +228,22 @@ rm-router -> CloudWatch embedded metrics
   the router's exposure, flushed beside the answer (section 4, step 6), is
   the one exception.
   API Gateway's 30 second limit applies to the request path only.
-- `rm-router` and `rm-judge` log at INFO or above, never DEBUG, because
-  the Flagsmith SDK logs identifiers at DEBUG (task 3.2's review).
+- `rm-router` and `rm-judge` log at INFO or above, never DEBUG, because at
+  DEBUG the Flagsmith SDK logs identifiers and botocore logs response
+  bodies, the server key among them (tasks 3.2 and 3.3's reviews).
+- `rm-judge` judges and parses the reply (field `helpful`) before any
+  write, then writes CloudWatch, then tracks the three events and flushes.
+  A failure before the first event is tracked raises `JudgeThrottled`
+  (Bedrock's `ThrottlingException`) or `JudgeFailed`, so Lambda's async
+  retries, its default 2, run it again; a retry may count the cost twice
+  in CloudWatch, the safe side for the budget check. Once an event is
+  tracked, nothing raises, so no retry the judge causes sends the events
+  twice. Its Bedrock client makes one attempt and waits at most 5 seconds
+  to connect and 10 to read, and before the CloudWatch write it needs 13
+  seconds of Lambda's time left, one SDK send and 1 second more, or it
+  raises `JudgeFailed` with nothing written. Lambda may still deliver an
+  event twice, and a flush slower than 13 seconds may meet the timeout;
+  both are rare and accepted (task 3.3's review).
 - Answer Lambdas return whole responses. No response streaming (FIS Lambda
   faults do not support it).
 - The answer functions take `question` and `identity` and return `answer`,
@@ -318,7 +332,12 @@ CloudWatch namespace `RolloutMarshal`, dimension `Variant` = `current` or
 Cost per answer = input tokens x input price + output tokens x output
 price, in millionths of a US dollar, from `app/prices.json`. Prices are
 copied from the AWS Bedrock pricing page at build time with the page URL
-and date in the file. Do not invent prices.
+and date in the file. Do not invent prices. The file holds `source_url`,
+`retrieved_on`, `currency` and `per_million_tokens`, a map from each model
+ID to its `input` and `output` prices in US dollars per million tokens, so
+tokens times price is micro-USD; `rm-judge` rounds the sum to an integer.
+Task 3.3 resolved the prices from the page's own price files, for US East
+(N. Virginia)'s cross-region table (section 13).
 
 Alarm `rm-cheaper-latency-p95`: `AnswerLatencyMs`, `Variant=cheaper`,
 statistic p95, period 60 seconds, 2 of 2 datapoints above the threshold,
@@ -951,4 +970,4 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the dashboard shows the level, 95 percent), `chance_to_win`; no "not worse" field |
 | An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); verified for usage, with a lag: `usage-data/total-count/` read 0 eleven to 25 minutes after 1.2's 150 identity requests (task 1.3) and 150 at 01:10Z the next day (`evidence/gate-1-review.md`), so a read lags by more than 25 minutes |
 | FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | open |
-| Bedrock prices for the three models | 3.3 | open |
+| Bedrock prices for the three models | 3.3 | verified: resolved from the pricing page's own price files, not seen displayed (`evidence/3.3-prices.md`) |

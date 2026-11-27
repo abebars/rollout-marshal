@@ -2728,7 +2728,56 @@ def test_spike_findings_match_design():
 
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
+def test_contract_c4_judge():
+    """Contract change c4: task 3.3's judge (section 5) and its prices file."""
+    sec5 = flat_section(5)
+    sources, prices = names.PRICES_FIELDS, names.PRICE_FIELDS
+    assert (
+        f"The file holds `{sources[0]}`, `{sources[1]}`, `{sources[2]}` and `{sources[3]}`, a map "
+        f"from each model ID to its `{prices[0]}` and `{prices[1]}` prices in US dollars per "
+        f"million tokens, so tokens times price is micro-USD; `{names.JUDGE_FUNCTION}` rounds the "
+        "sum to an integer." in sec5
+    )
+    connect = names.JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS
+    read = names.JUDGE_BEDROCK_READ_TIMEOUT_SECONDS
+    reserve = names.JUDGE_FLUSH_RESERVE_SECONDS
+    assert (
+        f"`{names.JUDGE_FUNCTION}` judges and parses the reply (field `{names.JUDGE_REPLY_FIELD}`) "
+        "before any write, then writes CloudWatch, then tracks the three events and flushes. A "
+        f"failure before the first event is tracked raises `{names.JUDGE_ERROR_THROTTLED}` "
+        f"(Bedrock's `ThrottlingException`) or `{names.JUDGE_ERROR_FAILED}`, so Lambda's async "
+        "retries, its default 2, run it again; a retry may count the cost twice in CloudWatch, "
+        "the safe side for the budget check. Once an event is tracked, nothing raises, so no retry "
+        "the judge causes sends the events twice. Its Bedrock client makes one attempt and waits "
+        f"at most {connect} seconds to connect and {read} to read, and before the CloudWatch write "
+        f"it needs {reserve} seconds of Lambda's time left, one SDK send and 1 second more, or it "
+        f"raises `{names.JUDGE_ERROR_FAILED}` with nothing written. Lambda may still deliver an "
+        f"event twice, and a flush slower than {reserve} seconds may meet the timeout; both are "
+        "rare and accepted (task 3.3's review)." in sec5
+    )
+    send = int(re.search(r"so one send can take about (\d+) seconds", sec5).group(1))
+    assert reserve == send + 1
+    assert connect + read + reserve < names.JUDGE_TIMEOUT_SECONDS
+    assert names.JUDGE_ERROR_THROTTLED != names.ANSWER_ERROR_THROTTLED
+    prices_file = ROOT / names.PRICES_FILE
+    if prices_file.exists():  # task 3.3 adds it
+        data = json.loads(prices_file.read_text())
+        assert tuple(data) == sources
+        for model in (names.MODEL_CURRENT, names.MODEL_CHEAPER, names.MODEL_JUDGE):
+            assert tuple(data[sources[3]][model]) == prices, model
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    assert (
+        "- design.md section 5 holds the judge's write order, its typed errors, its Bedrock "
+        f"timeouts, the {reserve} second reserve and the prices file's shape; section 13 records "
+        "the price check." in tasks
+    )
+
+
 TIED_BY = {
+    "PRICES_FIELDS": test_contract_c4_judge,
+    "PRICE_FIELDS": test_contract_c4_judge,
     "MODEL_DISPLAY_NAMES": test_contract_c3_models_and_the_router,
     "FLAGSMITH_ADMIN_TOOLS": test_contract_c3_agent_tools,
     "FLAGSMITH_ADMIN_FORBIDDEN_PATHS": test_contract_c2,
@@ -3248,8 +3297,8 @@ def test_contract_c4_fis_names_and_logging():
     )
     assert (
         f"`{names.ROUTER_FUNCTION}` and `{names.JUDGE_FUNCTION}` log at INFO or above, "
-        "never DEBUG, "
-        "because the Flagsmith SDK logs identifiers at DEBUG (task 3.2's review)." in sec5
+        "never DEBUG, because at DEBUG the Flagsmith SDK logs identifiers and botocore logs "
+        "response bodies, the server key among them (tasks 3.2 and 3.3's reviews)." in sec5
     )
     assert names.FIS_CONFIG_BUCKET.endswith(
         f"-{names.ACCOUNT_ID}"

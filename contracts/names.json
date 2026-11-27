@@ -385,6 +385,11 @@
     "alarm_state",
     "at"
   ],
+  "JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS": 5,
+  "JUDGE_BEDROCK_READ_TIMEOUT_SECONDS": 10,
+  "JUDGE_ERROR_FAILED": "JudgeFailed",
+  "JUDGE_ERROR_THROTTLED": "JudgeThrottled",
+  "JUDGE_FLUSH_RESERVE_SECONDS": 13,
   "JUDGE_FUNCTION": "rm-judge",
   "JUDGE_MAX_TOKENS": 200,
   "JUDGE_PAYLOAD_FIELDS": [
@@ -399,6 +404,7 @@
     "output_tokens",
     "latency_ms"
   ],
+  "JUDGE_REPLY_FIELD": "helpful",
   "JUDGE_TIMEOUT_SECONDS": 30,
   "KILL_SWITCH_DEFAULT_ENABLED": true,
   "KILL_SWITCH_FEATURE": "assistant_cheaper_enabled",
@@ -590,7 +596,17 @@
   ],
   "POINTER_CACHE_SECONDS": 30,
   "POINTER_CREATE_CONDITION": "attribute_not_exists(pk)",
+  "PRICES_FIELDS": [
+    "source_url",
+    "retrieved_on",
+    "currency",
+    "per_million_tokens"
+  ],
   "PRICES_FILE": "app/prices.json",
+  "PRICE_FIELDS": [
+    "input",
+    "output"
+  ],
   "PRIMARY_METRIC": "helpful_rate",
   "PROBE_IDENTITY": "rprobe0000-user-001",
   "PROBE_INVOKES": 5,
