@@ -166,6 +166,16 @@ else
   fail "terraform: not installed"
 fi
 
+# 8b. The other tools the build needs (Gate 1): uv (tests, builds, the CLI's
+# CodeZip), node (the AgentCore CLI's CDK app) and jq (the spike's invoke script).
+for tool in uv node jq; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    ok "$tool $("$tool" --version 2>/dev/null | head -1 | one_line)"
+  else
+    fail "$tool: not installed"
+  fi
+done
+
 # 9. AgentCore CLI (npm package @aws/agentcore), 1.3.0 or later within 1.x.
 cli=$(agentcore --version 2>/dev/null | head -1)
 cli_version=$(printf '%s' "$cli" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)

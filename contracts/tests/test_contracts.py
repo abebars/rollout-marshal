@@ -228,6 +228,11 @@ NOT_A_NAME = {
     "pythonpath": "the pytest setting in the root pyproject.toml",
     "uv.lock": "a file name",
     "--url": "load.py's option, in section 11's request contract",
+    # contract change c2 (Gate 1)
+    "build.sh": "each function's build script, which make build runs",
+    "make build": "a Makefile target the lead owns",
+    "cli": "the repo's cli package (design.md section 12)",
+    "uv run marshal": "the command the packaged console script gives",
     "load.py": "the load script, named in section 11's request contract",
     "<project>_<target>_<runtime>": (
         "the AgentCore CLI's naming pattern; see AGENT_RUNTIME_DEPLOYED_NAME"
@@ -351,6 +356,44 @@ def test_run_identities():
     assert (
         "load.py --users"
         not in (ROOT / "openspec/changes/build-rollout-marshal/design.md").read_text()
+    )
+
+
+def test_contract_c2():
+    """Gate 1's second contract change: the boundary rule, statuses, the promote rule."""
+    prose = re.sub(r"\s+", " ", section(4))
+    fields = ", ".join(f"`{f}`" for f in names.MCP_EXPERIMENT_FORBIDDEN_FIELDS[:-1])
+    assert (
+        f"an experiment create or update carrying {fields} or "
+        f"`{names.MCP_EXPERIMENT_FORBIDDEN_FIELDS[-1]}`" in prose
+    )
+    paths = " and ".join(f"`{p}`" for p in names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS)
+    assert f"{paths} can never be built" in prose
+    state = re.sub(r"\s+", " ", section(6))
+    assert (
+        f"Ended in Flagsmith means the experiment's status is `{names.EXPERIMENT_STATUS_ENDED}`; "
+        f"`{names.EXPERIMENT_STATUS_PAUSED}` is not ended." in state
+    )
+    assert names.EXPERIMENT_STATUS_ENDED in names.FLAGSMITH_EXPERIMENT_STATUSES
+    assert names.EXPERIMENT_STATUS_PAUSED in names.FLAGSMITH_EXPERIMENT_STATUSES
+    statuses = json.loads((ROOT / "evidence/1.3-mcp-tools.json").read_text())
+    text = json.dumps(statuses)
+    assert all(f'"{s}"' in text for s in names.FLAGSMITH_EXPERIMENT_STATUSES)
+    assert "promote_min_prob_not_worse" not in names.PLAN_RECOMMENDATION_RULE_FIELDS
+    assert "prob_cheaper_not_worse" not in names.RESULTS_FIELDS
+    assert "topK" in names.FORBIDDEN_SAMPLING_PARAMETERS
+    spec = ROOT / "openspec/changes/build-rollout-marshal/specs/experiment-agent/spec.md"
+    assert (
+        "the lower bound of the 95 percent credible interval for the lift on `helpful_rate` is "
+        "at or above -0.05, and both guardrails pass" in spec.read_text()
+    )
+    sec7 = re.sub(r"\s+", " ", section(7))
+    assert f"`{names.AGENT_STACK}` creates it with the Bedrock, logging and Gateway grants" in sec7
+    assert f"key starts `{names.AGENT_RUNTIME_ROLE_OUTPUT_PREFIX}`" in sec7
+    assert f"attaches inline policy `{names.AGENT_RUNTIME_TOOLS_POLICY}`" in sec7
+    assert (
+        f"exits {names.CLI_EXIT_OK} when its error is null, {names.CLI_EXIT_ERROR} when it "
+        f"carries an error code, and {names.CLI_EXIT_USAGE} for a usage error" in sec7
     )
 
 
@@ -679,7 +722,10 @@ def test_numbers_in_design_rules():
     assert f"at least {names.MIN_IDENTITIES_PER_VARIATION} identities" in prose
     assert f"probe is {names.PROBE_INVOKES} direct invokes" in prose
     assert f"at most {round(names.GUARDRAIL_MAX_LATENCY_RATIO * 100)} percent" in prose
-    assert f"at least {names.PROMOTE_MIN_PROB_NOT_WORSE}" in prose
+    assert (
+        "the rule asks for at least a 97.5 percent probability that the lift is at least -0.05"
+        in prose
+    )
     assert (
         "at or above minus 5 percent" in prose and names.PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER == -0.05
     )
@@ -961,7 +1007,6 @@ def plan(**overrides):
         },
         "recommendation_rule": {
             "after_incident": names.RECOMMEND_HOLD_RERUN,
-            "promote_min_prob_not_worse": names.PROMOTE_MIN_PROB_NOT_WORSE,
             "promote_min_helpful_lift_ci_lower": names.PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER,
         },
     }
@@ -990,7 +1035,6 @@ def test_plan_built_from_names_validates():
         {
             "recommendation_rule": {
                 "after_incident": "promote",
-                "promote_min_prob_not_worse": 0.95,
                 "promote_min_helpful_lift_ci_lower": -0.05,
             }
         },
@@ -1100,7 +1144,6 @@ def results(**overrides):
     base = {
         "ready": True,
         "variations": {"current": dict(variation), "cheaper": dict(variation)},
-        "prob_cheaper_not_worse": None,
         "helpful_lift_ci_lower": -0.03,
     }
     return {**base, **overrides}
@@ -1120,7 +1163,6 @@ def test_results_validate():
             ready=False,
             variations={"current": empty, "cheaper": empty},
             helpful_lift_ci_lower=None,
-            prob_cheaper_not_worse=None,
         ),
     )
 
@@ -1128,7 +1170,7 @@ def test_results_validate():
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"prob_cheaper_not_worse": 1.5},
+        {"prob_cheaper_not_worse": None},
         {"ready": "yes"},
         {"variations": {"current": {}}},
         {"helpful_lift_ci_lower": "-5%"},
@@ -1761,8 +1803,9 @@ def test_results_definitions_match_design():
         "non-null `helpful_rate`, `mean_latency_ms` and `mean_cost_micro_usd`" in prose
     )
     assert "as a fraction (-0.05 is minus 5 percent)" in prose
-    assert "the win probability never goes in it" in prose
-    invalid("results", results(helpful_lift_ci_lower=-5.0))  # an unconverted percent
+    assert "it can fall below -1, because the interval is the lift plus or minus 1.96" in prose
+    valid("results", results(helpful_lift_ci_lower=-1.07))  # the judge hat's case, Gate 1
+    assert "prob_cheaper_not_worse" not in prose
     complete = contracts.load_schema("results")["$defs"]["complete_variation"]["properties"]
     assert complete["identities"] == {"minimum": names.MIN_IDENTITIES_PER_VARIATION}
     assert set(complete) == set(names.VARIATION_FIELDS)
@@ -1909,7 +1952,8 @@ PINNED_RULE_SENTENCES = (
     "and do not invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is emitted",
     "a missing flag or a failed read means off",
     # what the spikes found (task 1.4)
-    "and `flag.variant` is set, record the exposure with `track_exposure_event`.",
+    "the flag is enabled and `flag.variant` is set, record the exposure with "
+    "`track_exposure_event`, as the SDK's own `get_experiment_flag` would",
     "The SDK sends the value as a string, and Flagsmith aggregates it as a number (task 1.2)",
     "a buffer of one item drops events tracked in a row (task 1.2)",
     "Development and Production use v2 feature versioning: a feature's environment state changes "
@@ -1917,7 +1961,9 @@ PINNED_RULE_SENTENCES = (
     "or sends an experiment's status or rollout decision through MCP's experiment create or "
     "update tools",
     "The experiment's create carries its whole rollout block",
-    "Flagsmith has no primary-metric flag, so the agent attaches `helpful_rate` first.",
+    "The API has no primary-metric field, and whether the dashboard takes the first attached "
+    "metric as primary is untested, so the agent attaches `helpful_rate` first and task 5.1 "
+    "records which metric the dashboard shows as primary.",
     "in task 1.2 all events were in by about 2 minutes 15 seconds after the last was sent",
     "a refresh returns final results, as of the end (task 1.4)",
     "get-or-create the run's feature, options and experiment through the MCP server, and its "
@@ -2025,6 +2071,17 @@ def test_console_script_once_the_cli_exists():
         pytest.skip("cli/ arrives with task 2.6; the lead adds the console script then")
     scripts = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"].get("scripts", {})
     assert scripts.get(names.CLI_NAME) == names.CLI_ENTRY_POINT
+    # Gate 1: an unpackaged project installs no console script, so run it for real.
+    import shutil
+    import subprocess
+
+    uv = shutil.which("uv")
+    if uv is None:
+        pytest.skip("uv is not on PATH")
+    done = subprocess.run(
+        [uv, "run", names.CLI_NAME, "--help"], cwd=ROOT, capture_output=True, text=True
+    )
+    assert done.returncode == names.CLI_EXIT_OK, done.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -2092,6 +2149,9 @@ def test_spike_findings_match_design():
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
+    "FLAGSMITH_ADMIN_FORBIDDEN_PATHS": test_contract_c2,
+    "FLAGSMITH_EXPERIMENT_STATUSES": test_contract_c2,
+    "MCP_EXPERIMENT_FORBIDDEN_FIELDS": test_contract_c2,
     "FORBIDDEN_SAMPLING_PARAMETERS": test_list_constants_match_their_design_lists,
     "VARIANTS": test_list_constants_match_their_design_lists,
     "EVENTS": test_list_constants_match_their_design_lists,
@@ -2543,7 +2603,7 @@ GOOD_VARIATION = {
         ("run_item", lambda: run_item(experiment_id=-1)),
         ("run_item", lambda: run_item(prompt="")),
         ("plan", lambda: plan(summary="")),
-        ("results", lambda: results(prob_cheaper_not_worse=-0.2)),
+        ("results", lambda: results(prob_cheaper_not_worse=None)),
         (
             "results",
             lambda: results(

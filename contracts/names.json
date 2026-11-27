@@ -44,6 +44,9 @@
   "AGENT_RUNTIME_ARN_PARAMETER": "/rm/agent-runtime-arn",
   "AGENT_RUNTIME_DEPLOYED_NAME": "rm_default_rm_agent",
   "AGENT_RUNTIME_NAME": "rm_agent",
+  "AGENT_RUNTIME_ROLE_OUTPUT_PREFIX": "ApplicationRuntimeRmAgentRoleArnOutput",
+  "AGENT_RUNTIME_TOOLS_POLICY": "rm-agent-runtime-tools",
+  "AGENT_STACK": "AgentCore-rm-default",
   "AGENT_THINKING_EFFORT": "low",
   "AGENT_TOOLS": [
     "flagsmith_admin",
@@ -140,6 +143,9 @@
     "check"
   ],
   "CLI_ENTRY_POINT": "cli.marshal:main",
+  "CLI_EXIT_ERROR": 1,
+  "CLI_EXIT_OK": 0,
+  "CLI_EXIT_USAGE": 2,
   "CLI_NAME": "marshal",
   "CONTROL_LABEL": "control",
   "CONTROL_VALUE": "current",
@@ -216,6 +222,8 @@
   "EXPERIMENT_FEATURE_KEY_TEMPLATE": "assistant_model_<run_id>",
   "EXPERIMENT_FEATURE_PREFIX": "assistant_model_",
   "EXPERIMENT_ROLLOUT_PERCENT": 100,
+  "EXPERIMENT_STATUS_ENDED": "completed",
+  "EXPERIMENT_STATUS_PAUSED": "paused",
   "EXPOSURE_METADATA_KEY": "experiment_id",
   "FEATURE_KEYS": [
     "assistant_model_<run_id>",
@@ -232,6 +240,10 @@
   "FIS_TARGET_FUNCTION": "rm-answer-cheaper",
   "FIS_TEMPLATE": "rm-delay-cheaper",
   "FIS_TIMEBOX_MINUTES": 120,
+  "FLAGSMITH_ADMIN_FORBIDDEN_PATHS": [
+    "complete/",
+    "pause/"
+  ],
   "FLAGSMITH_ADMIN_FUNCTION": "rm-flagsmith-admin",
   "FLAGSMITH_ADMIN_TIMEOUT_SECONDS": 30,
   "FLAGSMITH_API_KEY_NAME": "rollout-marshal-agent",
@@ -239,6 +251,12 @@
     "enable_events": true
   },
   "FLAGSMITH_ENVIRONMENT_NAME": "Development",
+  "FLAGSMITH_EXPERIMENT_STATUSES": [
+    "created",
+    "running",
+    "paused",
+    "completed"
+  ],
   "FLAGSMITH_EXPOSURES_FIELD": "new_identities",
   "FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE": "Authorization: Api-Key <key>",
   "FLAGSMITH_MCP_URL": "https://mcp.flagsmith.com",
@@ -264,7 +282,8 @@
     "temperature",
     "top_p",
     "topP",
-    "top_k"
+    "top_k",
+    "topK"
   ],
   "GATEWAY_API_KEY_HEADER": "Authorization",
   "GATEWAY_API_KEY_PREFIX": "Api-Key",
@@ -414,6 +433,13 @@
     "questions": 2,
     "users": 150
   },
+  "MCP_EXPERIMENT_FORBIDDEN_FIELDS": [
+    "status",
+    "rollout_decision",
+    "rollout_variant",
+    "started_at",
+    "ended_at"
+  ],
   "METRICS": [
     "helpful_rate",
     "mean_latency_ms",
@@ -502,7 +528,6 @@
   ],
   "PLAN_RECOMMENDATION_RULE_FIELDS": [
     "after_incident",
-    "promote_min_prob_not_worse",
     "promote_min_helpful_lift_ci_lower"
   ],
   "PLAN_STOP_RULE_FIELDS": [
@@ -523,7 +548,6 @@
   "PROBE_QUESTION": "How do I reset my password?",
   "PROBE_RUN_ID": "rprobe0000",
   "PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER": -0.05,
-  "PROMOTE_MIN_PROB_NOT_WORSE": 0.95,
   "PYTHON_VERSION": "3.13",
   "QUESTIONS_COUNT": 30,
   "QUESTIONS_FILE": "app/questions.json",
@@ -564,7 +588,6 @@
   "RESULTS_FIELDS": [
     "ready",
     "variations",
-    "prob_cheaper_not_worse",
     "helpful_lift_ci_lower"
   ],
   "RESULTS_REFRESH_MIN_SECONDS": 300,
