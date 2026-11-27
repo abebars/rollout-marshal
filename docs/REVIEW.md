@@ -90,7 +90,7 @@ read access to the repo at `dev`.
 | 1 | After task 1.4 | `evidence/1.2-*.md`, `evidence/1.3-*.md`, `evidence/1.4-results-sample.json`, every row of design.md section 13 owned by 1.2, 1.3 or 1.4 resolved | Human approves; A, B, C continue |
 | 2 | After 2.5, 3.6 and 4.2 | unit suites green, `evidence/3.6-*.md`, `evidence/4.2-*.md` | Human approves; integration starts |
 | 3 | After 5.1 | `evidence/5.1-e2e.md` with the full state history | Human approves; merge `dev` to `main` |
-| 4 | After 5.2, 6.1, 6.2, 6.3 | three run histories, README, video script, time-saved file | Human approves; merge `dev` to `main`; Human records, then submits |
+| 4 | After 5.2, 6.1, 6.2, 6.3 | two run histories (5.1 and 5.2's one run, after the cut of 2026-11-27), README, video script, time-saved file | Human approves; merge `dev` to `main`; Human records, then submits |
 
 The lead writes each gate's findings and what was done about each one to
 `evidence/gate-<n>-review.md`. A finding is closed only by a change or by
