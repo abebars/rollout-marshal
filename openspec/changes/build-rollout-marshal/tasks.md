@@ -727,7 +727,7 @@ their tasks name, not against each other.
 
 ## 5. Integration (Lead)
 
-- [ ] 5.1 **Join the workstreams: first full run**
+- [x] 5.1 **Join the workstreams: first full run** (PR #37 merged; run r202611271927 HELD; the probe hotfix PR #38)
   - Needs: 2.7, 3.6, 4.1 applied with the recalibrated threshold, 4.2,
     4.3. Gate 2 passed.
   - Files: `scripts/e2e.py`, `evidence/5.1-e2e.md`.
