@@ -559,7 +559,7 @@ Three things invoke it:
 | --- | --- | --- |
 | `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials, through the console script `cli.marshal:main` |
 | `rm-invoker` Lambda | `alarm` | EventBridge rule `rm-alarm-to-invoker` on the alarm entering ALARM. Role `rm-invoker-role`. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
-| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it with GetSchedule and writes back every field it returned, changing only its state. That passes `rm-scheduler-role` to `scheduler.amazonaws.com`, so the runtime's role needs pass-role on it (task 2.7) |
+| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it with GetSchedule and writes back every field it returned that UpdateSchedule takes (all but Arn, CreationDate and LastModificationDate), changing only its state. That passes `rm-scheduler-role` to `scheduler.amazonaws.com`, so the runtime's role needs pass-role on it (task 2.7) |
 
 The CLI and `rm-invoker` share one `InvokeAgentRuntime` client setting: read
 timeout 290 seconds and one attempt (`total_max_attempts` 1). It sits just
@@ -690,7 +690,8 @@ app module's output `ask_url` gives it. The route uses `AWS_IAM`
 authorization, so `load.py` signs every request with SigV4 (service
 `execute-api`) from the shell's AWS credentials: the repo is public, and an
 unsigned URL that leaked into evidence could spend Bedrock money. A load
-never prints the URL.
+never prints the URL. The shell's credentials need `execute-api:Invoke` on
+the route.
 
 ## 12. Repo layout
 

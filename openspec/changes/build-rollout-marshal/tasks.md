@@ -389,7 +389,9 @@ their tasks name, not against each other.
     `uv.lock` and the `contracts` symlink, then checks that the zip holds
     `main.py`, `rm_agent/` and `contracts/`. It adds `runtime/contracts` to
     `agent/conftest.py`'s `collect_ignore`, or pytest collects the contracts
-    suite twice through the symlink.
+    suite twice through the symlink. The runtime's role gets `iam:PassRole`
+    on `rm-scheduler-role`, with `iam:PassedToService`
+    `scheduler.amazonaws.com`, for the schedule tool's UpdateSchedule.
   - After each `agentcore deploy`, A writes the runtime ARN to
     `/rm/agent-runtime-arn` (for example `put-parameter --overwrite` in a
     small deploy script). A pre-merge apply of `runtime_role.tf` is allowed
@@ -440,7 +442,8 @@ their tasks name, not against each other.
     the 10-second fault can pass 29 seconds, tell the lead, and a contract
     change sets the rule.
   - With an active run, an identity that is not that run's gets a 400 and
-    no Flagsmith call; a test covers it (design.md section 4, step 1).
+    no Flagsmith call; tests cover another run's identity, `<run_id>1-user-001`
+    and a trailing newline (design.md section 4, step 1).
   - Pass: unit tests green.
 
 - [ ] 3.3 **Judge**
@@ -460,7 +463,9 @@ their tasks name, not against each other.
 - [ ] 3.4 **Load script**
   - Needs: 1.1. Files: `scripts/load.py`, `app/questions.json`, tests.
   - Produces: `scripts/load.py --run-id <run_id> --users N --questions M
-    --url <api>`, sending identity `run_identity(run_id, n)` for user n; at
+    --url <api>`, sending identity `run_identity(run_id, n)` for user n, each
+    request a SigV4-signed (`execute-api`) POST of an `answer_request` to
+    `--url` (the app module's `ask_url`); at
     most 10 concurrent; prints sent, ok, failed; lock file refuses a
     second start.
   - Tests: sends exactly N x M; never exceeds the concurrency; refuses

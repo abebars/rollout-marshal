@@ -362,6 +362,39 @@ def test_run_identities():
         f"role `{names.SCHEDULER_ROLE}`" in tasks
     )
     assert "`lifecycle { ignore_changes = [state] }`" in tasks
+    assert "`rm-tick` (created disabled, with `lifecycle { ignore_changes = [state] }`" in tasks
+    assert (
+        "It adds `runtime/contracts` to `agent/conftest.py`'s `collect_ignore`, or pytest "
+        "collects the contracts suite twice through the symlink." in tasks
+    )
+    assert (
+        f"The runtime's role gets `iam:PassRole` on `{names.SCHEDULER_ROLE}`, with "
+        f"`iam:PassedToService` `{names.SCHEDULER_SERVICE_PRINCIPAL}`" in tasks
+    )
+    assert "`<run_id>1-user-001` and a trailing newline" in tasks
+    design = (ROOT / "openspec/changes/build-rollout-marshal/design.md").read_text()
+    assert "app.py" not in tasks and "app.py" not in design
+    sec4 = re.sub(r"\s+", " ", section(4))
+    assert (
+        "1. Read the active run pointer (section 6). With an active run, an `identity` that is "
+        "not one of that run's (`is_run_identity()`, with the pointer's `run_id` before "
+        "`-user-`) gets a 400 before any Flagsmith call, so a wrong `--run-id` cannot reuse an "
+        "old run's identities (Gate 1)." in sec4
+    )
+    sec7 = re.sub(r"\s+", " ", section(7))
+    assert (
+        "reads it with GetSchedule and writes back every field it returned that UpdateSchedule "
+        "takes (all but Arn, CreationDate and LastModificationDate), changing only its state. "
+        f"That passes `{names.SCHEDULER_ROLE}` to `{names.SCHEDULER_SERVICE_PRINCIPAL}`, so the "
+        "runtime's role needs pass-role on it (task 2.7)" in sec7
+    )
+    sec11 = re.sub(r"\s+", " ", section(11))
+    assert (
+        f"Each request is one JSON `answer_request` (`question`, `identity`) posted to `--url`, "
+        f"the full URL of the HTTP API's only route, `{names.API_ROUTE_KEY}`" in sec11
+    )
+    assert "from the shell's AWS credentials" in sec11
+    assert "A load never prints the URL. The shell's credentials need `execute-api:Invoke`" in sec11
     assert tasks.count("`load.py --run-id <run_id> --users 150") == 3
     assert "load.py --users" not in tasks
     load = re.sub(r"\s+", " ", section(11))
@@ -373,7 +406,7 @@ def test_run_identities():
         f"`{names.API_SIGV4_SERVICE}`)" in load
     )
     spec = (ROOT / "openspec/changes/build-rollout-marshal/specs/assistant-api/spec.md").read_text()
-    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10`" in spec
+    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10 --url <api>`" in spec
     assert "load.py --users" not in spec
     assert (
         "load.py --users"
