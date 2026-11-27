@@ -2739,8 +2739,6 @@ def test_spike_findings_match_design():
     assert "| `flagsmith_admin` | get-or-create metrics, start experiment," in DESIGN
 
 
-# Every tuple, list, dict or set constant names the test that ties it to its
-# source, so a new collection constant cannot land without one.
 def test_contract_c4_judge():
     """Contract change c4: task 3.3's judge (section 5) and its prices file."""
     sec5 = flat_section(5)
@@ -2751,15 +2749,22 @@ def test_contract_c4_judge():
         f"million tokens, so tokens times price is micro-USD; `{names.JUDGE_FUNCTION}` rounds the "
         "sum to an integer." in sec5
     )
+    assert (
+        "Task 3.3 resolved the prices from the page's own price files, from US East "
+        '(N. Virginia)\'s "Geo and In-region Cross-region Inference" table, not the cheaper Global '
+        "one (section 13)." in sec5
+    )
     connect = names.JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS
     read = names.JUDGE_BEDROCK_READ_TIMEOUT_SECONDS
     reserve = names.JUDGE_FLUSH_RESERVE_SECONDS
     assert (
         f"`{names.JUDGE_FUNCTION}` judges and parses the reply (field `{names.JUDGE_REPLY_FIELD}`) "
         "before any write, then writes CloudWatch, then tracks the three events and flushes. A "
-        f"failure before the first event is tracked raises `{names.JUDGE_ERROR_THROTTLED}` "
-        f"(Bedrock's `ThrottlingException`) or `{names.JUDGE_ERROR_FAILED}`, so Lambda's async "
-        "retries, its default 2, run it again; a retry may count the cost twice in CloudWatch, "
+        "failure before the first event is tracked raises, so Lambda's async retries, its default "
+        f"2, run it again: `{names.JUDGE_ERROR_THROTTLED}` for Bedrock's `ThrottlingException`, "
+        f"`{names.JUDGE_ERROR_FAILED}` for the judge's other failures before the CloudWatch write, "
+        "and a failed CloudWatch write or first track its own error; a retry may count the cost "
+        "twice in CloudWatch, "
         "the safe side for the budget check. Once an event is tracked, nothing raises, so no retry "
         "the judge causes sends the events twice. Its Bedrock client makes one attempt and waits "
         f"at most {connect} seconds to connect and {read} to read, and before the CloudWatch write "
@@ -2827,6 +2832,8 @@ def test_contract_c5_approve_names_what_it_approves():
     )
 
 
+# Every tuple, list, dict or set constant names the test that ties it to its
+# source, so a new collection constant cannot land without one.
 TIED_BY = {
     "PRICES_FIELDS": test_contract_c4_judge,
     "PRICE_FIELDS": test_contract_c4_judge,
@@ -3364,6 +3371,9 @@ def test_contract_c4_fis_names_and_logging():
         "new release changes the cheaper function alone mid-project)" in sec9
     )
     layer = names.FIS_EXTENSION_LAYER_ARN.split(":")
+    pin = ":".join(layer[-2:])  # aws-fis-extension-arm64:441, as section 13 records it
+    sec13 = re.sub(r"\s+", " ", section(13))
+    assert f"layer `{pin}` from SSM (`evidence/4.3-fis.md`, PR #23)" in sec13
     assert layer[3] == names.REGION and layer[6] == f"aws-fis-extension-{names.LAMBDA_ARCHITECTURE}"
     assert names.FIS_CONFIG_BUCKET.endswith(
         f"-{names.ACCOUNT_ID}"
@@ -3390,6 +3400,10 @@ def test_contract_c4_fis_names_and_logging():
         "as the fault "
         "run has it: the lead applies the FIS module with the app module first (design.md section "
         "9).",
+        "- Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied with it. Files: "
+        "`evidence/3.6-app-smoke.md`.",
+        "4.3's build half merges, and the lead applies `infra/modules/fis` with the app module, "
+        "before 3.6 (design.md section 9).",
         "- design.md section 9 holds the module's names and interface. An organisation SCP denies "
         f"FIS to `{names.REVIEW_ROLE}`, so the lead reads FIS state with the SSO profile "
         "and records "
@@ -3411,6 +3425,8 @@ def test_fis_and_app_module_interfaces():
     takes = (names.APP_CHEAPER_FUNCTION_NAME_OUTPUT, names.APP_CHEAPER_ROLE_NAME_OUTPUT)
     gives = (names.APP_CHEAPER_EXTRA_LAYERS_INPUT, names.APP_CHEAPER_EXTRA_ENV_INPUT)
     if fis:
+        # The module pins the layer from names (section 9), not from SSM's moving value.
+        assert "FIS_EXTENSION_LAYER_ARN" in fis
         for name in takes:
             assert f'variable "{name}"' in fis, name
         for name in gives:
