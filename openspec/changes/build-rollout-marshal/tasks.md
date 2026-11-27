@@ -343,8 +343,8 @@ their tasks name, not against each other.
     `notify` with a repeated `dedupe_key` publishes once and returns the
     same message ID, and a failed publish records nothing;
     `set_tick(False)` when already disabled is a no-op.
-  - `set_tick` reads `rm-tick` (GetSchedule) and writes back the same
-    target, input and role, changing only its state. A test checks that the
+  - `set_tick` reads `rm-tick` (GetSchedule) and writes back every field it
+    returned that UpdateSchedule takes, changing only its state. A test checks that the
     target's input is still the tick payload after every call. The
     report's Known bias names both biases in design.md section 10.
   - A test checks that the Recommendation states the promote rule as at

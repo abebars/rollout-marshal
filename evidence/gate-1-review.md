@@ -51,7 +51,7 @@ c1 is contract change c1 (PR #9) and c2 is contract change c2 (PR #12). "Carried
 | Judge 13 | nit | 1.2 states a derived time "to the millisecond" | Carried: B rewords it with judge 8 |
 | Judge 14 | nit | Side claims stronger than the run: Sonnet 5 as a "proven fallback" judge, PR #6's two-space claim, and "promote path is possible" | Carried: B rewords the first; the second is history. c2 says every planned run ends `hold, re-run`, and 6.2 and 6.3 claim no promote |
 | Judge 15 | nit | Contract text | c2 covers the treatment split, the MCP tools row and router step 3's enabled check (1.2's finding 7). c1 covers the usage lag (re-read: 150 at 01:10Z). Docs citations for per-identity aggregation are left for 3.6's check |
-| Builder 1 | should | The runtime's code layout was undecided | c1: `agent/runtime/`, package `rm_agent`, entrypoint `app.py` |
+| Builder 1 | should | The runtime's code layout was undecided | c1: `agent/runtime/`, package `rm_agent`, entrypoint `main.py` |
 | Builder 2 | should | The `marshal` console script could never install | c2: the project is packaged from 2.6 (hatchling, `cli` and `contracts`), and the test runs `uv run marshal --help` |
 | Builder 3 | should | Nothing pinned the no-end rule at the tool boundary | c2: section 4 and 2.2 refuse other tools, the five status fields, and any `complete/` or `pause/` path |
 | Builder 4 | should | `set_tick` could drop the tick's input, and the schedule's group and role were unnamed | c1: the names. c2: 2.4 writes the schedule back whole, and a test checks the input |
