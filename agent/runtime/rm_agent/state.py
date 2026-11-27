@@ -61,11 +61,13 @@ _TO = _named("to", names.HISTORY_FIELDS)
 _ACTOR = _named("actor", names.HISTORY_FIELDS)
 _REASON = _named("reason", names.HISTORY_FIELDS)
 
-# A commit's updates may set any run item attribute except those create_run writes once
-# and those this module keeps itself.
+# A commit's updates may set any run item attribute except those create_run writes once,
+# those this module keeps itself, and notified: only the notify tool (task 2.4) records a
+# dedupe key, one at a time, so a whole map set from a stale copy can never drop one.
 _WRITTEN_ONCE = {_PK, _RUN_ID, _PROMPT, _PLAN, _CREATED_AT}
 _KEPT_HERE = {_STATE, _PENDING, _PENDING_AT, _HISTORY, _UPDATED_AT}
-_UPDATABLE = frozenset(names.RUN_ITEM_ATTRIBUTES) - _WRITTEN_ONCE - _KEPT_HERE
+_WRITTEN_BY_NOTIFY = {_NOTIFIED}
+_UPDATABLE = frozenset(names.RUN_ITEM_ATTRIBUTES) - _WRITTEN_ONCE - _KEPT_HERE - _WRITTEN_BY_NOTIFY
 
 _START = next(t for t in names.TRANSITIONS if t.source is None)  # (none) -> PLANNED
 _ROWS = {(t.source, t.target): t for t in names.TRANSITIONS if t.source is not None}
@@ -398,27 +400,43 @@ def resume(run_id: str, expected_from: str, to: str, seen_pending_at: str) -> Ru
     )
 
 
+def _holds(run_id: str, claimed_at: str) -> bool:
+    """Whether the caller's claim is still in place: pending set, pending_at claimed_at."""
+    item = _get(names.run_pk(run_id)) or {}
+    return item.get(_PENDING) is not None and item.get(_PENDING_AT) == claimed_at
+
+
 def release(run_id: str, claimed_at: str) -> bool:
     """After an effect throws: move the caller's claim back PENDING_STALE_SECONDS, on
     condition it is still the caller's (pending set, pending_at still claimed_at). False,
-    with nothing written, when it is not."""
+    with nothing written, when it is not.
+
+    A collision with an in-flight transaction is re-read like a commit's: retried once if
+    the claim is still the caller's, so the next tick need not wait out the claim.
+    """
     back = names.utc_iso(datetime.fromisoformat(claimed_at) - _STALE_AFTER)
-    try:
-        _client().update_item(
-            TableName=names.RUNS_TABLE,
-            Key=_key(names.run_pk(run_id)),
-            UpdateExpression="SET #pending_at = :back, #updated_at = :now",
-            ConditionExpression="attribute_exists(#pending) AND #pending_at = :claimed_at",
-            ExpressionAttributeNames=_attribute_names(_PENDING, _PENDING_AT, _UPDATED_AT),
-            ExpressionAttributeValues=_values(
-                back=back, claimed_at=claimed_at, now=names.utc_iso(_now())
-            ),
-        )
-    except ClientError as error:
-        if _code(error) in (_CONDITION_FAILED, _CONFLICT):
-            return False
-        raise
-    return True
+    now = names.utc_iso(_now())
+    retried = False
+    while True:
+        try:
+            _client().update_item(
+                TableName=names.RUNS_TABLE,
+                Key=_key(names.run_pk(run_id)),
+                UpdateExpression="SET #pending_at = :back, #updated_at = :now",
+                ConditionExpression="attribute_exists(#pending) AND #pending_at = :claimed_at",
+                ExpressionAttributeNames=_attribute_names(_PENDING, _PENDING_AT, _UPDATED_AT),
+                ExpressionAttributeValues=_values(back=back, claimed_at=claimed_at, now=now),
+            )
+        except ClientError as error:
+            if _code(error) == _CONDITION_FAILED:
+                return False
+            if _code(error) != _CONFLICT:
+                raise
+            if retried or not _holds(run_id, claimed_at):
+                return False
+            retried = True
+            continue
+        return True
 
 
 def _checked(updates: dict[str, Any]) -> dict[str, Any]:
@@ -522,22 +540,28 @@ def commit(
     pointer (clear_active), on condition it is absent or names this run. Each goes in the
     same TransactWriteItems as the run item.
 
-    actor must be the table's actor for the row. StaleState when the claim is no longer the
-    caller's. A transaction cancelled by a colliding write is a lost race too: re-read, and
-    retry once if the claim is still the caller's. CommitFailed when the pointer's
-    condition, or anything else that is not a race, cancels the commit. Other errors, such
-    as throttling or a network failure, propagate as they came.
+    actor must be the table's actor for the row, reason a non-empty string, and a
+    feature_key in updates the run's own, on any row; else ValueError before any write.
+    StaleState when the claim is no longer the caller's. A transaction cancelled by a
+    colliding write is a lost race too: re-read, and retry once if the claim is still the
+    caller's. CommitFailed when the pointer's condition, or anything else that is not a
+    race, cancels the commit. Other errors, such as throttling or a network failure,
+    propagate as they came.
     """
     row = _row(expected_from, to)
     if actor != row.actor:
         raise ValueError(f"{expected_from} -> {to} is recorded with actor {row.actor!r}")
+    if not isinstance(reason, str) or not reason:
+        raise ValueError(f"a commit's reason must be a non-empty string, not {reason!r}")
     sets = _checked(updates)
+    # Every commit, not only the launch: no commit may store another run's feature key.
+    feature_key = names.experiment_feature_key(run_id)
+    if sets.get(_FEATURE_KEY, feature_key) != feature_key:
+        raise ValueError(f"the feature_key of {run_id} is {feature_key}")
     launch = (expected_from, to) == _LAUNCH
     pointer_write = None
     if launch:
-        feature_key = names.experiment_feature_key(run_id)
-        if sets.setdefault(_FEATURE_KEY, feature_key) != feature_key:
-            raise ValueError(f"the launch commit's feature_key for {run_id} is {feature_key}")
+        sets.setdefault(_FEATURE_KEY, feature_key)
         pointer_write = _launch_pointer(run_id, feature_key)
     elif to in names.TERMINAL_STATES:
         pointer_write = _clear_active(run_id)

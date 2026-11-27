@@ -455,6 +455,9 @@ def test_two_concurrent_claims_from_the_same_state_one_wins(db, clock, first, se
     done = state.commit(run.run_id, t.source, t.target, t.actor, reason(t), {}, won.pending_at)
     assert done.state == first
     assert len(done.history) == len(run.history) + 1  # exactly one transition applied
+    with pytest.raises(state.StaleState):  # the loser claims again after the winner's commit
+        state.claim(run.run_id, seen_by_both, second)
+    assert stored(db, run.run_id) == done.item
 
 
 def test_two_claims_from_parallel_threads_one_wins(db, clock, monkeypatch):
@@ -569,6 +572,91 @@ def test_release_changes_nothing_once_the_claim_is_not_the_callers(db, clock):
     assert after_commit["pending_at"] == claimed.pending_at  # a commit leaves it behind
     assert state.release(run.run_id, claimed.pending_at) is False
     assert stored(db, run.run_id) == after_commit
+
+
+def test_a_takeover_must_name_the_pending_target(db, clock):
+    run = run_in(RUNNING)
+    claimed = state.claim(run.run_id, RUNNING, ROLLED_BACK)
+    clock.advance(names.PENDING_STALE_SECONDS + 1)
+    before = stored(db, run.run_id)
+    with pytest.raises(state.StaleState):
+        state.resume(run.run_id, RUNNING, RESULTS_READY, claimed.pending_at)
+    assert stored(db, run.run_id) == before
+
+
+def test_a_takeover_must_name_the_claimed_source(db, clock):
+    """RESULTS_READY -> ROLLED_BACK is a row too, so only the state check refuses it."""
+    run = run_in(RUNNING)
+    claimed = state.claim(run.run_id, RUNNING, ROLLED_BACK)
+    clock.advance(names.PENDING_STALE_SECONDS + 1)
+    before = stored(db, run.run_id)
+    with pytest.raises(state.StaleState):
+        state.resume(run.run_id, RESULTS_READY, ROLLED_BACK, claimed.pending_at)
+    assert stored(db, run.run_id) == before
+
+
+def test_a_commit_must_name_the_claimed_target(db, clock):
+    run = run_in(RUNNING)
+    claimed = state.claim(run.run_id, RUNNING, ROLLED_BACK)
+    before = stored(db, run.run_id)
+    t = row(RUNNING, RESULTS_READY)
+    with pytest.raises(state.StaleState):
+        state.commit(run.run_id, t.source, t.target, t.actor, reason(t), {}, claimed.pending_at)
+    assert stored(db, run.run_id) == before
+
+
+def test_a_commit_must_name_the_claimed_source(db, clock):
+    run = run_in(RESULTS_READY)
+    claimed = state.claim(run.run_id, RESULTS_READY, HELD)
+    before = stored(db, run.run_id), pointer(db)
+    t = row(RUNNING, HELD)
+    with pytest.raises(state.StaleState):
+        state.commit(run.run_id, t.source, t.target, t.actor, reason(t), {}, claimed.pending_at)
+    assert (stored(db, run.run_id), pointer(db)) == before
+
+
+def test_a_release_that_meets_a_colliding_write_retries_once_while_the_claim_is_held(
+    db, clock, monkeypatch
+):
+    """Otherwise a tick right after EFFECT_FAILED would wait out the 360 s claim."""
+    run = run_in(RUNNING)
+    claimed = state.claim(run.run_id, RUNNING, ROLLED_BACK)
+    flaky = Interfere(db, "update_item", lambda: conflict(db))
+    monkeypatch.setattr(state, "_client", lambda: flaky)
+    assert state.release(run.run_id, claimed.pending_at) is True
+    assert flaky.calls == 2  # the first try and exactly one retry
+    moved_back = datetime.fromisoformat(claimed.pending_at) - timedelta(
+        seconds=names.PENDING_STALE_SECONDS
+    )
+    assert stored(db, run.run_id)["pending_at"] == names.utc_iso(moved_back)
+
+
+def test_a_release_is_not_retried_once_the_colliding_write_took_the_claim(db, clock, monkeypatch):
+    run = run_in(RUNNING)
+    t = row(RUNNING, ROLLED_BACK)
+    stalled = state.claim(run.run_id, t.source, t.target)
+    clock.advance(names.PENDING_STALE_SECONDS + 1)
+    taken = {}
+
+    def a_tick_takes_over():
+        taken["run"] = state.resume(run.run_id, t.source, t.target, stalled.pending_at)
+
+    flaky = Interfere(db, "update_item", lambda: conflict(db), before=a_tick_takes_over)
+    monkeypatch.setattr(state, "_client", lambda: flaky)
+    assert state.release(run.run_id, stalled.pending_at) is False
+    assert flaky.calls == 2  # the release's one try, and the takeover's update inside it
+    assert stored(db, run.run_id)["pending_at"] == taken["run"].pending_at
+
+
+def test_a_second_colliding_write_leaves_the_claim_where_it_was(db, clock, monkeypatch):
+    run = run_in(RUNNING)
+    claimed = state.claim(run.run_id, RUNNING, ROLLED_BACK)
+    before = stored(db, run.run_id)
+    flaky = Interfere(db, "update_item", lambda: conflict(db), times=2)
+    monkeypatch.setattr(state, "_client", lambda: flaky)
+    assert state.release(run.run_id, claimed.pending_at) is False
+    assert flaky.calls == 2  # retried once, not twice
+    assert stored(db, run.run_id) == before
 
 
 # ---------------------------------------------------------------------------
@@ -913,10 +1001,14 @@ def test_a_commit_records_the_tables_actor_and_refuses_another(db, clock):
         {names.PARTITION_KEY: names.ACTIVE_POINTER_PK},
         {"verdict": "promote"},
         {"report_key": None},
+        {"notified": {"2#ROLLED_BACK": "5f2c9a1e-2b6a-4bd2-9a59-3b1c0e8f7d21"}},
+        {"feature_key": names.experiment_feature_key("rother0000")},
     ],
     ids=lambda updates: next(iter(updates)),
 )
 def test_a_commit_refuses_updates_it_does_not_own(db, clock, updates):
+    """RUNNING -> RESULTS_READY, a row that is not the launch: notified is the notify tool's,
+    and no commit may store another run's feature key."""
     run = run_in(RUNNING)
     t = row(RUNNING, RESULTS_READY)
     claimed = state.claim(run.run_id, t.source, t.target)
@@ -925,6 +1017,27 @@ def test_a_commit_refuses_updates_it_does_not_own(db, clock, updates):
         state.commit(
             run.run_id, t.source, t.target, t.actor, reason(t), updates, claimed.pending_at
         )
+    assert (stored(db, run.run_id), pointer(db)) == before
+
+
+def test_a_commit_off_the_launch_may_repeat_the_runs_own_feature_key(db, clock):
+    run = run_in(RUNNING)
+    t = row(RUNNING, RESULTS_READY)
+    claimed = state.claim(run.run_id, t.source, t.target)
+    own = {"feature_key": names.experiment_feature_key(run.run_id)}
+    done = state.commit(run.run_id, t.source, t.target, t.actor, reason(t), own, claimed.pending_at)
+    assert done.state == RESULTS_READY and done.item["feature_key"] == own["feature_key"]
+
+
+@pytest.mark.parametrize("why", [None, "", 5, ["approve"]])
+def test_a_commit_refuses_a_reason_that_is_not_a_non_empty_string(db, clock, why):
+    """A history entry's reason must be a string (run_item.json)."""
+    run = run_in(RUNNING)
+    t = row(RUNNING, RESULTS_READY)
+    claimed = state.claim(run.run_id, t.source, t.target)
+    before = stored(db, run.run_id), pointer(db)
+    with pytest.raises(ValueError):
+        state.commit(run.run_id, t.source, t.target, t.actor, why, {}, claimed.pending_at)
     assert (stored(db, run.run_id), pointer(db)) == before
 
 
