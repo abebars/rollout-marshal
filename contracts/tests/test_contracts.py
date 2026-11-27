@@ -214,6 +214,7 @@ NOT_A_NAME = {
     "TransactWriteItems": "DynamoDB API operation that carries every pointer change",
     "2#ROLLED_BACK": "example of dedupe_key(); test_dedupe_key_matches_design checks it",
     "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
+    "marshal decline <run_id>": "command line: CLI_NAME plus ACTION_DECLINE (contract change c5)",
     "marshal approve <run_id> <awaiting>": "command line: CLI_NAME plus ACTION_APPROVE and an "
     "AWAITING_VALUES entry (contract change c5)",
     "flag.variant": "SDK attribute the exposure call sends",
@@ -2475,7 +2476,11 @@ PINNED_RULE_SENTENCES = (
     "Legality is judged after the `RUN_ACTIVE` check and before anything pending: an action the "
     "table does not allow from the run's state returns `ILLEGAL_IN_STATE` whatever is pending.",
     "The message names the pending target, its age and `marshal check <run_id>` (for a `PLANNED` "
-    "run with no pointer: the run was reset; start a new one).",
+    "run with no pointer: the run was reset; `marshal decline <run_id>` ends it unless a launch "
+    "is pending on it; start a new one).",
+    "Its message names the failed effect, the command `marshal check <run_id>`, and when that "
+    "will act (for a `PLANNED` run with no pointer, which `check` may not act on: `marshal "
+    "decline <run_id>`, or, with a launch pending on it, start a new one).",
     "After a claim, every effect failure, and a commit that fails other than by a lost race, is "
     "`EFFECT_FAILED`.",
     "still ends it, unless a launch is pending on it; such a run stays `PLANNED` and, with no "
@@ -2830,6 +2835,7 @@ def test_contract_c5_approve_names_what_it_approves():
         "approve <run_id> <awaiting>`, and the CLI sends the value as its second argument (a 2.6 "
         "follow-up in this task's pull request)." in tasks
     )
+    assert '- Produces: `marshal start "<prompt>"`, `approve <run_id> <awaiting>`,' in tasks
 
 
 # Every tuple, list, dict or set constant names the test that ties it to its
