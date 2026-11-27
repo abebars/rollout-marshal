@@ -195,7 +195,7 @@ their tasks name, not against each other.
 
 ## 2. Workstream A: experiment agent
 
-- [ ] 2.1 **State store and state machine**
+- [x] 2.1 **State store and state machine**
   - Needs: 1.1. Files: `agent/runtime/rm_agent/__init__.py`,
     `agent/runtime/rm_agent/state.py`, `agent/tests/test_state.py`.
   - Produces, with every pointer change inside the run-item write's
