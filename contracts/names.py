@@ -480,7 +480,7 @@ AGENT_RUNTIME_DEPLOYED_NAME = "rm_default_rm_agent"
 # The CLI packages only its code folder, which becomes the zip root (Gate 1).
 AGENT_CODE_DIR = "agent/runtime/"
 AGENT_CODE_LOCATION = "runtime"  # agentcore.json codeLocation, relative to agent/
-AGENT_ENTRYPOINT = "app.py"
+AGENT_ENTRYPOINT = "main.py"  # not app.py: B's root app/ would shadow it in tests
 AGENT_PACKAGE = AGENT_RUNTIME_NAME  # the Python package in the code folder
 SESSION_ID_PREFIX = "rm-session-"  # + UUID4
 SESSION_ID_MIN_LENGTH = 33
@@ -552,6 +552,7 @@ TICK_SCHEDULE = "rm-tick"
 TICK_INTERVAL_MINUTES = 2  # EventBridge Scheduler, enabled by launch until a terminal state
 TICK_SCHEDULE_GROUP = "default"
 SCHEDULER_ROLE = "rm-scheduler-role"  # rm-tick's execution role; may invoke only rm-invoker
+SCHEDULER_SERVICE_PRINCIPAL = "scheduler.amazonaws.com"  # what the role is passed to
 ALARM_RULE = "rm-alarm-to-invoker"  # EventBridge rule on the alarm entering ALARM
 INVOKER_ROLE = "rm-invoker-role"
 
