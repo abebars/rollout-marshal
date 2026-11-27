@@ -208,6 +208,45 @@ def test_no_latency_datapoint_is_unknown(cloudwatch):
         reads.latency_baseline(cloudwatch, start, end)
 
 
+def _expect_latency_count(cloudwatch, variant, since, until, datapoints):
+    cloudwatch.stubber.add_response(
+        "get_metric_statistics",
+        {"Datapoints": datapoints},
+        {
+            "Namespace": names.CW_NAMESPACE,
+            "MetricName": names.CW_METRIC_ANSWER_LATENCY_MS,
+            "Dimensions": [{"Name": "Variant", "Value": variant}],
+            "StartTime": since,
+            "EndTime": until,
+            "Period": 60,
+            "Statistics": ["SampleCount"],
+        },
+    )
+
+
+def test_the_probe_read_finds_the_one_answers_latency_datapoint(cloudwatch):
+    """Before the 150 x 2 load: one signed request, then this read. EMF under JSON at INFO
+    is documented but not yet seen on a deployed function (PR #27's review)."""
+    since = datetime(2026, 11, 28, 4, 58, tzinfo=UTC)
+    until = datetime(2026, 11, 28, 5, 3, tzinfo=UTC)
+    _expect_latency_count(
+        cloudwatch, CURRENT, since, until, [{"Timestamp": since, "SampleCount": 1.0}]
+    )
+    _expect_latency_count(cloudwatch, CHEAPER, since, until, [])
+
+    seen = reads.latency_datapoints(cloudwatch, since, until)
+
+    assert seen == {"samples": {CURRENT: 1.0, CHEAPER: 0}, "seen": True}
+
+
+def test_no_probe_datapoint_is_reported_unseen(cloudwatch):
+    since = datetime(2026, 11, 28, 4, 58, tzinfo=UTC)
+    until = datetime(2026, 11, 28, 5, 3, tzinfo=UTC)
+    for variant in names.VARIANTS:
+        _expect_latency_count(cloudwatch, variant, since, until, [])
+    assert reads.latency_datapoints(cloudwatch, since, until)["seen"] is False
+
+
 # ---------------------------------------------------------------------------
 # Flagsmith
 # ---------------------------------------------------------------------------

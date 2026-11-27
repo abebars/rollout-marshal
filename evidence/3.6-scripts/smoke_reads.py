@@ -131,6 +131,24 @@ def recalibrated_threshold(p95_ms: float) -> tuple[int, bool]:
     return threshold, p95_ms > names.ALARM_BASELINE_STOP_MS
 
 
+def latency_datapoints(cloudwatch, since: datetime, until: datetime) -> dict:
+    """Each variant's AnswerLatencyMs sample count from since to until, per minute, and
+    whether any was seen: the probe's check before the 150 x 2 load (PR #27's review)."""
+    samples = {}
+    for variant in names.VARIANTS:
+        reply = cloudwatch.get_metric_statistics(
+            Namespace=names.CW_NAMESPACE,
+            MetricName=names.CW_METRIC_ANSWER_LATENCY_MS,
+            Dimensions=_dimension(variant),
+            StartTime=since,
+            EndTime=until,
+            Period=60,
+            Statistics=["SampleCount"],
+        )
+        samples[variant] = sum(p["SampleCount"] for p in reply.get("Datapoints", []))
+    return {"samples": samples, "seen": any(count > 0 for count in samples.values())}
+
+
 def latency_baseline(cloudwatch, start: datetime, end: datetime) -> dict:
     """AnswerLatencyMs p95 for exactly Variant=cheaper over [start, end] as one period,
     and each variant's sample count over the same window."""
@@ -284,6 +302,8 @@ def main(argv: list[str] | None = None, *, admin: Admin | None = None, cloudwatc
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("usage")
+    seen = commands.add_parser("seen")
+    seen.add_argument("--since", required=True, type=_iso)
     latency = commands.add_parser("latency")
     latency.add_argument("--start", required=True, type=_iso)
     latency.add_argument("--end", required=True, type=_iso)
@@ -297,10 +317,14 @@ def main(argv: list[str] | None = None, *, admin: Admin | None = None, cloudwatc
     args = parser.parse_args(argv)
 
     try:
-        if args.command in ("latency", "cost"):
+        if args.command in ("seen", "latency", "cost"):
             if cloudwatch is None:
                 check_account()
                 cloudwatch = boto3.client("cloudwatch", region_name=names.REGION)
+            if args.command == "seen":
+                found = latency_datapoints(cloudwatch, args.since, datetime.now(UTC))
+                out(json.dumps(found))
+                return 0 if found["seen"] else 1
             if args.command == "latency":
                 out(json.dumps(latency_baseline(cloudwatch, args.start, args.end), indent=2))
             else:
