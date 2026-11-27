@@ -224,7 +224,7 @@ their tasks name, not against each other.
   - Pass: `pytest agent/tests/test_state.py` green against moto or
     DynamoDB Local.
 
-- [ ] 2.2 **Flagsmith tools**
+- [x] 2.2 **Flagsmith tools**
   - Needs: 1.4. Files: `agent/runtime/rm_agent/tools/flagsmith.py`,
     `agent/flagsmith_admin/handler.py`,
     `infra/modules/agent/flagsmith_admin.tf`,
