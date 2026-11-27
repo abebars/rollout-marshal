@@ -115,7 +115,7 @@ Voiceover:
 | --- | --- |
 | 1:22 to 1:32 | Terminal: `uv run python scripts/load.py --run-id r202611272042 --users 150 --questions 10 --url "$ASK_URL"`, running. |
 | 1:32 to 1:40 | Second terminal: `scripts/inject_fault.sh` prints the FIS experiment's ID and its UTC start, 20:49:52Z, and end. |
-| 1:40 to 1:52 | Cut, with the UTC clock in shot: the CloudWatch alarm `rm-cheaper-latency-p95` in ALARM, in the AWS console. The alarm's invocation had claimed the rollback by 20:53:24Z, 3 min 31 s into the fault. |
+| 1:40 to 1:52 | Cut, with the UTC clock in shot: the CloudWatch alarm `rm-cheaper-latency-p95` in ALARM, in the AWS console. It entered ALARM at 20:53:17Z, 3 min 24.5 s into the fault, and its invocation had claimed the rollback by 20:53:24Z. |
 
 Voiceover:
 
@@ -125,7 +125,7 @@ Voiceover:
 > Now I break the cheaper one on purpose. AWS Fault Injection Service adds ten seconds to
 > every answer it gives, for six minutes.
 >
-> Within four minutes, the p95 latency alarm on the cheaper arm fires.
+> Three minutes and twenty-four seconds in, the p95 latency alarm on the cheaper arm fires.
 
 ## Beat 5: the rollback and resume (1:52 to 2:22)
 
@@ -134,7 +134,7 @@ Voiceover:
 | 1:52 to 2:00 | Email client: the message "Rollout Marshal r202611272042: rolled back", with the incident note. The To line is blurred. |
 | 2:00 to 2:05 | Flagsmith dashboard: `assistant_cheaper_enabled` is off. |
 | 2:05 to 2:09 | Terminal: `uv run marshal status r202611272042` shows state `ROLLED_BACK`. |
-| 2:09 to 2:15 | Cut, clock in shot: the email "Rollout Marshal r202611272042: ready to resume", 7 min 45 s after the rollback. |
+| 2:09 to 2:15 | Cut, clock in shot: the email "Rollout Marshal r202611272042: ready to resume", 7 min 45 s after the rollback. The alarm had gone back to OK at 21:01:17Z. |
 | 2:15 to 2:22 | Terminal: `uv run marshal approve r202611272042 resume`, then state `RUNNING`. |
 
 Voiceover:

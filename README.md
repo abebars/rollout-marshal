@@ -109,7 +109,9 @@ them. The records are `evidence/5.1-e2e.md` and `evidence/5.2/r202611272042.md`.
 | The plan waiting for Ahmed's launch approval | 12 min 33 s | 6 min 43 s |
 | `RUNNING`, after the approval | 72.9 s: the first experiment start timed out, and the next tick finished the launch | 32.7 s |
 | The fault started | 19:40:50Z | 20:49:52Z |
-| Rolled back, with no human | 19:44:43Z, 3 min 53 s into the fault | 20:54:15Z, 4 min 22.6 s into the fault: the alarm's invocation claimed it by 20:53:24Z, and the next tick finished it |
+| The alarm entered ALARM | 19:44:17Z, about 3 min 27 s into the fault | 20:53:17Z, 3 min 24.5 s into the fault |
+| Rolled back, with no human | 19:44:43Z, 3 min 53 s into the fault and 26 s after the alarm | 20:54:15Z, 4 min 22.6 s into the fault and 58 s after the alarm: the alarm's invocation claimed it by 20:53:24Z, about 7 s after the alarm, and the next tick finished it |
+| The alarm back to OK | 19:51:17Z | 21:01:17Z |
 | The resume request | 29 min 36 s after the rollback, held back by a probe bug fixed mid-run (below) | 7 min 45 s after the rollback |
 | Ahmed approved the resume | 20:32:52Z | 21:03:00Z |
 | Results ready: the report written to S3 and published | 20:34:39Z | 21:04:20Z |
@@ -144,9 +146,11 @@ The reports:
   - Rollout Marshal's report said `hold, re-run`, because the run had an incident; the
     latency guardrail had failed too, while the fault ran. Ahmed held each run, and each
     experiment was ended with "Roll out control" to match.
-- **Who did what.** Ahmed typed every `marshal approve` and `marshal decline`. In the first
-  run, Claude Code's auto mode refused the lead agent's own attempt to approve. The lead
-  agent ended experiments 1495 and 1503 in the dashboard, under Ahmed's delegation.
+- **Who did what.** By the lead agent's session log, Ahmed typed every `marshal approve` and
+  `marshal decline`; AWS cannot tell who typed a command, since the role is the same either
+  way. In the first run, Claude Code's auto mode refused the lead agent's own attempt to
+  approve. The lead agent ended experiments 1495 and 1503 in the dashboard, under Ahmed's
+  delegation.
 - **What the first run found.**
   - The agent's OpenTelemetry instrumentation added a `headers` field to the health probe's
     request, which `answer_request` refuses. So every probe failed, and the run could not
