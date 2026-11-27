@@ -69,6 +69,22 @@ data "aws_iam_policy_document" "review_deny" {
     actions   = ["s3:GetObject*"]
     resources = ["arn:aws:s3:::${local.state_bucket}/*"]
   }
+
+  # SecureString values. The aws/ssm key lets every principal in the account
+  # decrypt through Parameter Store, and ReadOnlyAccess grants ssm:Get*. None
+  # exists today; String parameters such as /rm/agent-runtime-arn stay readable.
+  statement {
+    sid       = "DenySecureStringDecrypt"
+    effect    = "Deny"
+    actions   = ["kms:Decrypt"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:ViaService"
+      values   = ["ssm.*.amazonaws.com"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "review_deny" {
