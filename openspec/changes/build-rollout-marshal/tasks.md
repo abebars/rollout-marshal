@@ -416,7 +416,7 @@ their tasks name, not against each other.
     commit carries it then.
   - Pass: `pytest agent/tests/test_handlers.py` green.
 
-- [ ] 2.6 **CLI**
+- [x] 2.6 **CLI**
   - Needs: 1.1. Files: `cli/marshal.py`, `cli/tests/test_cli.py`.
   - Produces: `marshal start "<prompt>"`, `approve <run_id>`,
     `decline <run_id>`, `status [run_id]`, `check <run_id>`; one payload
@@ -489,7 +489,7 @@ their tasks name, not against each other.
     section 5.
   - Pass: unit tests green.
 
-- [ ] 3.2 **Router**
+- [x] 3.2 **Router**
   - Needs: 1.4. Files: `app/router/handler.py`, tests.
   - Produces: the evaluation order in design.md section 4; synchronous
     invoke of the answer function; latency measured around it;
