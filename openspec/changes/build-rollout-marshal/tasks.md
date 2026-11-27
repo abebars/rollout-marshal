@@ -416,7 +416,7 @@ their tasks name, not against each other.
     `last_refresh_at` through a conditional update. 2.5 adds that helper
     to `agent/runtime/rm_agent/state.py`, beside 2.1's writes, since no
     commit carries it then.
-  - Pass: `pytest agent/tests/test_handlers.py` green.
+  - Pass: `pytest agent/tests/test_handlers.py agent/tests/test_state.py` green.
 
 - [x] 2.6 **CLI**
   - Needs: 1.1. Files: `cli/marshal.py`, `cli/tests/test_cli.py`.
