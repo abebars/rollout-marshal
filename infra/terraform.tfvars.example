@@ -1,0 +1,8 @@
+# Copy to infra/terraform.tfvars, which is git-ignored, and fill it in.
+# Never commit the real file: the repo is public.
+
+# The address subscribed to SNS topic rm-incidents (design.md section 8).
+incident_email = "you@example.com"
+
+# rm-invoker only logs its payload (STUB=1) until task 5.1 sets this to false.
+invoker_stub = true

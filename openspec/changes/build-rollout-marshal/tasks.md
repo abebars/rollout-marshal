@@ -302,7 +302,9 @@ their tasks name, not against each other.
     After `infra/modules/agent` is applied: `pytest -m live` creates and starts an
     experiment on run ID `rlive<HHMM>`, records how long the start call took
     against `rm-flagsmith-admin`'s 30-second timeout, and reads it back; **Human** ends
-    it; the ID is in the pull request.
+    it; the ID is in the pull request. (Done by the lead under Ahmed's chat
+    delegation: 918 ended 2026-11-27T08:16:42Z, "Roll out control";
+    `evidence/gate-2-review.md`.)
 
 - [x] 2.3 **Planner**
   - Needs: 1.1. Files: `agent/runtime/rm_agent/planner.py`,
@@ -471,7 +473,8 @@ their tasks name, not against each other.
   - `setup_gateway.py`'s docstring gives the prefix as `Api-Key`.
   - A rewords `evidence/1.3-flagsmith-agent-spike.md` step 12. The lead
     ended 819 in the dashboard at Ahmed's request; that is a one-off,
-    recorded in `evidence/gate-1-review.md`.
+    recorded in `evidence/gate-1-review.md`. (Correction, 2026-11-27, Gate 2:
+    not a one-off; see `evidence/gate-2-review.md`.)
   - Pass: `marshal status` against the deployed runtime prints "no active
     run"; SSM parameter `/rm/agent-runtime-arn` holds the ARN (the
     evidence shows `get-parameter`); the evidence file lists the Gateway
@@ -642,7 +645,9 @@ their tasks name, not against each other.
     60,000,000 or the answers would pass 7,500, the lead asks the human
     before the next load. If 1.2's
     join moved here, both variations also show non-null values for all
-    three metrics. **Human** ends the smoke experiment.
+    three metrics. **Human** ends the smoke experiment. (Done by the lead under
+    Ahmed's chat delegation: 1127 ended 2026-11-27T08:23:32Z, "Roll out
+    control"; `evidence/gate-2-review.md`.)
 
 ## 4. Workstream C: signals and fault
 
@@ -713,7 +718,9 @@ their tasks name, not against each other.
     is allowed (design.md section 2). After 3.6 and the FIS module applied:
     the alarm reaches ALARM within 5 minutes of the fault starting and
     leaves ALARM after it ends; times recorded. **Human** ends the
-    experiment, then `reset.py` runs. The fault run is 4.3's one follow-up
+    experiment, then `reset.py` runs. (Done by the lead under Ahmed's chat
+    delegation: 1140 ended 2026-11-27T08:43:54Z, before `reset.py` at
+    08:44:39Z; `evidence/gate-2-review.md`.) The fault run is 4.3's one follow-up
     pull request. Past the timebox: ask the lead to have B add the
     `chaos_delay_cheaper` flag read to `app/answer/handler.py`, and record
     why.
@@ -819,5 +826,5 @@ their tasks name, not against each other.
   email.
 - [ ] Resume and promotion each wait for a human decision.
 - [ ] A decision report with Flagsmith results exists in S3.
-- [ ] Three clean runs (5.1 plus two in 5.2).
+- [ ] Two clean runs (5.1 plus one in 5.2; 5.2 cut to one run on 2026-11-27).
 - [ ] README and video done, `dev` merged to `main`, entry submitted.

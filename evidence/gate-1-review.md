@@ -31,6 +31,8 @@ The lead records the second as his approval of 1.4 and Gate 1, and as his writte
 
 These were the **Human** lines of tasks 1.2 and 1.3. CLAUDE.md's rule otherwise stands: the human ends every experiment, and no agent ends one.
 
+**Correction, 2026-11-27 (Gate 2).** Not a one-off. Under Ahmed's later chat words, the lead also ended 918, 1127, 1140 and 1172. `evidence/gate-2-review.md` quotes his words and records each end.
+
 ## Findings and what was done
 c1 is contract change c1 (PR #9) and c2 is contract change c2 (PR #12). "Carried" names the task or owner that closes a finding.
 
@@ -106,8 +108,8 @@ The Flagsmith spike objects are:
 Applied from `dev` at 96128dc on 2026-11-27T01:44:02Z: "Apply complete! Resources: 3 added, 0 changed, 0 destroyed". `aws iam simulate-principal-policy --policy-source-arn arn:aws:iam::818928662830:role/rm-review-readonly …`, with columns action, resource, decision, matched policy:
 ```
 2026-11-27T01:44:16Z
-secretsmanager:GetSecretValue	arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/api-key-LfCEnV	explicitDeny	role_rm-review-readonly_rm-review-deny
-secretsmanager:GetSecretValue	arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-dawJYr	explicitDeny	role_rm-review-readonly_rm-review-deny
+secretsmanager:GetSecretValue	arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/api-key-<suffix>	explicitDeny	role_rm-review-readonly_rm-review-deny
+secretsmanager:GetSecretValue	arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-<suffix>	explicitDeny	role_rm-review-readonly_rm-review-deny
 s3:GetObject	arn:aws:s3:::rm-tfstate-818928662830/rollout-marshal/terraform.tfstate	explicitDeny	role_rm-review-readonly_rm-review-deny
 bedrock-agentcore:GetResourceApiKey	*	explicitDeny	role_rm-review-readonly_rm-review-deny
 kms:Decrypt	*	explicitDeny	role_rm-review-readonly_rm-review-deny
