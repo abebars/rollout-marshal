@@ -4,7 +4,7 @@ run's history under evidence/5.2/. Delete this comment once the last one is fill
 
 # Demo video: script and shot list
 
-Six beats, 2:55 in all: the ask, the plan and approval, the setup, the failure, the rollback
+Six beats, 2:57 in all: the ask, the plan and approval, the setup, the failure, the rollback
 and resume, and the decision. The problem is stated in the first 15 seconds, and the video
 ends on the two timed numbers.
 
@@ -15,14 +15,20 @@ ends on the two timed numbers.
   between beats and keeps a UTC clock in shot (`scripts/e2e.py`'s timestamps, or the shell
   prompt's), so each cut shows how much time passed. Nothing is re-enacted, and nothing is
   sped up without a caption saying so.
-- **The numbers on the end card** are the two in `docs/time-saved.md`. The first is the
-  dashboard pass, which an AI agent clicked through in Chrome at Ahmed's instruction, and the
-  card says so: it was not a person. The second is `marshal start` to `RUNNING` in run
-  [[5.1: run ID]]; if the recorded run is a different one, the card says it comes from 5.1's
-  run.
+- **The numbers on the end card** are the ones in `docs/time-saved.md`:
+  - the dashboard pass, about 2:18 with one metric attached. An AI agent clicked it through
+    in Chrome at Ahmed's instruction, and the card says so: it was not a person;
+  - Rollout Marshal's own work in run `r202611271927`, about 1:20 with all three metrics,
+    with the 12:33 its plan waited for approval shown apart. If the recorded run is a
+    different one, the card still names `r202611271927`.
 - **The recommendation** on screen and in the voiceover is the one the recorded run's report
-  states. Every planned run injects the fault, so by design it is `hold, re-run`. The video
-  says `promote` only if that report did.
+  states. No run has recommended `promote`: every planned run injects the fault, so by
+  design it is `hold, re-run`, as in `r202611271927`. The video says `promote` only if the
+  recorded run's report did.
+- **The dashboard's suggestion.** In `r202611271927`, Flagsmith's experiment page read "66%
+  Winner Probability … Consider rolling out cheaper to all users", and its "Complete
+  experiment" dialog pre-selected "Roll out a variant: cheaper". Beat 6 shows what the
+  recorded run's dashboard says.
 - **Never on screen:**
   - the incident email's address, wherever it shows: blur the To line and the mail client's
     account menu;
@@ -38,8 +44,10 @@ ends on the two timed numbers.
   - the email client, with the incident address hidden;
   - the report, which the "results ready" email carries in full.
 - **The voiceover** runs at about 150 words a minute. Each beat's lines fit inside its time.
-- **The engineer** on screen is the Human, who runs every `marshal approve` and
-  `marshal decline` and ends the experiment in the dashboard.
+- **The engineer** on screen is the Human. He types every `marshal approve` and
+  `marshal decline`, as in `r202611271927`, where Claude Code's auto mode refused the lead
+  agent's own attempt to approve. Rollout Marshal never ends an experiment; in
+  `r202611271927` the lead agent ended it in the dashboard, under Ahmed's delegation.
 
 ## Overview
 
@@ -50,7 +58,7 @@ ends on the two timed numbers.
 | 3 | The setup | 0:57 to 1:22 | terminal, Flagsmith dashboard |
 | 4 | The failure | 1:22 to 1:52 | two terminals, the CloudWatch alarm |
 | 5 | The rollback and resume | 1:52 to 2:22 | incident email, Flagsmith dashboard, terminal |
-| 6 | The decision | 2:22 to 2:55 | the report, Flagsmith dashboard, terminal, end card |
+| 6 | The decision | 2:22 to 2:57 | the report, Flagsmith dashboard, terminal, end card |
 
 ## Beat 1: the ask (0:00 to 0:27)
 
@@ -92,7 +100,7 @@ Voiceover:
 | --- | --- |
 | 0:57 to 1:05 | Terminal: the approve's reply, state `RUNNING`. |
 | 1:05 to 1:13 | Flagsmith dashboard: feature `assistant_model_<run_id>` for [[run: run ID]], value `current`, one variation `cheaper`. |
-| 1:13 to 1:22 | Flagsmith dashboard: the experiment, running. Rollout 100 percent, split 50/50, metrics `helpful_rate`, `mean_latency_ms` and `mean_cost_micro_usd`, with [[5.1: metric the dashboard shows as primary]] shown as primary. |
+| 1:13 to 1:22 | Flagsmith dashboard: the experiment, running. Rollout 100 percent, split 50/50, metrics `helpful_rate`, `mean_latency_ms` and `mean_cost_micro_usd`, with `helpful_rate` shown as primary, as in `r202611271927`. |
 
 Voiceover:
 
@@ -138,27 +146,27 @@ Voiceover:
 > When the alarm cleared and five probe calls all answered under its threshold, it asked to
 > resume. I say yes.
 
-## Beat 6: the decision (2:22 to 2:55)
+## Beat 6: the decision (2:22 to 2:57)
 
 | Time | On screen |
 | --- | --- |
-| 2:22 to 2:32 | Email client: "Rollout Marshal [[run: run ID]]: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation: **[[run: recommendation, as the report states it]]**. |
-| 2:32 to 2:38 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval. |
-| 2:38 to 2:42 | Flagsmith dashboard: the engineer clicks End Experiment and chooses [[run: rollout decision chosen when the experiment was ended]]. |
-| 2:42 to 2:45 | Terminal: [[run: the decision, either `uv run marshal decline <run_id>` then state `HELD`, or `uv run marshal approve <run_id> promotion` then state `PROMOTED`]]. |
-| 2:45 to 2:55 | End card, two lines: "Flagsmith dashboard, clicked through in Chrome by an AI agent: about 2:18, primary metric only" and "Rollout Marshal, prompt to running: [[5.1: marshal start to RUNNING, mm:ss]], [[5.1: review, plan returned to approve seen, mm:ss]] of it the engineer reading the plan". |
+| 2:22 to 2:31 | Email client: "Rollout Marshal [[run: run ID]]: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation: **[[run: recommendation, as the report states it]]**. Caption: "`helpful_rate` is near 1 in both arms: not evidence that the models are equally helpful". |
+| 2:31 to 2:37 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval, and the page's banner: [[run: the dashboard's banner, as it reads]]. |
+| 2:37 to 2:41 | Flagsmith dashboard: End Experiment. The "Complete experiment" dialog pre-selects [[run: the dialog's pre-selected choice]], and [[run: rollout decision chosen when the experiment was ended]] is chosen. |
+| 2:41 to 2:44 | Terminal: [[run: the decision, either `uv run marshal decline <run_id>` then state `HELD`, or `uv run marshal approve <run_id> promotion` then state `PROMOTED`]]. |
+| 2:44 to 2:57 | End card, two lines: "Flagsmith dashboard, clicked through in Chrome by an AI agent: about 2:18, one metric" and "Rollout Marshal's own work: about 1:20, all three metrics (run `r202611271927`; its plan also waited 12:33 for approval)". |
 
 Voiceover:
 
-> Results are in. The report has Flagsmith's numbers, the guardrails, the incident, and the
-> bias the rollback left: rolled-back users still count in the cheaper arm. So the fixed
-> rules say: [[run: recommendation, as the report states it]].
+> Flagsmith's dashboard [[run: what the dashboard suggests, in words]]. The report says
+> [[run: recommendation, as the report states it]], because the run had an incident.
 >
-> I end the experiment in Flagsmith myself, and [[run: the decision, in words]].
+> The experiment is ended in Flagsmith, never by Rollout Marshal, and
+> [[run: the decision, in words]].
 >
-> An AI agent clicking this setup through Flagsmith's dashboard took about two minutes
-> eighteen, with only the primary metric attached. Rollout Marshal took
-> [[5.1: marshal start to RUNNING, mm:ss]], my review included.
+> An AI agent clicking this setup through Flagsmith's dashboard took two minutes eighteen,
+> with one metric. Rollout Marshal's own work took one minute twenty, with all three,
+> besides the twelve and a half minutes its plan waited for my approval.
 
 ## Before recording
 

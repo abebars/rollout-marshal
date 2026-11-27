@@ -1,6 +1,5 @@
-<!-- Draft (task 6.2). Each [[source: what]] is a number or fact that a real run supplies,
-filled from the source it names before Gate 4. Delete this comment once the last one is
-filled. -->
+<!-- Draft (task 6.2). Each remaining [[source: what]] is filled from the source it names
+before Gate 4: 5.2's run and 6.4's video. Delete this comment once the last one is filled. -->
 
 # Rollout Marshal
 
@@ -15,18 +14,22 @@ Track 2, "AI Agents and Feature Flags". Demo video: [[6.4: video URL]].
 
 ## The numbers
 
+From one dashboard pass and the first full run, `r202611271927`, both on 2026-11-27:
+
 | Setting up the experiment | Time |
 | --- | --- |
-| In the Flagsmith dashboard, clicked through in Chrome by an AI agent (the one that led this build) at Ahmed's instruction, not by a person | about 2:18 |
-| With Rollout Marshal, `marshal start` to `RUNNING` | [[5.1: marshal start to RUNNING, mm:ss]] |
-| of which the engineer reads the plan and approves it | [[5.1: review, plan returned to approve seen, mm:ss]] |
-| of which the agent works: it plans, then launches | [[5.1: agent's own time, mm:ss]] |
+| In the Flagsmith dashboard, clicked through in Chrome by an AI agent (the one that led this build) at Ahmed's instruction, not by a person. One metric attached | about 2:18 |
+| Rollout Marshal's own work: planning, then launching. All three metrics attached | about 1:20 |
+| The plan waiting for the engineer's approval, between those two parts | 12:33 |
+| `marshal start` to `RUNNING`, in all | 13:53 |
 
-The dashboard number comes from one pass on 2026-11-27, from the first click to the
-experiment running. The task asked for a person to do it; Ahmed told the lead agent to do it
-instead. So it includes that agent's own time between actions, and a person might be faster
-or slower. The dashboard's experiment form also took only the primary metric, so that
-experiment had one metric where Rollout Marshal's has three.
+- **The dashboard pass** was done by an agent because Ahmed told the lead agent to do it,
+  where the task asked for a person. So it includes that agent's own time between actions,
+  and a person might be faster or slower. The dashboard's experiment form took only the
+  primary metric.
+- **Rollout Marshal's 1:20** is 7.6 s to plan and 72.9 s to launch. The launch includes a
+  failed experiment start that the next tick retried.
+- **The 12:33** is the human's, not the agent's.
 
 How each was measured, and what neither number counts: [docs/time-saved.md](docs/time-saved.md).
 
@@ -87,6 +90,55 @@ get, except the rollback, which it does at once.
   user to the current model.
 - `marshal status [run_id]` shows a run. `marshal check <run_id>` does now what the alarm or
   the next tick would do, the manual fallback if the alarm path breaks.
+
+## The first full run
+
+Run `r202611271927`, on 2026-11-27, ended `HELD` (`evidence/5.1-e2e.md`). Its history:
+`PLANNED`, `RUNNING`, `ROLLED_BACK`, `AWAITING_RESUME`, `RUNNING`, `RESULTS_READY`, `HELD`.
+
+| UTC | What happened |
+| --- | --- |
+| 19:26:55Z | `marshal start`. The plan came back 7.6 s later |
+| 19:39:35Z | Ahmed's `marshal approve … launch` took effect; the plan had waited 12 min 33 s |
+| 19:40:48Z | `RUNNING`. The first experiment start timed out, and the next tick finished the launch |
+| 19:40:50Z | The fault started. The load sent 1,500 requests, and 1,498 were answered |
+| 19:44:43Z | The alarm rolled the run back, 3 min 53 s into the fault, with no human: `assistant_cheaper_enabled` off, and the incident note published to SNS |
+| 20:14:19Z | The resume request, 29 min 36 s after the rollback. Until a fix was deployed mid-run, every health probe failed (below) |
+| 20:32:52Z | Ahmed approved the resume |
+| 20:34:39Z | Results ready: the report was written to S3 and published |
+| 20:35:20Z | Ahmed declined: `HELD` |
+
+The report:
+
+| Arm | Identities | `helpful_rate` | `mean_latency_ms` | `mean_cost_micro_usd` |
+| --- | --- | --- | --- | --- |
+| current | 76 | 0.996053 | 5519.33 | 13498.3 |
+| cheaper | 74 | 0.997297 | 6361.33 | 11284.7 |
+
+- **Recommendation: `hold, re-run`**, because the run had an incident.
+- **Latency guardrail: failed.** The cheaper arm's latency was 115 percent of the current
+  arm's, over the 110 percent limit. The fault drove it.
+- **Cost guardrail: passed, but biased.** After the rollback, most of the cheaper arm's
+  identities were served the current model. So its mean cost is far above the roughly 2,700
+  micro-USD per answer that Claude Sonnet 5's answers alone averaged in task 3.6.
+- **Helpfulness is at its ceiling.** `helpful_rate` is near 1 in both arms, so its interval
+  (lower bound -0.0045) is not evidence that the two models are equally helpful.
+- **Flagsmith's dashboard pointed the other way.**
+  - Its experiment page read "66% Winner Probability … Consider rolling out cheaper to all
+    users".
+  - Its "Complete experiment" dialog pre-selected "Roll out a variant: cheaper".
+  - Rollout Marshal's report said `hold, re-run`, because the run had an incident; the
+    latency guardrail had failed too, while the fault ran. Ahmed held the run, and the
+    experiment was ended with "Roll out control" to match.
+- **Who did what.** Ahmed typed every `marshal approve` and `marshal decline`. Claude Code's
+  auto mode refused the lead agent's own attempt to approve. The lead agent ended experiment
+  1495 in the dashboard, under Ahmed's delegation.
+- **What the run found.**
+  - The agent's OpenTelemetry instrumentation added a `headers` field to the health probe's
+    request, which `answer_request` refuses. So every probe failed, and the run could not
+    reach the resume request until the fix (PR #38) was deployed mid-run.
+  - Three earlier starts never launched: two approval windows ran out, then an SSO session
+    expired.
 
 ## Architecture
 
@@ -214,8 +266,8 @@ stateDiagram-v2
   is refused, and its Admin API path builder cannot produce `complete/`, `pause/` or
   `rollout/`. The engineer ends every experiment in the dashboard.
 - **The primary metric.** The API has no primary-metric field, so the agent attaches
-  `helpful_rate` first. The dashboard shows [[5.1: metric the dashboard shows as primary]] as
-  primary.
+  `helpful_rate` first. In run `r202611271927` the dashboard showed `helpful_rate`, "should not
+  decrease", as primary.
 
 ## How the decision is made
 
@@ -231,8 +283,9 @@ stateDiagram-v2
     for the lift on `helpful_rate` is at or above minus 5 percent and both guardrails pass.
     That is at least a 97.5 percent probability that the lift is at least minus 5 percent;
   - otherwise `hold`.
-- **What to expect.** Every planned run injects the fault, so the rule says `hold, re-run`
-  after each one. The `promote` branch is covered by unit tests.
+- **What to expect.** No run has recommended `promote`. Every planned run injects the fault,
+  so the rule says `hold, re-run` after each one, as it did in run `r202611271927`. The
+  `promote` branch is covered by unit tests.
 - **Promotion still needs a person.** Whatever the report recommends, promotion waits for the
   engineer to end the experiment in Flagsmith and approve.
 
@@ -241,7 +294,7 @@ The runs recorded for this entry, each with its history in `evidence/5.1-e2e.md`
 
 | Run | Final state | Recommendation, as its report states it | Report |
 | --- | --- | --- | --- |
-| [[5.1: run ID]] | [[5.1: final state]] | [[5.1: recommendation]] | [[5.1: report S3 key]] |
+| `r202611271927` | `HELD` | `hold, re-run` | `runs/r202611271927/report.md` |
 | [[5.2: run ID]] | [[5.2: final state]] | [[5.2: recommendation]] | [[5.2: report S3 key]] |
 
 Each report is at `s3://rm-reports-818928662830/runs/<run_id>/report.md`, with nine sections:
@@ -350,15 +403,22 @@ In this order, since each step needs the one before it:
 
 1. **The Terraform state bucket** that `infra/backend.tf` names. Locking uses an S3 lock
    file, so no lock table is needed.
-2. **The agent runtime**: [[2.7: deploy command]]. The AgentCore CLI deploys `rm_agent` as
-   `rm_default_rm_agent` through its own CDK stack, `AgentCore-rm-default`, and bootstraps
-   CDK on the first deploy. The runtime's ARN then goes into SSM parameter
+2. **The agent runtime.**
+
+   ```
+   uv run python agent/scripts/deploy_agent.py --plan --record <file>   # reads only
+   uv run python agent/scripts/deploy_agent.py --record <file>          # deploys
+   ```
+
+   The script wraps the AgentCore CLI's deploy, which deploys `rm_agent` as
+   `rm_default_rm_agent` through its own CDK stack, `AgentCore-rm-default`, and bootstraps CDK
+   on the first deploy. It then writes the runtime's ARN to SSM parameter
    `/rm/agent-runtime-arn`, where the CLI and `rm-invoker` read it. On its first deploy here,
    the CLI also turned on CloudWatch Transaction Search for the whole account
    (`evidence/1.3-flagsmith-agent-spike.md`, step 2).
-3. **Everything else on AWS**, with Terraform. Put `incident_email = "<your address>"` and
-   `invoker_stub = false` in the git-ignored `infra/terraform.tfvars`. With the default,
-   `true`, `rm-invoker` only logs what it would send. Then:
+3. **Everything else on AWS**, with Terraform. Copy `infra/terraform.tfvars.example` to the
+   git-ignored `infra/terraform.tfvars`, and set `incident_email` to your address and
+   `invoker_stub = false`. With `true`, `rm-invoker` only logs what it would send. Then:
 
    ```
    make build
@@ -385,7 +445,9 @@ In this order, since each step needs the one before it:
 6. **The email subscription.** Confirm it from the message SNS sends to `incident_email`.
 7. **The check.** `uv run marshal status` prints a message that starts "no active run".
 
-[[2.7: confirm this order against evidence/2.7-agent-deploy.md. It follows design.md sections 2 and 7, and has not been run from an empty account]]
+This order follows design.md sections 2 and 7. Nobody has run it in one go from an empty
+account. In this project the steps ran across several tasks: the runtime first in task 1.3,
+then Terraform, the Gateway and a redeploy in task 2.7 (`evidence/2.7-agent-deploy.md`).
 
 ### 5. Run an experiment
 
@@ -402,7 +464,7 @@ uv run python scripts/load.py --run-id <run_id> --users 150 --questions 10 --url
 
 # Second shell, straight after the load starts
 scripts/inject_fault.sh
-uv run marshal status <run_id>            # ROLLED_BACK a few minutes in; the incident email arrives
+uv run marshal status <run_id>            # ROLLED_BACK a few minutes in; the incident note goes out by email
 uv run marshal approve <run_id> resume    # after the "ready to resume" email
 
 # After the "results ready" email, which carries the report: either hold
@@ -416,13 +478,16 @@ uv run python scripts/reset.py            # back to the resting state before the
 - `marshal start` prints the run's ID on its `run:` line. Every `marshal` command exits 0
   when the response has no error, 1 when it carries an error code, and 2 on a usage error.
 - `scripts/e2e.py` drives the same run, prints UTC timestamps and pauses for the engineer at
-  each approval; it never approves anything itself: [[5.1: scripts/e2e.py usage]].
+  each approval; it never approves anything itself. Task 5.1 ran it as
+  `uv run python scripts/e2e.py --pause-minutes 180 --record <new file>.json` (PR #37).
 - `scripts/inject_fault.sh` needs credentials that may start AWS FIS experiments. The fault
   ends by itself.
 - `scripts/reset.py` refuses while a run is still active, unless given `--force`, and lists
   any experiment still running for the engineer to end in the dashboard.
-- One full run's answers cost [[5.1: answers' cost for one full run, USD]] on Bedrock, from
-  `AnswerCostMicroUsd`; judging and the agent's own calls come on top.
+- Each answer cost about 13,510 micro-USD on Claude Fable 5.1 and about 2,727 on Claude
+  Sonnet 5 (US$0.0135 and US$0.0027). These are CloudWatch's means of `AnswerCostMicroUsd`
+  over every judged answer of the build, read after run `r202611271927`
+  (`evidence/5.1-e2e.md`). Judging and the agent's own calls come on top.
 
 ## Safety rails
 
