@@ -38,6 +38,7 @@ from flagsmith.analytics import (
 from flagsmith.exceptions import FlagsmithAPIError
 from jsonschema import ValidationError
 
+from app.answer import handler as answer_handler
 from app.router import handler
 from app.tests.router_fakes import (
     DUMMY_SDK_KEY,
@@ -367,8 +368,17 @@ def test_a_cleared_pointer_still_counts_as_active_for_up_to_30_seconds(active):
     assert active.flagsmith.environment_requests == 1
 
 
-def test_an_identity_that_is_not_the_active_runs_gets_400_and_no_flagsmith_call(active):
-    status, body = _ask(active, identity=names.run_identity(OTHER_RUN_ID, 7))
+@pytest.mark.parametrize(
+    "identity",
+    [
+        names.run_identity(OTHER_RUN_ID, 7),
+        f"{RUN_ID}1-user-001",  # another run whose ID starts with this one's
+        IDENTITY + "\n",  # this run's, with a trailing newline that a $ would let through
+    ],
+    ids=["another run's", "a run ID this one's is a prefix of", "a trailing newline"],
+)
+def test_an_identity_that_is_not_the_active_runs_gets_400_and_no_flagsmith_call(active, identity):
+    status, body = _ask(active, identity=identity)
 
     assert (status, body) == (400, {"error": handler.BAD_REQUEST})
     assert active.flagsmith.calls == []  # no identity request, nothing tracked or flushed
@@ -602,6 +612,48 @@ def test_flush_events_runs_before_every_return(active):
     assert active.flagsmith.calls[-1] == "flush"
 
 
+class LambdaContext:
+    """The part of Lambda's context the router reads: the time it has left."""
+
+    def __init__(self, remaining_ms: int) -> None:
+        self.remaining_ms = remaining_ms
+
+    def get_remaining_time_in_millis(self) -> int:
+        return self.remaining_ms
+
+
+def test_the_flush_join_is_bounded_by_the_time_lambda_has_left(flagsmith_api, caplog):
+    """A flush that cannot finish in time is left running: the client gets its answer, and a
+    late flush loses at most this request's exposure (contract change c3)."""
+    flagsmith_api.hold_events = threading.Event()  # the flush can only time out, 9 s or more
+    world = _world(pointer=pointer_item(RUN_ID), flagsmith=flagsmith_api.real_client)
+    caplog.set_level(logging.WARNING, logger=ROUTER_LOGGER)
+
+    started = time.perf_counter()
+    response = world.router.handle(_event(), LambdaContext(remaining_ms=2500))
+    elapsed = time.perf_counter() - started
+
+    assert _reply(response)[0] == 200
+    assert 1.5 <= elapsed <= 1.5 + 1.0  # 2.5 s left, less 1 s, then the join gives up
+    assert "the flush was still running" in caplog.text
+    assert IDENTITY not in caplog.text
+
+
+def test_without_a_thread_the_flush_runs_in_line_and_the_answer_returns(
+    active, monkeypatch, caplog
+):
+    def no_thread(self):
+        raise RuntimeError("can't start new thread")
+
+    _ask(active)  # the client exists from here on
+    monkeypatch.setattr(handler.threading.Thread, "start", no_thread)
+    caplog.set_level(logging.WARNING, logger=ROUTER_LOGGER)
+
+    assert _ask(active)[0] == 200
+    assert active.flagsmith.flushes == 2  # the second one in-line, before the return
+    assert "cannot start the flush thread" in caplog.text
+
+
 def test_a_failing_flush_is_logged_and_the_answer_still_returned(active, caplog):
     active.flagsmith.flush_error = RuntimeError("the events processor broke")
     caplog.set_level(logging.WARNING, logger=ROUTER_LOGGER)
@@ -703,13 +755,41 @@ def test_a_failed_identity_request_is_502_upstream_failed_and_nothing_is_answere
     assert active.flagsmith.flushes == 1
 
 
-def test_no_flagsmith_client_is_502_upstream_failed():
-    def no_client():
-        raise ClientError({"Error": {"Code": "AccessDeniedException"}}, "GetSecretValue")
+def _no_client():
+    raise ClientError({"Error": {"Code": "AccessDeniedException"}}, "GetSecretValue")
 
-    world = _world(pointer=pointer_item(RUN_ID), flagsmith=no_client)
+
+def test_no_flagsmith_client_with_an_active_run_is_502_upstream_failed():
+    world = _world(pointer=pointer_item(RUN_ID), flagsmith=_no_client)
     assert _ask(world) == (502, {"error": handler.UPSTREAM_FAILED})
     assert world.lam.invokes == []
+
+
+def test_no_flagsmith_client_with_no_active_run_serves_current(caplog):
+    """No run data is at stake, so the default's default is served (the lead, for c3)."""
+    world = _world(pointer=None, flagsmith=_no_client)
+    caplog.set_level(logging.WARNING, logger=ROUTER_LOGGER)
+
+    assert _ask(world) == (200, {names.ANSWER_RESPONSE_FIELDS[0]: "An answer from current."})
+    assert [a.function for a in world.lam.answers()] == [names.ANSWER_CURRENT_FUNCTION]
+    assert names.DEFAULT_MODEL_FEATURE in caplog.text
+
+
+def test_a_callers_keys_never_reach_the_log(active, caplog):
+    """An unexpected key can carry an identity or a question, so the warning names only the
+    missing fields and counts the rest."""
+    leaked_identity, leaked_question = names.run_identity(RUN_ID, 99), "Who else asked?"
+    body = {QUESTION_FIELD: QUESTION, IDENTITY_FIELD: IDENTITY, leaked_identity: leaked_question}
+    caplog.set_level(logging.DEBUG, logger=ROUTER_LOGGER)
+
+    assert _reply(active.router.handle(_event(body))) == (400, {"error": handler.BAD_REQUEST})
+    for text in (leaked_identity, leaked_question, IDENTITY, QUESTION):
+        assert text not in caplog.text
+    assert "1 unexpected field(s)" in caplog.text
+
+
+def test_the_throttled_error_type_is_the_answer_functions_class_name():
+    assert handler.THROTTLED == answer_handler.AnswerThrottled.__name__
 
 
 def test_a_pointer_whose_run_id_is_not_a_run_id_is_502_upstream_failed():
@@ -786,15 +866,20 @@ def test_the_lambda_entry_point_uses_one_router_per_container(monkeypatch):
     made = []
 
     class Spy:
-        def handle(self, event):
-            return {"statusCode": 200, "event": event}
+        def handle(self, event, context=None):
+            return {"statusCode": 200, "event": event, "context": context}
 
     monkeypatch.setattr(handler, "_router", None)
     monkeypatch.setattr(handler, "Router", lambda **kwargs: made.append(kwargs) or Spy())
     monkeypatch.setattr(handler, "new_dynamodb_client", lambda: "dynamodb")
     monkeypatch.setattr(handler, "new_lambda_client", lambda: "lambda")
+    context = LambdaContext(remaining_ms=29_000)
 
-    assert handler.handler({"n": 1}, None)["event"] == {"n": 1}
+    assert handler.handler({"n": 1}, context) == {
+        "statusCode": 200,
+        "event": {"n": 1},
+        "context": context,
+    }
     assert handler.handler({"n": 2}, None)["event"] == {"n": 2}
     assert len(made) == 1
     assert made[0]["flagsmith_factory"] is handler.new_flagsmith_client
@@ -968,10 +1053,11 @@ def test_with_a_slow_events_api_the_flush_takes_about_twelve_seconds(
         EVENTS_RETRY_BASE_SECONDS * 2**n for n in range(EVENTS_MAX_ATTEMPTS - 1)
     )
     assert shortest <= elapsed <= longest + 1.5
-    # The budget, now that the flush runs alongside the answer (c3, option (a)). The router's
-    # 29 s, less c3's 3 s identity request, leaves 26 s for the longer of the answer and the
-    # flush. That covers the answer function's own 25 s timeout, so the slowest flush, 12 s,
-    # never sets the limit. One after the other, a faulted answer would have had 7 s.
+    # The budget (contract change c3). One send takes at most about 12 s, as here. A flush
+    # queued behind a send already in flight (the SDK's own 10 s timer) waits for it and then
+    # sends again, about 24 s in all. So the flush runs alongside the answer, and its join is
+    # bounded by the time Lambda has left: the router's 29 s, less c3's 3 s identity
+    # request, leaves 26 s, which covers the answer function's own 25 s timeout.
     for_answer_or_flush = names.ROUTER_TIMEOUT_SECONDS - 3  # names.* after c3
     assert longest < names.ANSWER_TIMEOUT_SECONDS <= for_answer_or_flush
     record_property("flush_seconds", round(elapsed, 2))

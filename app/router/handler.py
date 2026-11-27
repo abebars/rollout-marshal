@@ -28,24 +28,28 @@ metric are section 5's. Per request:
    AnswerThrottled is 503. Any other function error (Lambda's own timeout included), a
    reply that is not the served arm's answer_response, or a failed invoke is 502. Either
    body is {"error": <errorType, or invoke_failed>}.
-8. flush_events() before every return. Where an answer is invoked, it starts on a thread
-   just before the invoke, right after the exposure, and is joined before the return. A
-   slow events API then overlaps the answer instead of adding to it (contract change c3).
-   The SDK client gives up on a request after 3 s and retries it at most once, which bounds
-   the identity request. Its events processor ignores both settings, so a flush can take
-   up to 12 s.
+8. flush_events() before every return (contract change c3). It runs on a thread. Where an
+   answer is invoked, the thread starts just before the invoke, right after the exposure,
+   so a slow events API overlaps the answer instead of adding to it.
+   - The join waits at most the time Lambda has left, less 1 s. If the flush is still
+     running then, the router returns anyway and logs one warning that names no identity.
+     The client always gets its answer, and a late flush loses at most that request's
+     exposure.
+   - The SDK client gives up on a request after 3 s and retries it at most once, which
+     bounds the identity request. Its events processor ignores both settings: one send
+     takes at most about 12 s, and a flush queued behind a send already in flight (the
+     SDK's own 10 s timer) waits for it, about 24 s in all.
 
-Also the lead's decision: flags without the experiment feature while a run is active
-(just after launch, say) serve current, record nothing, do not invoke rm-judge, and log
-one warning that does not name the identity.
-
-Decided here, for the lead to confirm:
-- When rm-runs, the Secrets Manager key or the identity request fails, the reply is 502
-  {"error": "upstream_failed"} and nothing is answered. A silent fallback would serve
-  answers whose run data is lost unseen.
+Also the lead's decisions (contract change c3):
+- Flags without the experiment feature while a run is active (just after launch, say)
+  serve current, record nothing, do not invoke rm-judge, and log one warning that does not
+  name the identity.
+- A failed rm-runs read is a 502 {"error": "upstream_failed"}, and nothing is answered. So
+  is, with an active run, a failed read of the Flagsmith key or a failed identity request,
+  because a silent fallback would serve answers whose run data is lost unseen.
 - A pointer whose run_id is not a run ID is treated the same way.
-- With no active run, a failed or odd read of assistant_default_model serves current, its
-  default.
+- With no active run there is no run data at stake. A failed key read, or a failed or odd
+  read of assistant_default_model, serves current, its default, with a 200.
 - A missing kill switch serves current, like a disabled one. An experiment value that is
   neither variant is treated like a missing experiment feature.
 - A failed hand-off to rm-judge still returns the answer, with a warning.
@@ -112,11 +116,16 @@ class Judged:
 # The request
 # ---------------------------------------------------------------------------
 def request_problem(body: object) -> str | None:
-    """Why body is not an answer_request, or None when it is one. Never quotes the question."""
+    """Why body is not an answer_request, or None when it is one. It names only the
+    expected fields that are missing, and counts the others: a caller's key can carry an
+    identity or a question, so it is never quoted, nor is the question."""
     if not isinstance(body, dict):
         return f"a {type(body).__name__}, not an object"
-    if set(body) != set(names.ANSWER_REQUEST_FIELDS):
-        return f"fields {sorted(map(str, body))}, expected {sorted(names.ANSWER_REQUEST_FIELDS)}"
+    expected = set(names.ANSWER_REQUEST_FIELDS)
+    if set(body) != expected:
+        missing = sorted(expected - set(body))
+        unexpected = len(set(body) - expected)
+        return f"fields missing {missing}, and {unexpected} unexpected field(s)"
     question, identity = body[QUESTION_FIELD], body[IDENTITY_FIELD]
     if not isinstance(question, str) or not question:
         return f"{QUESTION_FIELD} must be a non-empty string"
@@ -228,12 +237,13 @@ class Router:
         self._default: tuple[float, str] | None = None
         self._flushing: threading.Thread | None = None  # this request's flush, while it runs
 
-    def handle(self, event: object) -> dict:
+    def handle(self, event: object, context: object = None) -> dict:
+        """One request. context is Lambda's: its remaining time bounds the flush's join."""
         self._flushing = None
         try:
             return self._route(event)
         finally:
-            self._finish_flush()  # before every return, error paths included
+            self._finish_flush(context)  # before every return, error paths included
 
     # -- the steps ----------------------------------------------------------
     def _route(self, event: object) -> dict:
@@ -445,18 +455,39 @@ class Router:
         """Flush on a thread while the answer runs, so a slow events API overlaps the answer
         instead of adding to it: the request takes about the identity request plus the
         longer of the two. Nothing is tracked while it runs: rm-judge is a Lambda invoke."""
-        if self._flagsmith is None:
-            return  # before the first Flagsmith call, nothing was ever tracked
-        self._flushing = threading.Thread(target=self._flush_now, name="flush", daemon=True)
-        self._flushing.start()
+        self._flushing = self._flush_thread()
 
-    def _finish_flush(self) -> None:
-        """Join this request's flush thread, or flush now when none was started."""
+    def _flush_thread(self) -> threading.Thread | None:
+        """A started flush thread, or None when there is nothing to flush or no thread can be
+        had. A thread is kept only once started, so nothing joins one that never ran."""
+        if self._flagsmith is None:
+            return None  # before the first Flagsmith call, nothing was ever tracked
+        thread = threading.Thread(target=self._flush_now, name="flush", daemon=True)
+        try:
+            thread.start()
+        except RuntimeError as err:  # no thread to be had: flush in-line instead
+            logger.warning("cannot start the flush thread (%s); flushing in-line", err)
+            return None
+        return thread
+
+    def _finish_flush(self, context: object = None) -> None:
+        """Join this request's flush thread, starting one now if none was. The join waits at
+        most the time Lambda has left, less 1 s (contract change c3)."""
         thread, self._flushing = self._flushing, None
-        if thread is not None:
-            thread.join()
-        else:
-            self._flush_now()
+        if thread is None:
+            thread = self._flush_thread()
+        if thread is None:
+            self._flush_now()  # nothing to flush, or no thread: in-line, before the return
+            return
+        limit = None
+        if context is not None:
+            limit = max(0.0, context.get_remaining_time_in_millis() / 1000 - 1.0)
+        thread.join(timeout=limit)
+        if thread.is_alive():
+            logger.warning(
+                "the flush was still running when Lambda had %.1f s left; returning without it",
+                limit,
+            )
 
     def _flush_now(self) -> None:
         if self._flagsmith is None:
@@ -526,4 +557,4 @@ def handler(event, context):
             lambda_client=new_lambda_client(),
             flagsmith_factory=new_flagsmith_client,
         )
-    return _router.handle(event)
+    return _router.handle(event, context)
