@@ -26,9 +26,12 @@ from botocore.exceptions import (
     ConnectionClosedError,
     ConnectTimeoutError,
     EndpointConnectionError,
+    HTTPClientError,
+    IncompleteReadError,
     NoCredentialsError,
     ReadTimeoutError,
     ResponseStreamingError,
+    SSLError,
 )
 
 import contracts
@@ -443,8 +446,17 @@ LOOK = f"look with `{names.CLI_NAME} {names.ACTION_STATUS} {RUN_ID}`"
         ConnectionClosedError(endpoint_url=ENDPOINT),
         ResponseStreamingError(error="the stream broke"),
         ReadTimeoutError(endpoint_url=ENDPOINT),
+        HTTPClientError(error="the connection dropped mid-request"),
+        IncompleteReadError(actual_bytes=10, expected_bytes=200),
     ],
-    ids=["client-error", "connection-closed", "response-streaming", "read-timeout"],
+    ids=[
+        "client-error",
+        "connection-closed",
+        "response-streaming",
+        "read-timeout",
+        "http-client",
+        "incomplete-read",
+    ],
 )
 def test_a_failure_once_the_request_went_out_says_to_look_first(error, capsys):
     argv = ["approve", RUN_ID, "promotion"]
@@ -463,9 +475,10 @@ def test_a_reply_that_is_not_a_response_says_to_look_first(capsys):
     [
         EndpointConnectionError(endpoint_url=ENDPOINT),
         ConnectTimeoutError(endpoint_url=ENDPOINT),
+        SSLError(endpoint_url=ENDPOINT, error="handshake"),
         NoCredentialsError(),
     ],
-    ids=["endpoint-connection", "connect-timeout", "no-credentials"],
+    ids=["endpoint-connection", "connect-timeout", "ssl", "no-credentials"],
 )
 def test_a_failure_before_the_request_went_out_gives_no_hint(error, capsys):
     argv = ["approve", RUN_ID, "promotion"]

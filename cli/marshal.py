@@ -36,9 +36,9 @@ from botocore.config import Config
 from botocore.exceptions import (
     BotoCoreError,
     ClientError,
-    ConnectionClosedError,
+    HTTPClientError,
+    IncompleteReadError,
     ReadTimeoutError,
-    ResponseStreamingError,
 )
 
 from contracts import names
@@ -258,8 +258,10 @@ def main(argv: list[str] | None = None, *, ssm: Any = None, agent: Any = None) -
             error,
             session_id=session_id,
         )
-    except (ClientError, ConnectionClosedError, ResponseStreamingError) as error:
-        # The request went out: the runtime may have acted on it.
+    except (ClientError, HTTPClientError, IncompleteReadError) as error:
+        # The request went out, so the runtime may have acted on it. HTTPClientError
+        # covers ConnectionClosedError and ResponseStreamingError; a connect error is
+        # botocore's ConnectionError, which is not one, and gives no such hint.
         return _failed(f"InvokeAgentRuntime failed; {went_out}", error, session_id=session_id)
     except BotoCoreError as error:  # no request went out: no credentials, no connection
         return _failed("InvokeAgentRuntime failed", error, session_id=session_id)

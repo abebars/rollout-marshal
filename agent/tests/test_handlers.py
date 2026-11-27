@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import os
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -34,6 +35,8 @@ PROSE = "The cheaper model answered as helpfully, for a quarter of the cost."
 PROMPT = "Test moving the support assistant from Claude Fable 5.1 to Claude Sonnet 5."
 EMBARGO = names.RESULTS_EMBARGO_SECONDS
 STALE = names.PENDING_STALE_SECONDS
+# The approve command without the value contract change c5 requires.
+_BARE_APPROVE = re.compile(r"`marshal approve r[a-z]*[0-9]{4,12}`")
 
 _AWS_ENV = (
     "AWS_PROFILE",
@@ -241,6 +244,7 @@ class World:
 
     def _notify(self, run_id: str, subject: str, body: str, dedupe_key: str) -> str:
         self.log.append(("notify", dedupe_key))
+        assert not _BARE_APPROVE.search(subject + body), body
         return notify.notify(run_id, subject, body, dedupe_key)
 
     def _write_report(self, run, results, prose=None) -> str:
@@ -268,6 +272,7 @@ class World:
         contracts.validate("invoke", payload)
         response = handlers.handle(payload, self.tools)
         contracts.validate("response", response)
+        assert not _BARE_APPROVE.search(response["message"]), response["message"]
         return response
 
     def start(self) -> dict:
@@ -776,6 +781,32 @@ def test_a_decline_in_flight_on_a_reset_run_answers_with_its_age_and_decline(wor
     assert world.log == []
 
 
+def test_a_reset_run_with_a_pending_launch_never_offers_decline(world):
+    """decline never takes a launch over, so nothing may suggest it would end the run."""
+    world.to(names.STATE_PLANNED)
+    state.claim(RUN_ID, names.STATE_PLANNED, names.STATE_RUNNING)
+    drop_pointer(world)
+    world.clock.advance(STALE + 60)
+    before = world.run()
+    for response in (
+        world.engineer("approve"),
+        world.engineer("check"),
+        world.status(RUN_ID),
+        world.engineer("decline"),
+    ):
+        message = response["message"]
+        assert "start a new one" in message and "marshal decline" not in message, message
+    assert world.run() == before and world.log == []
+
+
+def test_a_reset_run_with_no_launch_pending_offers_decline(world):
+    world.to(names.STATE_PLANNED)
+    drop_pointer(world)
+    for response in (world.engineer("approve"), world.engineer("check"), world.status(RUN_ID)):
+        assert f"`marshal decline {RUN_ID}` ends it" in response["message"]
+    assert world.log == []
+
+
 def test_a_repeat_decline_resumes_its_own_stalled_decline_with_no_pointer(world):
     """Only a pending launch keeps decline from ending a reset run."""
     world.to(names.STATE_PLANNED)
@@ -1066,6 +1097,8 @@ def test_approve_in_awaiting_resume_with_the_alarm_in_alarm_returns_the_status(w
     response = world.engineer("approve")
     assert response["state"] == names.STATE_AWAITING_RESUME and response["error"] is None
     assert world.run() == before and world.log == [("alarm_state",)]
+    again = f"`marshal approve {RUN_ID} {names.AWAITS_RESUME}` once it is OK again."
+    assert again in response["message"]
 
 
 def test_approve_with_a_failing_probe_rolls_back_without_an_incident(world):
@@ -1117,6 +1150,19 @@ def test_an_approve_for_what_the_run_does_not_await_is_illegal(world, source):
         message = response["error"]["message"]
         assert f"awaits {awaited}" in message and "nothing was changed" in message
         assert f"marshal approve {RUN_ID} {awaited}" in message
+    assert world.run() == before and world.log == []
+    # Legality comes before anything pending: even a stale claim approve could take over.
+    target = {
+        names.STATE_PLANNED: names.STATE_RUNNING,
+        names.STATE_AWAITING_RESUME: names.STATE_RUNNING,
+        names.STATE_RESULTS_READY: names.STATE_PROMOTED,
+    }[source]
+    state.claim(RUN_ID, source, target)
+    world.clock.advance(STALE + 1)
+    before = world.run()
+    for wrong in [value for value in names.AWAITING_VALUES if value != awaited]:
+        response = world.engineer("approve", awaiting=wrong)
+        assert error_code(response) == names.ERROR_ILLEGAL_IN_STATE, wrong
     assert world.run() == before and world.log == []
 
 

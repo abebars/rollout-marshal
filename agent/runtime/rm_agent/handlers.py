@@ -169,6 +169,14 @@ def _approve_command(run_id: str, awaiting: str) -> str:
     return f"`marshal approve {run_id} {awaiting}`"
 
 
+def _reset_advice(run: state.Run) -> str:
+    """What a reset PLANNED run allows: decline ends it, unless a launch is pending on
+    it, which decline never takes over; then only a new run helps."""
+    if run.pending == names.STATE_RUNNING:
+        return "its launch is still pending, and decline never takes that over: start a new one"
+    return f"`marshal decline {run.run_id}` ends it; start a new one"
+
+
 def _percent(ratio: float) -> int:
     return round(ratio * 100)
 
@@ -210,8 +218,8 @@ def _describe(run: state.Run, *, reset: bool = False) -> str:
     item, rid = run.item, run.run_id
     if run.state == names.STATE_PLANNED and reset:
         text = (
-            f"Run {rid} was reset: no pointer names it, so it can never launch. "
-            f"`marshal decline {rid}` ends it; start a new run with `marshal start`."
+            f"Run {rid} was reset: no pointer names it, so it can never launch; "
+            f"{_reset_advice(run)}."
         )
     elif run.state == names.STATE_PLANNED:
         text = _approval(run)
@@ -730,8 +738,8 @@ def _engineer(payload: dict, tools: Tools) -> dict:
         if action != names.ACTION_DECLINE:
             return _response(
                 run,
-                f"run {run_id} has no pointer, so it was reset and can never launch: "
-                f"`marshal decline {run_id}` ends it; start a new one",
+                f"run {run_id} has no pointer, so it was reset and can never launch; "
+                f"{_reset_advice(run)}",
                 names.ERROR_ILLEGAL_IN_STATE,
             )
         if run.pending == names.STATE_RUNNING:  # only a pending launch keeps it PLANNED
