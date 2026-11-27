@@ -9,14 +9,15 @@ reads results and an experiment's status. Its tools:
 - start_experiment: start an experiment that has not started, on a run's feature;
 - refresh_results: ask for a results refresh (Flagsmith allows one per 5 minutes);
 - get_results: the results envelope (as_of, refresh_requested_at, last_error_at, is_final,
-  payload);
+  payload), or {} before Flagsmith first computes it;
 - get_experiment: the experiment, for its status.
 
 Every tool takes the Development environment's API key, which the agent reads through
 MCP's list_environments, and builds its path with admin_path(), the one function that
-makes paths. It can make only the six Gate 1 allows, and Api.send sends only the GET and
-POST pairs in ADMIN_ROUTES: never DELETE, PUT or PATCH, which Flagsmith's spec allows on
-the experiment's own path. So nothing here can end, pause, roll out or rewrite an
+makes paths. It builds only the paths its tools use, five of Gate 1's six allows (no tool
+reads exposures/), and Api.send sends only the GET and POST pairs in ADMIN_ROUTES: never
+DELETE, PUT or PATCH, which Flagsmith's spec allows on the experiment's own path. So
+nothing here can end, pause, roll out or rewrite an
 experiment (Gate 1, rule 1(c); CLAUDE.md).
 
 Two ways in (both answer {"ok": true, "result": ...} or {"ok": false, "error": ...}):
@@ -44,11 +45,14 @@ from typing import Any
 from contracts import names
 
 API_BASE_URL = "https://api.flagsmith.com"
-REQUEST_TIMEOUT_SECONDS = 8  # each call; a tool makes at most six inside the 30 s timeout
+# Each request's timeout. ensure_metrics makes the most requests, a search and a create for
+# each of its three metrics: six at 4 s is 24 s, inside the function's
+# names.FLAGSMITH_ADMIN_TIMEOUT_SECONDS (30 s) with room for the secret's first read.
+REQUEST_TIMEOUT_SECONDS = 4
 TOOL_SEPARATOR = "___"  # the Gateway names a target's tools <target>___<tool>
 TOOL_NAME_FIELD = "bedrockAgentCoreToolName"
 
-# The Admin API's spellings (task 1.3's evidence; c2 moves them into names.py).
+# The Admin API's spellings (task 1.3's evidence). c2 left them here, as module constants.
 API_METRIC_DEFINITION_VERSION = 1  # a metric's definition is {"version": 1, "event": ...}
 API_CREATED = 201  # experiment-metrics/ POST
 API_STARTED = 200  # start/
@@ -63,13 +67,11 @@ PATH_EXPERIMENT = "experiment"  # the experiment read
 PATH_START = "start"
 PATH_RESULTS = "results"
 PATH_REFRESH = "results-refresh"
-PATH_EXPOSURES = "exposures"
 _EXPERIMENT_SUFFIXES = {
     PATH_EXPERIMENT: "",
     PATH_START: "start/",
     PATH_RESULTS: "results/",
     PATH_REFRESH: "results/refresh/",
-    PATH_EXPOSURES: "exposures/",
 }
 PATH_KINDS = (PATH_METRICS, *_EXPERIMENT_SUFFIXES)
 # names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS are the end, pause and rollout endpoints of
@@ -87,7 +89,6 @@ ADMIN_ROUTES = frozenset(
         ("POST", PATH_START),
         ("GET", PATH_RESULTS),
         ("POST", PATH_REFRESH),
-        ("GET", PATH_EXPOSURES),
     }
 )
 
@@ -279,8 +280,13 @@ def refresh_results(api: Api, experiment_id: Any) -> dict:
 
 
 def get_results(api: Api, experiment_id: Any) -> dict:
+    """The results envelope. Before Flagsmith first computes the results it answers
+    {"results": null} (task 1.3 read that through MCP on 819, before its first refresh).
+    That is {} here: the agent finds it not current, or not ready, never a failure."""
     status, body = api.send("GET", PATH_RESULTS, experiment_id=experiment_id)
     _expected(status, 200, f"reading results of experiment {experiment_id}")
+    if isinstance(body, dict) and "results" in body and body["results"] is None:
+        return {}
     envelope = body.get("results") if isinstance(body, dict) else None
     if not isinstance(envelope, dict):
         raise Failed(f"experiment {experiment_id}'s results have no results object")
@@ -299,6 +305,22 @@ TOOLS: dict[str, Callable[..., dict]] = {
     "refresh_results": lambda api, arguments: refresh_results(api, arguments.get("experiment_id")),
     "get_results": lambda api, arguments: get_results(api, arguments.get("experiment_id")),
     "get_experiment": lambda api, arguments: get_experiment(api, arguments.get("experiment_id")),
+}
+# One line each, for the Gateway target's tool definitions, where a description is
+# required (docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/
+# API_ToolDefinition.html).
+TOOL_DESCRIPTIONS = {
+    "ensure_metrics": (
+        "Get or create the three Rollout Marshal metrics; a found one that differs is an error."
+    ),
+    "start_experiment": (
+        "Start a created experiment on a run's feature; a running one is left as it is."
+    ),
+    "refresh_results": (
+        "Ask Flagsmith to recompute an experiment's results, at most once per 5 minutes."
+    ),
+    "get_results": "Read an experiment's results envelope, or {} before the first one.",
+    "get_experiment": "Read an experiment, with its status.",
 }
 # Every tool takes the environment key; all but ensure_metrics take an experiment ID.
 TOOL_ARGUMENTS = {

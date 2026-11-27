@@ -63,8 +63,8 @@ ADMIN_TOOLS = (
 # (Gate 1, rule 1(b)): task 1.3 found both tools' schemas list them.
 _EXPERIMENT_WRITE_TOOLS = ("create_experiment", "update_experiment")
 
-# Flagsmith's API spellings, as the evidence records them (Gate 1, rule 4; c2 moves these
-# into names.py).
+# Flagsmith's API spellings, as the evidence records them (Gate 1, rule 4). c2 left them
+# here, as module constants.
 API_FEATURE_MULTIVARIATE = "MULTIVARIATE"  # a feature's type
 API_FEATURE_STANDARD = "STANDARD"
 API_OPTION_TYPE = "unicode"  # a multivariate option's type for a string value
@@ -174,12 +174,24 @@ def _admin_tool(tool: str) -> None:
         raise ToolRefused(f"{tool} is not one of rm-flagsmith-admin's tools")
 
 
-def _admin_result(tool: str, answer: Any) -> Any:
+REDACTED = "<redacted>"
+
+
+def _redacted(text: Any, arguments: dict) -> str:
+    """Upstream text, with the environment key every admin call carries replaced. Whatever
+    the Gateway, the function or Flagsmith echoes back, no error raised here carries the key.
+    It is replaced before any cut, so no part of it survives one."""
+    text, key = str(text), arguments.get("environment_api_key")
+    return text.replace(key, REDACTED) if isinstance(key, str) and key else text
+
+
+def _admin_result(tool: str, answer: Any, arguments: dict) -> Any:
     if not isinstance(answer, dict) or "ok" not in answer:
-        raise FlagsmithError(f"{tool}: rm-flagsmith-admin answered {str(answer)[:300]}")
+        copied = _redacted(answer, arguments)[:300]
+        raise FlagsmithError(f"{tool}: rm-flagsmith-admin answered {copied}")
     if not answer["ok"]:
         error = answer.get("error") or {}
-        raise FlagsmithError(f"{tool}: {error.get('message')}")
+        raise FlagsmithError(f"{tool}: {_redacted(error.get('message'), arguments)}")
     return answer.get("result")
 
 
@@ -195,8 +207,8 @@ class GatewayAdmin:
             f"rm-{uuid.uuid4().hex}", ADMIN_TOOL_PREFIX + tool, arguments
         )
         if reply.get("status") != "success":
-            raise FlagsmithError(f"{tool} failed: {str(_parse(reply))[:300]}")
-        return _admin_result(tool, _parse(reply))
+            raise FlagsmithError(f"{tool} failed: {_redacted(_parse(reply), arguments)[:300]}")
+        return _admin_result(tool, _parse(reply), arguments)
 
 
 class LambdaAdmin:
@@ -214,8 +226,9 @@ class LambdaAdmin:
         raw = response["Payload"].read()
         answer = json.loads(raw) if raw else None
         if response.get("FunctionError"):
-            raise FlagsmithError(f"{tool}: rm-flagsmith-admin failed: {str(answer)[:300]}")
-        return _admin_result(tool, answer)
+            copied = _redacted(answer, arguments)[:300]
+            raise FlagsmithError(f"{tool}: rm-flagsmith-admin failed: {copied}")
+        return _admin_result(tool, answer, arguments)
 
 
 def is_ended(status: str) -> bool:

@@ -676,6 +676,19 @@ def test_setting_a_feature_that_is_missing_stops(t):
     assert writes(t.mcp) == []
 
 
+def test_set_feature_state_refuses_a_runs_multivariate_feature_and_writes_nothing(t):
+    """The one guard behind "nothing changes an experiment's feature" (PR #15's review)."""
+    feature_key = names.experiment_feature_key("rlive1530")
+    t.fs.ensure_experiment("rlive1530", PLAN)
+    assert t.world.features[feature_key]["type"] == flagsmith.API_FEATURE_MULTIVARIATE
+    before = copy.deepcopy((t.world.features, t.world.options, t.world.experiments))
+    t.mcp.calls.clear()
+    with pytest.raises(flagsmith.FlagsmithError, match="not standard"):
+        t.fs.set_feature_state(feature_key, value=names.VARIANT_CHEAPER)
+    assert writes(t.mcp) == [] and t.world.versions == {}
+    assert (t.world.features, t.world.options, t.world.experiments) == before
+
+
 # ---------------------------------------------------------------------------
 # Results: refresh window, freshness, and the mapping onto results.json
 # ---------------------------------------------------------------------------
@@ -803,6 +816,19 @@ def _envelope(metrics: list[dict], points: list[dict]) -> dict:
 
 
 METRIC_IDS = {name: 858 + n for n, name in enumerate(names.METRICS)}
+SUMS = {
+    names.METRIC_HELPFUL_RATE: {names.VARIANT_CURRENT: 40, names.VARIANT_CHEAPER: 41},
+    names.METRIC_MEAN_LATENCY_MS: {names.VARIANT_CURRENT: 52_000, names.VARIANT_CHEAPER: 47_500},
+    names.METRIC_MEAN_COST_MICRO_USD: {
+        names.VARIANT_CURRENT: 91_000,
+        names.VARIANT_CHEAPER: 30_500,
+    },
+}
+CI_LOWS = {
+    names.METRIC_HELPFUL_RATE: -0.02,
+    names.METRIC_MEAN_LATENCY_MS: -0.5,
+    names.METRIC_MEAN_COST_MICRO_USD: -0.7,
+}
 
 
 def test_get_results_maps_task_1_4s_sample(t):
@@ -842,9 +868,16 @@ def test_get_results_maps_task_1_4s_sample(t):
     ],
 )
 def test_get_results_computes_ready(t, control_identities, cheaper_identities, null_metric, ready):
+    """Each metric has its own sums and its own ci_low, so a mean or the interval taken from
+    the wrong metric shows (PR #15's review)."""
     metrics = [
-        _metric(metric_id, (control_identities, 40), (cheaper_identities, 41), -0.02)
-        for name, metric_id in METRIC_IDS.items()
+        _metric(
+            METRIC_IDS[name],
+            (control_identities, SUMS[name][names.VARIANT_CURRENT]),
+            (cheaper_identities, SUMS[name][names.VARIANT_CHEAPER]),
+            CI_LOWS[name],
+        )
+        for name in names.METRICS
         if name != null_metric
     ]
     # Two hourly buckets: identities add up across them, and never come from n.
@@ -858,21 +891,53 @@ def test_get_results_computes_ready(t, control_identities, cheaper_identities, n
     results = t.fs.get_results(807, METRIC_IDS)
     contracts.validate("results", results)
     assert results["ready"] is ready
-    current = results["variations"][names.VARIANT_CURRENT]
-    assert current["identities"] == control_identities
-    assert results["variations"][names.VARIANT_CHEAPER]["identities"] == cheaper_identities
-    if null_metric != names.METRIC_HELPFUL_RATE:
-        assert current["helpful_rate"] == 40 / 999
-        assert results["helpful_lift_ci_lower"] == -0.02
+    variations = results["variations"]
+    n = {names.VARIANT_CURRENT: 999, names.VARIANT_CHEAPER: cheaper_identities}
+    identities = {
+        names.VARIANT_CURRENT: control_identities,
+        names.VARIANT_CHEAPER: cheaper_identities,
+    }
+    for variant in names.VARIANTS:
+        assert variations[variant]["identities"] == identities[variant]
+        for name in names.METRICS:
+            mean = None if name == null_metric else SUMS[name][variant] / n[variant]
+            assert variations[variant][name] == mean, (variant, name)
+    primary = None if null_metric == names.PRIMARY_METRIC else CI_LOWS[names.PRIMARY_METRIC]
+    assert results["helpful_lift_ci_lower"] == primary
 
 
 @pytest.mark.skipif(not RESULTS_36.exists(), reason="evidence/3.6-results.json arrives with 3.6")
 def test_get_results_maps_task_3_6s_real_response(t):
+    """The raw results response 3.6 records, under "results", beside its experiment's metrics
+    as the experiment read lists them (metric_name and metric), under "experiment_metrics".
+    Every expected value is worked out here from the file's own numbers."""
     recorded_36 = json.loads(RESULTS_36.read_text())
-    t.admin.results = recorded_36.get("results", recorded_36)
-    metric_ids = {m["metric_name"]: m["metric"] for m in recorded_36.get("experiment_metrics", [])}
-    results = t.fs.get_results(1, metric_ids or METRIC_IDS)
+    envelope = recorded_36["results"]
+    metric_ids = {m["metric_name"]: m["metric"] for m in recorded_36["experiment_metrics"]}
+    assert set(metric_ids) == set(names.METRICS)
+    t.admin.results = envelope
+    results = t.fs.get_results(1, metric_ids)
     contracts.validate("results", results)
+    labels = {
+        names.CONTROL_LABEL: names.VARIANT_CURRENT,
+        names.TREATMENT_OPTION_KEY: names.VARIANT_CHEAPER,
+    }
+    identities = dict.fromkeys(names.VARIANTS, 0)
+    for point in envelope["payload"]["exposures_timeseries"]["points"]:
+        for label, count in point["new_identities"].items():
+            if label in labels:
+                identities[labels[label]] += count
+    by_id = {metric["metric_id"]: metric for metric in envelope["payload"]["metrics"]}
+    for label, variant in labels.items():
+        expected = {"identities": identities[variant]}
+        for name in names.METRICS:
+            stats = by_id[metric_ids[name]]["variants"][label]
+            expected[name] = stats["sum"] / stats["n"]
+        assert results["variations"][variant] == pytest.approx(expected), variant
+    primary = by_id[metric_ids[names.PRIMARY_METRIC]]["inference"][names.TREATMENT_OPTION_KEY]
+    assert results["helpful_lift_ci_lower"] == primary["ci_low"]
+    floor = names.MIN_IDENTITIES_PER_VARIATION
+    assert results["ready"] is all(count >= floor for count in identities.values())
 
 
 # ---------------------------------------------------------------------------
@@ -942,10 +1007,52 @@ def test_lambda_admin_invokes_the_function_with_the_direct_event():
         )
 
 
+def test_an_error_copied_from_upstream_never_carries_the_environment_key():
+    """Whatever the Gateway, the function or Flagsmith echoes back, the transports put
+    <redacted> where the key was (PR #15's review)."""
+    args = {"environment_api_key": ENV_KEY, "experiment_id": 819}
+    echoed = f"Flagsmith refused the key {ENV_KEY}"
+
+    class Gateway:
+        def __init__(self, status, answer):
+            self.status, self.answer = status, answer
+
+        def call_tool_sync(self, tool_use_id, name, arguments):
+            return {"status": self.status, "content": [{"text": json.dumps(self.answer)}]}
+
+    class Lambda:
+        def __init__(self, answer, error=None):
+            self.answer, self.error = answer, error
+
+        def invoke(self, **kwargs):
+            reply = {"Payload": io.BytesIO(json.dumps(self.answer).encode())}
+            return {**reply, "FunctionError": self.error} if self.error else reply
+
+    refused = {"ok": False, "error": {"type": "failed", "message": echoed}}
+    transports = [
+        flagsmith.GatewayAdmin(Gateway("error", echoed)),  # the Gateway's own failure
+        flagsmith.GatewayAdmin(Gateway("success", refused)),  # the function's error answer
+        flagsmith.GatewayAdmin(Gateway("success", [echoed])),  # not an answer at all
+        flagsmith.LambdaAdmin(Lambda({"errorMessage": echoed}, "Unhandled")),
+        flagsmith.LambdaAdmin(Lambda(refused)),
+        flagsmith.LambdaAdmin(Lambda({"unexpected": echoed})),
+    ]
+    for transport in transports:
+        with pytest.raises(flagsmith.FlagsmithError) as raised:
+            transport.call("get_experiment", args)
+        assert ENV_KEY not in str(raised.value)
+        assert flagsmith.REDACTED in str(raised.value)
+    # The key at the 300-character cut: replaced first, so no part of it is left.
+    long_echo = "x" * 290 + ENV_KEY
+    with pytest.raises(flagsmith.FlagsmithError) as raised:
+        flagsmith.GatewayAdmin(Gateway("error", long_echo)).call("get_experiment", args)
+    assert str(raised.value).endswith("x" + flagsmith.REDACTED)
+
+
 # ---------------------------------------------------------------------------
 # rm-flagsmith-admin: paths (Gate 1 rule 1(c)), tools, routing and the key
 # ---------------------------------------------------------------------------
-def test_admin_path_builds_only_the_six_gate_1_paths():
+def test_admin_path_builds_only_the_five_paths_its_tools_use():
     base = f"/api/v1/environments/{ENV_KEY}/"
     assert handler.admin_path(handler.PATH_METRICS, ENV_KEY) == base + "experiment-metrics/"
     assert (
@@ -962,7 +1069,6 @@ def test_admin_path_builds_only_the_six_gate_1_paths():
         handler.PATH_START: base + "experiments/819/start/",
         handler.PATH_RESULTS: base + "experiments/819/results/",
         handler.PATH_REFRESH: base + "experiments/819/results/refresh/",
-        handler.PATH_EXPOSURES: base + "experiments/819/exposures/",
     }
 
 
@@ -975,6 +1081,7 @@ def test_admin_path_builds_only_the_six_gate_1_paths():
         ("complete/", ENV_KEY, 819, None),
         ("experiments", ENV_KEY, 819, None),
         ("exposures-refresh", ENV_KEY, 819, None),
+        ("exposures", ENV_KEY, 819, None),  # Gate 1 allowed it; no tool reads it
         (handler.PATH_EXPERIMENT, "../projects", 819, None),
         (handler.PATH_EXPERIMENT, "a/b", 819, None),
         (handler.PATH_EXPERIMENT, "key?x=1", 819, None),
@@ -1020,7 +1127,7 @@ def test_the_final_guard_refuses_a_forbidden_path_even_if_a_kind_for_one_were_ad
             handler.admin_path("added", ENV_KEY, 819)
 
 
-def test_the_only_calls_are_get_reads_and_four_posts():
+def test_the_only_calls_are_three_reads_and_three_posts():
     """c2's review: Flagsmith's spec lets DELETE, PUT and PATCH on the experiment read's own
     path delete it or rewrite its rollout, metrics and feature."""
     assert names.FLAGSMITH_ADMIN_METHODS == ("GET", "POST")
@@ -1031,7 +1138,6 @@ def test_the_only_calls_are_get_reads_and_four_posts():
         ("POST", handler.PATH_START),
         ("GET", handler.PATH_RESULTS),
         ("POST", handler.PATH_REFRESH),
-        ("GET", handler.PATH_EXPOSURES),
     }
 
 
@@ -1061,7 +1167,7 @@ def test_delete_put_and_patch_are_never_sent(method, monkeypatch):
         ("GET", handler.PATH_START),
         ("GET", handler.PATH_REFRESH),
         ("POST", handler.PATH_RESULTS),
-        ("POST", handler.PATH_EXPOSURES),
+        ("GET", "exposures"),  # the pair Gate 1 allowed and no tool used
     ],
 )
 def test_a_method_on_a_path_it_is_not_paired_with_is_refused(method, kind):
@@ -1110,7 +1216,8 @@ def metrics_path(query: str | None = None) -> str:
     return handler.admin_path(handler.PATH_METRICS, ENV_KEY, query=query)
 
 
-def test_ensure_metrics_creates_the_three_then_finds_them():
+def metric_store() -> FakeHttp:
+    """The metrics search and create, over a store that starts empty."""
     stored: dict[str, dict] = {}
 
     def search(name):
@@ -1125,10 +1232,14 @@ def test_ensure_metrics_creates_the_three_then_finds_them():
         stored[body["name"]] = {"id": 868 + len(stored), **body}
         return 201, stored[body["name"]]
 
-    http = FakeHttp(
+    return FakeHttp(
         {("GET", metrics_path(name)): search(name) for name in names.METRICS}
         | {("POST", metrics_path()): create}
     )
+
+
+def test_ensure_metrics_creates_the_three_then_finds_them():
+    http = metric_store()
     first = handler.handle(direct("ensure_metrics"), None, http=http)
     assert first["ok"] is True
     assert first["result"]["created"] == list(names.METRICS)
@@ -1236,6 +1347,77 @@ def test_refresh_and_results_answers():
     assert answer["result"] == {"refreshed": False, "detail": "A refresh was requested recently."}
 
 
+def test_the_most_requests_a_tool_makes_fit_inside_the_functions_timeout():
+    """Each request may wait REQUEST_TIMEOUT_SECONDS. The tool that makes the most,
+    ensure_metrics creating all three metrics, must still finish inside the function's
+    timeout (PR #15's review: six requests at 8 s would not)."""
+    refresh = handler.admin_path(handler.PATH_REFRESH, ENV_KEY, 819)
+    results = handler.admin_path(handler.PATH_RESULTS, ENV_KEY, 819)
+    worst = {
+        "ensure_metrics": (direct("ensure_metrics"), metric_store()),
+        "start_experiment": (
+            direct("start_experiment", experiment_id=819),
+            _experiment_routes("created"),
+        ),
+        "refresh_results": (
+            direct("refresh_results", experiment_id=819),
+            FakeHttp({("POST", refresh): (202, None)}),
+        ),
+        "get_results": (
+            direct("get_results", experiment_id=819),
+            FakeHttp({("GET", results): (200, {"results": RESULTS_SAMPLE})}),
+        ),
+        "get_experiment": (
+            direct("get_experiment", experiment_id=819),
+            _experiment_routes("running"),
+        ),
+    }
+    assert set(worst) == set(handler.TOOLS)
+    requests = {}
+    for tool, (event, http) in worst.items():
+        assert handler.handle(event, None, http=http)["ok"] is True, tool
+        requests[tool] = len(http.calls)
+    assert max(requests.values()) == requests["ensure_metrics"] == 2 * len(names.METRICS)
+    budget = requests["ensure_metrics"] * handler.REQUEST_TIMEOUT_SECONDS
+    assert budget < names.FLAGSMITH_ADMIN_TIMEOUT_SECONDS
+
+
+def test_results_not_computed_yet_are_not_current_and_not_ready_never_a_failure(t):
+    """Before its first computation Flagsmith answers {"results": null} (task 1.3, on 819).
+    The function answers {}, and the agent reads that as not current after a refresh, or as
+    not ready, never as a failure (PR #15's review). Any other shape is still a failure."""
+    null_read = (
+        r'"get_experiment_results","arguments":\{"experiment_id":819\}\}\s+'
+        r'-> \{"results": null\}'
+    )
+    assert re.search(null_read, SPIKE_EVIDENCE)
+    path = handler.admin_path(handler.PATH_RESULTS, ENV_KEY, 819)
+    http = FakeHttp({("GET", path): (200, {"results": None})})
+    answer = handler.handle(direct("get_results", experiment_id=819), None, http=http)
+    assert answer == {"ok": True, "result": {}}
+    t.admin.results = answer["result"]
+    with pytest.raises(flagsmith.ResultsNotCurrent):
+        t.fs.get_results(819, METRIC_IDS, refreshed_at=names.utc_iso(START))
+    results = t.fs.get_results(819, METRIC_IDS)
+    contracts.validate("results", results)
+    assert results["ready"] is False and results["helpful_lift_ci_lower"] is None
+    for variation in results["variations"].values():
+        assert variation == {"identities": 0, **dict.fromkeys(names.METRICS)}
+    for body in ({}, {"results": []}, {"results": "pending"}, None):
+        http = FakeHttp({("GET", path): (200, body)})
+        answer = handler.handle(direct("get_results", experiment_id=819), None, http=http)
+        assert answer["ok"] is False and answer["error"]["type"] == "failed", body
+
+
+def test_every_admin_tool_has_a_one_line_description():
+    """A Gateway target's tool definition requires a description (ToolDefinition in the
+    AgentCore control API reference); task 2.7 lists these (PR #15's review)."""
+    assert set(handler.TOOL_DESCRIPTIONS) == set(handler.TOOLS) == set(flagsmith.ADMIN_TOOLS)
+    for tool, description in handler.TOOL_DESCRIPTIONS.items():
+        assert isinstance(description, str) and description, tool
+        assert description == description.strip() and "\n" not in description, tool
+
+
 def test_a_gateway_call_names_its_tool_in_the_client_context():
     results = handler.admin_path(handler.PATH_RESULTS, ENV_KEY, 807)
     http = FakeHttp({("GET", results): (200, {"results": RESULTS_SAMPLE})})
@@ -1308,6 +1490,38 @@ def test_the_key_comes_from_the_secret_and_travels_only_in_the_authorization_hea
     )
     assert timeout == handler.REQUEST_TIMEOUT_SECONDS
     assert answer["ok"] is False and ORG_KEY not in json.dumps(answer)
+
+
+def test_handle_sends_the_cached_key_through_api_key_authorization(monkeypatch):
+    """handle's own wiring, with no http passed in: the cached organisation key goes out
+    only as names.api_key_authorization() builds it (PR #15's review)."""
+    sent = []
+
+    class Reply:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def read(self):
+            return json.dumps({"id": 819, "status": "running"}).encode()
+
+    def urlopen(request, timeout):
+        sent.append(request)
+        return Reply()
+
+    monkeypatch.setattr(handler, "_key_cache", {"key": ORG_KEY})
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    answer = handler.handle(direct("get_experiment", experiment_id=819), None)
+    assert answer == {"ok": True, "result": {"id": 819, "status": "running"}}
+    (request,) = sent
+    assert request.get_method() == "GET"
+    assert request.get_header(names.GATEWAY_API_KEY_HEADER.capitalize()) == (
+        names.api_key_authorization(ORG_KEY)
+    )
 
 
 @pytest.mark.parametrize("value", ["", " padded ", None])
