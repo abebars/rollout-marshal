@@ -662,6 +662,8 @@ def test_without_a_thread_the_answer_returns_at_once_and_nothing_flushes_in_line
     assert elapsed < 1.0
     assert active.flagsmith.calls.count("flush") == active.flagsmith.flushes == 1  # the first
     assert "leaving the events to the SDK's timer" in caplog.text
+    # One warning: the finish does not try again after step 6's start failed.
+    assert caplog.text.count("cannot start the flush thread") == 1
 
 
 def test_a_failing_flush_is_logged_and_the_answer_still_returned(active, caplog):
@@ -862,13 +864,14 @@ def test_the_flagsmith_client_is_built_from_the_server_key_with_events_on(monkey
         assert handler.new_flagsmith_client() == "client"
     [kwargs] = built
     retries = kwargs.pop("retries")
-    # c3's limits spelled out, not the handler's constants (names.* after c3).
+    # The contract's limits (design.md section 5), and the literals they stand for.
     assert kwargs == {
         "environment_key": DUMMY_SDK_KEY,
         **names.FLAGSMITH_CLIENT_OPTIONS,
-        "request_timeout_seconds": 3,
+        "request_timeout_seconds": names.FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS,
     }
-    assert (retries.total, retries.backoff_factor) == (1, 0)
+    assert (retries.total, retries.backoff_factor) == (names.FLAGSMITH_SDK_RETRIES, 0)
+    assert (names.FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS, names.FLAGSMITH_SDK_RETRIES) == (3, 1)
     assert DUMMY_SDK_KEY not in caplog.text
 
 
@@ -966,8 +969,9 @@ def test_the_flush_runs_alongside_the_answer_and_is_joined_before_the_return(
     while the answer does, and is joined before the router returns.
 
     With a silent events API and a faulted 13 s answer, the request takes about the longer
-    of the two: within c3's 3 s for the identity request, plus 13 s, plus 1.5 s. It does not
-    take their sum."""
+    of the two: the identity request, plus 13 s, plus a margin. It does not take their sum.
+    The identity request answers at once here; the 3 s allowed for it below is the read
+    timeout, not design.md section 5's worst case of about 6 s (9 with a retried connect)."""
     flagsmith_api.hold_events = threading.Event()
     times: dict[str, float] = {}
 
@@ -1018,7 +1022,10 @@ def test_with_c3s_limits_a_silent_identity_request_gives_up_after_one_3_second_a
 ):
     """c3's request_timeout_seconds reaches the identity request. urllib3 never retries a
     POST after a read timeout, so Retry(total=1) adds no second try here; it retries only
-    a failed connect. So a Flagsmith that accepts and never answers costs one 3 s try."""
+    a failed connect. So a Flagsmith that accepts at once and never answers costs one 3 s
+    read. requests applies the same 3 s to the connect too, so a slow connect could add
+    up to 3 s more, and a retried connect 3 s more again: about 6 s, or about 9
+    (design.md section 5)."""
     flagsmith_api.hold_identities = threading.Event()
     world = _world(pointer=pointer_item(RUN_ID), flagsmith=flagsmith_api.real_client)
 
@@ -1027,7 +1034,7 @@ def test_with_c3s_limits_a_silent_identity_request_gives_up_after_one_3_second_a
     elapsed = time.perf_counter() - started
 
     assert len(flagsmith_api.identity_bodies) == 1
-    assert 3 <= elapsed <= 4  # c3's 3 s, plus a little overhead
+    assert 3 <= elapsed <= 4  # the 3 s read timeout, plus a little overhead
     assert world.lam.invokes == []  # nothing was answered
     record_property("identity_request_seconds", round(elapsed, 2))
     with capsys.disabled():
@@ -1063,13 +1070,16 @@ def test_with_a_slow_events_api_the_flush_takes_about_twelve_seconds(
         EVENTS_RETRY_BASE_SECONDS * 2**n for n in range(EVENTS_MAX_ATTEMPTS - 1)
     )
     assert shortest <= elapsed <= longest + 1.5
-    # The budget (contract change c3). One send takes at most about 12 s, as here. A flush
+    # The budget (design.md section 5). One send takes at most about 12 s, as here. A flush
     # queued behind a send already in flight (the SDK's own 10 s timer) waits for it and then
     # sends again, about 24 s in all. So the flush runs alongside the answer, and its join is
-    # bounded by the time Lambda has left: the router's 29 s, less c3's 3 s identity
-    # request, leaves 26 s, which covers the answer function's own 25 s timeout.
-    for_answer_or_flush = names.ROUTER_TIMEOUT_SECONDS - 3  # names.* after c3
-    assert longest < names.ANSWER_TIMEOUT_SECONDS <= for_answer_or_flush
+    # bounded by the time Lambda has left. The router's 29 s, less the identity request's
+    # about 6 s (requests applies the 3 s to the connect and to the read), leaves about
+    # 23 s, which one send fits inside. An answer that runs to its own 25 s timeout may meet
+    # the router's limit; design.md section 5 accepts that.
+    identity_request_seconds = 2 * names.FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS
+    for_answer_or_flush = names.ROUTER_TIMEOUT_SECONDS - identity_request_seconds
+    assert longest < for_answer_or_flush < names.ANSWER_TIMEOUT_SECONDS
     record_property("flush_seconds", round(elapsed, 2))
     with capsys.disabled():
         print(

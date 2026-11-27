@@ -36,10 +36,12 @@ metric are section 5's. Per request:
      The client always gets its answer, and a late flush loses at most that request's
      exposure. With no thread to be had, the router returns at once and leaves the
      events to the SDK's own 10 s timer or the next flush.
-   - The SDK client gives up on a request after 3 s and retries it at most once, which
-     bounds the identity request. Its events processor ignores both settings: one send
-     takes at most about 12 s, and a flush queued behind a send already in flight (the
-     SDK's own 10 s timer) waits for it, about 24 s in all.
+   - The SDK client's request limits, 3 s and one retry, bound the identity request.
+     requests applies the 3 s to the connect and to the read, and urllib3 retries only a
+     failed connect, so it takes about 6 s at most, or about 9 with a retried connect
+     (design.md section 5). Its events processor ignores both settings: one send takes at
+     most about 12 s, and a flush queued behind a send already in flight (the SDK's own
+     10 s timer) waits for it, about 24 s in all.
 
 Also the lead's decisions (contract change c3):
 - Flags without the experiment feature while a run is active (just after launch, say)
@@ -82,17 +84,12 @@ logger = logging.getLogger(__name__)
 QUESTION_FIELD, IDENTITY_FIELD = names.ANSWER_REQUEST_FIELDS
 ANSWER_FIELD, INPUT_TOKENS_FIELD, OUTPUT_TOKENS_FIELD, MODEL_ID_FIELD = names.ANSWER_RESPONSE_FIELDS
 RUN_ID_ATTRIBUTE, FEATURE_KEY_ATTRIBUTE = names.POINTER_ATTRIBUTES
-THROTTLED = "AnswerThrottled"  # app/answer's error for a Bedrock throttle (task 3.1)
-BAD_REQUEST = "bad_request"
-INVOKE_FAILED = "invoke_failed"
-UPSTREAM_FAILED = "upstream_failed"
+THROTTLED = names.ANSWER_ERROR_THROTTLED  # app/answer's error for a Bedrock throttle
+BAD_REQUEST = names.ROUTER_ERROR_BAD_REQUEST
+INVOKE_FAILED = names.ROUTER_ERROR_INVOKE_FAILED
+UPSTREAM_FAILED = names.ROUTER_ERROR_UPSTREAM_FAILED
 SYNC, ASYNC = "RequestResponse", "Event"  # Lambda InvocationType values
 IDENTITY_USER_SEPARATOR = "-user-"  # <run_id>-user-NNN (names.run_identity)
-# The SDK's request limits (contract change c3), so a Flagsmith that never answers cannot
-# spend the router's 29 s: each request gives up after 3 s and is retried at most once,
-# with no backoff. Until c3 merges, the values are kept here.
-FLAGSMITH_REQUEST_TIMEOUT_SECONDS = 3  # names.FLAGSMITH_REQUEST_TIMEOUT_SECONDS after c3
-FLAGSMITH_RETRY = {"total": 1, "backoff_factor": 0}  # names.FLAGSMITH_RETRY after c3
 
 
 class Upstream(Exception):
@@ -455,8 +452,9 @@ class Router:
     def _start_flush(self) -> None:
         """Flush on a thread while the answer runs, so a slow events API overlaps the answer
         instead of adding to it: the request takes about the identity request plus the
-        longer of the two. Nothing is tracked while it runs: rm-judge is a Lambda invoke."""
-        self._flushing = self._flush_thread()
+        longer of the two. Nothing is tracked while it runs: rm-judge is a Lambda invoke.
+        False, not None, records a start that failed, so the finish does not try again."""
+        self._flushing = self._flush_thread() or False
 
     def _flush_thread(self) -> threading.Thread | None:
         """A started flush thread, or None when there is nothing to flush or no thread can be
@@ -479,9 +477,9 @@ class Router:
         had it returns at once: the SDK's flush has no timeout, so an in-line one could
         outlast Lambda's time."""
         thread, self._flushing = self._flushing, None
-        if thread is None:
+        if thread is None:  # no start yet; False is one that failed, warned already
             thread = self._flush_thread()
-        if thread is None:
+        if not thread:
             return  # nothing to flush, or no thread: the SDK's own timer or the next flush
         limit = None
         if context is not None:
@@ -531,13 +529,16 @@ def new_lambda_client():
 
 
 def flagsmith_client(environment_key: str, **overrides) -> Flagsmith:
-    """The SDK client rm-router uses: remote evaluation with events on, and c3's request
-    limits. Tests pass a local server's URLs in overrides."""
+    """The SDK client rm-router uses: remote evaluation with events on, and the request
+    limits of design.md section 5, so a Flagsmith that never answers cannot spend the
+    router's 29 s. Each request gives up after FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS, and is
+    retried at most FLAGSMITH_SDK_RETRIES times with no backoff. Tests pass a local server's
+    URLs in overrides."""
     return Flagsmith(
         environment_key=environment_key,
         **names.FLAGSMITH_CLIENT_OPTIONS,
-        request_timeout_seconds=FLAGSMITH_REQUEST_TIMEOUT_SECONDS,
-        retries=Retry(**FLAGSMITH_RETRY),
+        request_timeout_seconds=names.FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS,
+        retries=Retry(total=names.FLAGSMITH_SDK_RETRIES, backoff_factor=0),
         **overrides,
     )
 
