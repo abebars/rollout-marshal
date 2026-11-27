@@ -286,7 +286,8 @@ ANSWER_RESPONSE_FIELDS = ("answer", "input_tokens", "output_tokens", "model_id")
 ANSWER_HANDLER = "app.answer.handler.handler"
 ANSWER_MODEL_ENV = "MODEL_ID"  # the model each deployment asks
 # The exception classes the answer handler raises. Lambda reports the class name as
-# errorType (the simple-name form is unverified until the first deployed invoke).
+# errorType (still unverified: no answer has failed yet, so the first real failure's log
+# settles it).
 ANSWER_ERROR_THROTTLED = "AnswerThrottled"  # Bedrock's ThrottlingException, by its error code
 ANSWER_ERROR_FAILED = "AnswerFailed"  # any other error, max_tokens, no text, a bad event
 ROUTER_HANDLER = "app.router.handler.handler"
