@@ -405,7 +405,7 @@ their tasks name, not against each other.
     validates against its schema.
   - Pass: `pytest agent/tests/test_handlers.py` green.
 
-- [ ] 2.6 **CLI**
+- [x] 2.6 **CLI**
   - Needs: 1.1. Files: `cli/marshal.py`, `cli/tests/test_cli.py`.
   - Produces: `marshal start "<prompt>"`, `approve <run_id>`,
     `decline <run_id>`, `status [run_id]`, `check <run_id>`; one payload
