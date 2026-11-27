@@ -30,8 +30,9 @@ locals {
   # gives no size.
   memory_mb = 256
 
-  # rm-router and rm-judge log in JSON at INFO, never DEBUG, because the Flagsmith SDK logs
-  # identifiers at DEBUG. Log-level filtering needs the JSON format (Lambda developer guide,
+  # rm-router and rm-judge log in JSON at INFO, never DEBUG, for two reasons: the Flagsmith
+  # SDK logs identifiers at DEBUG, and botocore at DEBUG logs response bodies, the server key
+  # from GetSecretValue among them. Log-level filtering needs the JSON format (Lambda developer guide,
   # log-level filtering). Lambda gives a print() of a JSON object with no "level" the level
   # INFO, so the embedded-metric lines need INFO: WARN would filter them out (same page).
   # print() output stays as printed (Python logging page), so CloudWatch still reads it.
