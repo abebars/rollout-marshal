@@ -27,7 +27,7 @@ import botocore.httpsession
 import pytest
 from boto3.dynamodb.types import TypeSerializer
 from botocore import xform_name
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError
 from botocore.stub import Stubber
 
 from cli import marshal
@@ -305,8 +305,9 @@ class FakeSts:
 class FakeApis:
     """apigatewayv2's GetApis paginator over the given pages."""
 
-    def __init__(self, *pages):
+    def __init__(self, *pages, error=None):
         self.pages = pages or ([api(names.API_NAME, ENDPOINT)],)
+        self.error = error
         self.reads = 0
 
     def get_paginator(self, operation):
@@ -315,6 +316,8 @@ class FakeApis:
 
     def paginate(self):
         self.reads += 1
+        if self.error is not None:
+            raise self.error
         for items in self.pages:
             yield {"Items": items}
 
@@ -1275,6 +1278,25 @@ def test_nothing_printed_is_fatal_when_stdout_is_dead_from_the_start(error, harn
     assert harness.recorded()["outcome"] == "completed"
 
 
+def test_a_bug_with_stdout_and_stderr_dead_still_stops_the_children_and_writes_the_record(
+    harness, monkeypatch
+):
+    """The terminal is gone, so the traceback cannot be printed either: the children still
+    get SIGTERM, and finish() still writes --record."""
+    out, err = DeadStdout(DEAD_STDOUT[0]), DeadStdout(DEAD_STDOUT[0])
+    out.broken = err.broken = True
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    harness.world.status_fault = lambda n: RuntimeError("boom") if n == 60 else None
+    assert harness.run() == e2e.EXIT_FAILED
+    assert harness.clock.t > 340  # the children were running when the bug came
+    assert harness.spawner.kills == [(LOAD_PID, signal.SIGTERM), (FAULT_PID, signal.SIGTERM)]
+    record = harness.recorded()
+    assert record["outcome"] == "failed"
+    assert record["reason"] == "e2e.py itself failed: RuntimeError: boom"
+    assert record["answers_sent"] == 700
+
+
 def test_a_dead_stdout_is_pointed_at_devnull_so_the_exit_status_holds(tmp_path, monkeypatch):
     target = open(tmp_path / "terminal", "w")  # kept open: its descriptor is the point
 
@@ -2010,6 +2032,19 @@ def test_the_fault_template_is_selected_as_inject_fault_sh_selects_it():
     assert "list-experiment-templates" in script
 
 
+# A read that fails: an error AWS answered (ClientError), and one botocore raised before any
+# answer came (a BotoCoreError, such as no connection to the endpoint).
+READ_ERRORS = {
+    "ClientError": lambda: ClientError(
+        {"Error": {"Code": "AccessDenied", "Message": "no"}}, "Read"
+    ),
+    "EndpointConnectionError": lambda: EndpointConnectionError(
+        endpoint_url=f"https://monitoring.{names.REGION}.amazonaws.com/"
+    ),
+}
+
+
+@pytest.mark.parametrize("kind", READ_ERRORS)
 @pytest.mark.parametrize(
     ("client", "what"),
     [
@@ -2018,17 +2053,20 @@ def test_the_fault_template_is_selected_as_inject_fault_sh_selects_it():
         ("fis", "the FIS experiment templates"),
     ],
 )
-def test_a_failed_check_read_starts_nothing(client, what, monkeypatch, tmp_path, capsys):
+def test_a_failed_check_read_starts_nothing(client, what, kind, monkeypatch, tmp_path, capsys):
     h = make(monkeypatch, tmp_path)
-    denied = ClientError({"Error": {"Code": "AccessDenied", "Message": "no"}}, "Read")
-    setattr(
-        h,
-        client,
-        {"cloudwatch": FakeCloudWatch, "functions": FakeLambda, "fis": FakeFis}[client](
-            error=denied
-        ),
-    )
-    assert f"refused: could not read {what} (ClientError: " in _refused(h, capsys)
+    fake = {"cloudwatch": FakeCloudWatch, "functions": FakeLambda, "fis": FakeFis}[client]
+    setattr(h, client, fake(error=READ_ERRORS[kind]()))
+    assert f"refused: could not read {what} ({kind}: " in _refused(h, capsys)
+
+
+@pytest.mark.parametrize("kind", READ_ERRORS)
+def test_a_failed_api_read_starts_nothing(kind, monkeypatch, tmp_path, capsys):
+    h = make(monkeypatch, tmp_path)
+    h.apis = FakeApis(error=READ_ERRORS[kind]())
+    out = _refused(h, capsys)
+    assert f"refused: could not read the APIs ({kind}: " in out
+    assert API_ID not in out
 
 
 def test_the_checks_send_well_formed_reads_to_the_real_clients():
@@ -2112,7 +2150,7 @@ def test_the_real_lock_check_refuses_while_a_load_holds_the_lock(monkeypatch, tm
 
 
 def test_main_installs_the_stop_handlers(monkeypatch):
-    seen = {}
+    seen, events = {}, []
 
     class Stub:
         def __init__(self, args, deps):
@@ -2120,15 +2158,18 @@ def test_main_installs_the_stop_handlers(monkeypatch):
 
         def run(self):
             seen.update({s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)})
-            return 0
+            events.append("run")
+            return 7
 
     saved = {s: signal.getsignal(s) for s in e2e.STOP_SIGNALS}
     monkeypatch.setattr(e2e, "E2E", Stub)
+    monkeypatch.setattr(e2e, "release_dead_stdout", lambda: events.append("release"))
     try:
-        assert e2e.main([]) == 0
+        assert e2e.main([]) == 7  # the run's own status
     finally:
         for stop, handler in saved.items():
             signal.signal(stop, handler)
     assert seen == {signal.SIGTERM: e2e._stop, signal.SIGHUP: e2e._stop}
+    assert events == ["run", "release"]  # a dead stdout is let go after the run, once
     with pytest.raises(KeyboardInterrupt):
         e2e._stop(signal.SIGTERM, None)
