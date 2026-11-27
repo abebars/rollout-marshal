@@ -453,7 +453,7 @@ def converse_calls(include_optional: bool = True) -> list[ConverseCall]:
         ConverseCall(
             "cheaper_thinking_disabled",
             _judge_request(names.MODEL_CHEAPER),
-            notes="Sonnet 5 with the judge's thinking-disabled request, as a proven fallback",
+            notes="Sonnet 5 with the judge's thinking-disabled request, tried on one canned answer",
         ),
         ConverseCall(
             "current_thinking_disabled",
