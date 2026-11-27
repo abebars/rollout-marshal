@@ -196,7 +196,7 @@ FLAGSMITH_SDK_MIN_VERSION = "6.6.0"
 FLAGSMITH_CLIENT_OPTIONS = {"enable_events": True}  # remote evaluation
 # SDK calls; the exact signatures are proven by task 1.2.
 SDK_FLAGS_CALL = "get_identity_flags"  # once per answer, the only identity request
-SDK_EXPOSURE_CALL = "track_exposure_event"  # only when in the experiment with a variant set
+SDK_EXPOSURE_CALL = "track_exposure_event"  # only when enabled, in the experiment, with a variant
 SDK_OUTCOME_CALL = "track_event"  # with the identity and a numeric value
 SDK_FLUSH_CALL = "flush_events"  # before every handler returns
 SDK_FORBIDDEN_CALL = "get_experiment_flag"  # makes its own identity request
@@ -477,7 +477,9 @@ MCP_EXPERIMENT_FORBIDDEN_FIELDS = (
     "started_at",
     "ended_at",
 )
-FLAGSMITH_ADMIN_FORBIDDEN_PATHS = ("complete/", "pause/")
+FLAGSMITH_ADMIN_FORBIDDEN_PATHS = ("complete/", "pause/", "rollout/")
+FLAGSMITH_ADMIN_METHODS = ("GET", "POST")  # never DELETE, PUT or PATCH
+MCP_EXCLUDED_TOOL = "flagsmith___update_experiment"  # with every flagsmith___delete_* tool
 
 # ---------------------------------------------------------------------------
 # Section 7. Invoking the agent
@@ -493,9 +495,9 @@ AGENT_CODE_LOCATION = "runtime"  # agentcore.json codeLocation, relative to agen
 AGENT_ENTRYPOINT = "app.py"
 AGENT_PACKAGE = AGENT_RUNTIME_NAME  # the Python package in the code folder
 AGENT_STACK = "AgentCore-rm-default"  # the CLI's CloudFormation stack
-# Terraform finds the stack's runtime role through the output whose key starts with
-# this (CDK appends a hash), and attaches the tools' policy to it (design.md section 7).
-AGENT_RUNTIME_ROLE_OUTPUT_PREFIX = "ApplicationRuntimeRmAgentRoleArnOutput"
+# Terraform reads the stack's runtime role from this export and attaches the tools'
+# policy to it (design.md section 7).
+AGENT_RUNTIME_ROLE_EXPORT = "AgentCore-rm-default-rm-agent-RoleArn"
 AGENT_RUNTIME_TOOLS_POLICY = "rm-agent-runtime-tools"
 SESSION_ID_PREFIX = "rm-session-"  # + UUID4
 SESSION_ID_MIN_LENGTH = 33

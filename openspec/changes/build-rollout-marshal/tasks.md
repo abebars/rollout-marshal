@@ -261,11 +261,13 @@ their tasks name, not against each other.
     call the API.
   - Gate 1 rules, each pinned by a test:
     - **The no-end rule, at the tool boundary.** An MCP tool outside the
-      module's allow-list raises before the call. So does an experiment
-      create or update carrying `status`, `rollout_decision`,
-      `rollout_variant`, `started_at` or `ended_at`. `rm-flagsmith-admin`
-      builds its paths with one function that cannot produce `complete/` or
-      `pause/`.
+      module's allow-list raises before the call. The allow-list leaves out
+      `flagsmith___update_experiment` and every `flagsmith___delete_*` tool.
+      An experiment create carrying `status`, `rollout_decision`,
+      `rollout_variant`, `started_at` or `ended_at` also raises.
+      `rm-flagsmith-admin` sends only the GET and POST pairs it needs, never
+      DELETE, PUT or PATCH. Its one path builder cannot produce `complete/`,
+      `pause/` or `rollout/`.
     - **Status.** `is_ended(status)` is true only for `completed`.
     - **The split.** The rollout block carries the `cheaper` option at 50;
       the option's own default decides nothing.
@@ -277,7 +279,14 @@ their tasks name, not against each other.
     - **Permanent features.** `ensure_permanent_features()` never resets a
       found feature's state or value.
     - **Freshness and the admin interface.** 2.2 states and tests when a
-      results read is current after a refresh. It proposes
+      results read is current after a refresh. `is_final` true counts as
+      current. Both cases recorded in `evidence/1.4-logs/` must pass:
+      `ended_refresh_log.json` entry 3 (final, with `as_of` before
+      `refresh_requested_at`) is current, and `end_status_log.json` entry 3
+      (the pre-end snapshot) is not.
+    - **Metric IDs.** The metric ID is an int from the Admin API, a string
+      in MCP create's `metrics[].metric`, and an int in the results'
+      `metric_id`. A test pins all three. It proposes
       `rm-flagsmith-admin`'s tool names, input schemas, direct-invoke
       shape and Gateway call shape, and the lead records them in design.md
       section 7 before 2.2 merges.
@@ -338,6 +347,8 @@ their tasks name, not against each other.
     target, input and role, changing only its state. A test checks that the
     target's input is still the tick payload after every call. The
     report's Known bias names both biases in design.md section 10.
+  - A test checks that the Recommendation states the promote rule as at
+    least a 97.5 percent probability (design.md section 6).
   - Pass: unit tests green with moto.
 
 - [ ] 2.5 **Action handlers**
@@ -387,7 +398,7 @@ their tasks name, not against each other.
     Flagsmith; `approve` in
     `AWAITING_RESUME` with a failing probe goes back to `ROLLED_BACK` and
     adds no `incidents` entry, and a resumed rollback adds no second entry;
-    `approve` in `RESULTS_READY` with a running experiment returns
+    `approve` in `RESULTS_READY` with a running or paused experiment returns
     `EXPERIMENT_NOT_ENDED`; an effect that throws returns `EFFECT_FAILED`, leaves `pending` set,
     and a later `tick` resumes and completes it; every terminal state clears
     the pointer and disables the tick; every payload and response
@@ -410,6 +421,11 @@ their tasks name, not against each other.
   - When 2.6 merges, the lead makes the root project packaged (hatchling,
     `cli` and `contracts`), so `uv run marshal --help` exits 0. The
     contracts test runs exactly that.
+  - Packaging, which the lead does on 2.6's branch before its review:
+    remove `[tool.uv] package = false`; add `[build-system]` with
+    hatchling, `[tool.hatch.build.targets.wheel] packages = ["cli",
+    "contracts"]`, and `[project.scripts] marshal = "cli.marshal:main"`.
+    The contracts test fails on 2.6's branch until then.
   - Pass: unit tests with a fake runtime client green.
 
 - [ ] 2.7 **Deploy the agent**
@@ -431,9 +447,12 @@ their tasks name, not against each other.
     and the CDK diff; the CLI rewrites that file to the versions it ships.
   - After each deploy, it records the runtime's version and the commit.
   - `runtime_role.tf` attaches `rm-agent-runtime-tools` to the stack's
-    role (design.md section 7). It finds the role through the output whose
-    key starts `ApplicationRuntimeRmAgentRoleArnOutput`.
+    role (design.md section 7). It reads the role's ARN from the export
+    `AgentCore-rm-default-rm-agent-RoleArn`.
   - `setup_gateway.py`'s docstring gives the prefix as `Api-Key`.
+  - A rewords `evidence/1.3-flagsmith-agent-spike.md` step 12. The lead
+    ended 819 in the dashboard at Ahmed's request; that is a one-off,
+    recorded in `evidence/gate-1-review.md`.
   - Pass: `marshal status` against the deployed runtime prints "no active
     run"; SSM parameter `/rm/agent-runtime-arn` holds the ARN (the
     evidence shows `get-parameter`); the evidence file lists the Gateway
@@ -466,7 +485,8 @@ their tasks name, not against each other.
     `feature_key`, serves `assistant_default_model` and records nothing;
     exactly one identity request per call with an active run, and
     `get_experiment_flag` is never called; the exposure is tracked only
-    when the flag reports the identity in the experiment; `flush_events()`
+    when the flag reports the identity in the experiment, the flag is
+    enabled and `flag.variant` is set, and a disabled flag records none; `flush_events()`
     runs before return; the pointer is cached 30 seconds; an answer-function error returns 502 and still
     emits latency; with no active run, `rm-judge` is not invoked; the judge
     payload's `assigned` is the flag's value, while the exposure sends
@@ -595,6 +615,10 @@ their tasks name, not against each other.
     function's role `rm-invoker-role`, and `rm-tick` sits in the `default`
     group with execution role `rm-scheduler-role` (design.md section 7). The tick schedule's input is
     the tick payload, `{"action": "tick"}`.
+  - It checks Flagsmith's per-identity aggregation, which the docs'
+    statistics page describes. It records each arm's `n` against its
+    identities, settling whether `n` counts identities or events
+    (design.md section 7).
   - Pass: `terraform validate` clean, and the plan from `infra/` lists
     this task's resources to add and destroys nothing outside them.
     After 4.1 is applied: **Human** confirms the SNS subscription email
@@ -709,6 +733,9 @@ their tasks name, not against each other.
   - Pass: repo public, README final on `main`, video uploaded, entry
     submitted on WeMakeDevs. Target `2026-11-29T02:00:00Z`; hard cutoff
     `2026-11-29T14:30:00Z`.
+  - After judging ends, with Ahmed's yes for each removal, the lead removes
+    everything on the cleanup list in `evidence/gate-1-review.md`, or
+    records why an item stays.
 
 ## Spec scenario coverage
 
@@ -725,8 +752,6 @@ their tasks name, not against each other.
 
 ## Definition of done
 
-  - Before submitting, the lead removes everything on the cleanup list in
-    `evidence/gate-1-review.md`, or records why an item stays.
 - [ ] One prompt produces a plan and waits for approval.
 - [ ] The agent creates the flag and experiment through the Flagsmith MCP
   server, and the metrics and the start through the Admin API.

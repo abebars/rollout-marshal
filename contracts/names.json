@@ -44,7 +44,7 @@
   "AGENT_RUNTIME_ARN_PARAMETER": "/rm/agent-runtime-arn",
   "AGENT_RUNTIME_DEPLOYED_NAME": "rm_default_rm_agent",
   "AGENT_RUNTIME_NAME": "rm_agent",
-  "AGENT_RUNTIME_ROLE_OUTPUT_PREFIX": "ApplicationRuntimeRmAgentRoleArnOutput",
+  "AGENT_RUNTIME_ROLE_EXPORT": "AgentCore-rm-default-rm-agent-RoleArn",
   "AGENT_RUNTIME_TOOLS_POLICY": "rm-agent-runtime-tools",
   "AGENT_STACK": "AgentCore-rm-default",
   "AGENT_THINKING_EFFORT": "low",
@@ -242,9 +242,14 @@
   "FIS_TIMEBOX_MINUTES": 120,
   "FLAGSMITH_ADMIN_FORBIDDEN_PATHS": [
     "complete/",
-    "pause/"
+    "pause/",
+    "rollout/"
   ],
   "FLAGSMITH_ADMIN_FUNCTION": "rm-flagsmith-admin",
+  "FLAGSMITH_ADMIN_METHODS": [
+    "GET",
+    "POST"
+  ],
   "FLAGSMITH_ADMIN_TIMEOUT_SECONDS": 30,
   "FLAGSMITH_API_KEY_NAME": "rollout-marshal-agent",
   "FLAGSMITH_CLIENT_OPTIONS": {
@@ -433,6 +438,7 @@
     "questions": 2,
     "users": 150
   },
+  "MCP_EXCLUDED_TOOL": "flagsmith___update_experiment",
   "MCP_EXPERIMENT_FORBIDDEN_FIELDS": [
     "status",
     "rollout_decision",

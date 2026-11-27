@@ -55,13 +55,13 @@ c1 is contract change c1 (PR #9) and c2 is contract change c2 (PR #12). "Carried
 | Builder 2 | should | The `marshal` console script could never install | c2: the project is packaged from 2.6 (hatchling, `cli` and `contracts`), and the test runs `uv run marshal --help` |
 | Builder 3 | should | Nothing pinned the no-end rule at the tool boundary | c2: section 4 and 2.2 refuse other tools, the five status fields, and any `complete/` or `pause/` path |
 | Builder 4 | should | `set_tick` could drop the tick's input, and the schedule's group and role were unnamed | c1: the names. c2: 2.4 writes the schedule back whole, and a test checks the input |
-| Builder 5 | should | The runtime's IAM role was undecided | c2: the stack's own role, found through the `ApplicationRuntimeRmAgentRoleArnOutput…` output, plus inline `rm-agent-runtime-tools` |
+| Builder 5 | should | The runtime's IAM role was undecided | c2: the stack's own role, read from its export `AgentCore-rm-default-rm-agent-RoleArn` (listed by `aws cloudformation list-exports`), plus inline `rm-agent-runtime-tools` and pass-role on `rm-scheduler-role` |
 | Builder 6 | should | The Flagsmith spellings and rules lived only in the evidence | c2: statuses, the split rule, and the boundary names. Carried to 2.2: the spellings and the freshness rule, which the lead moves into names.py |
 | Builder 7 | should | `rm-flagsmith-admin`'s interface was unspecified | Carried: 2.2 proposes it, and the lead records it in design.md section 7 before 2.2 merges |
 | Builder 9 | should | Nothing pinned `answer_helpful` as an int | c2: a 3.3 test |
 | Builder 10 | should | The review role was needed before any task said so | PR #8: `infra/review.tf`, and the `rm-review` profile in Ahmed's `~/.aws/config`. c1: reviewers use `--profile` |
 | Builder 11 | should | Builds were written down nowhere | c2: `make build` runs each function's `build.sh`. Section 2 and 3.5 name it |
-| Builder 12 | should | The cleanup list was incomplete | This file, below. c2: 6.4 works through it |
+| Builder 12 | should | The cleanup list was incomplete | This file, below. c2: task 6.4 removes each item after judging, with Ahmed's yes |
 | Builder 13 | should | A newer AgentCore CLI rewrites the CDK dependencies | c2: before each deploy, 2.7 records the `package.json` diff and the CDK diff |
 | Builder 14 | should | Gate 1's evidence commands ran only on the lead's machine | c1: CLAUDE.md names whose profile it is. c2: 1.4's evidence names an `admin_api.py` rerun |
 | Builder 15 | nit | The deployed runtime's version is not recorded | c2: 2.7 records the version and commit after each deploy |
@@ -89,7 +89,7 @@ Each removal waits for the end of judging and Ahmed's yes. Every remove is irrev
 | The runtime's and the Gateway's workload identities | `aws bedrock-agentcore-control list-workload-identities` | `delete-workload-identity` for each `rm` one |
 | Log groups `/aws/bedrock-agentcore/runtimes/*`, `aws/spans`, `/aws/application-signals/*` | `aws logs describe-log-groups --log-group-name-prefix <prefix>` | `aws logs delete-log-group` for each |
 | CloudWatch Transaction Search, switched on account-wide by `agentcore deploy`; Ahmed chose to keep it until cleanup | `aws xray get-trace-segment-destination` | Set the destination back to `XRay` |
-| Stack `CDKToolkit`, with its KMS key and staging bucket | `aws cloudformation describe-stacks --stack-name CDKToolkit` | Empty the staging bucket, then delete the stack. The key is scheduled for deletion by AWS |
+| Stack `CDKToolkit`, with its KMS key and staging bucket | `aws cloudformation describe-stacks --stack-name CDKToolkit` | Empty the staging bucket, then delete the stack, then delete the bucket, which the stack retains. The key is scheduled for deletion by AWS |
 | Everything Terraform made from `infra/`, including `rm-review-readonly` | `terraform plan -destroy` from `infra/` | `terraform destroy` from `infra/`, by the lead |
 | The state bucket `rm-tfstate-818928662830` | `aws s3 ls s3://rm-tfstate-818928662830` | After the destroy, empty it and delete it |
 | Flagsmith objects from the spikes | `uv run python agent/spike/admin_api.py get '/api/v1/projects/55601/features/?search=spike_'` | In the dashboard, or through the Admin API with Ahmed's yes (list below) |
@@ -103,9 +103,31 @@ The Flagsmith spike objects are:
 - **1.3:** features 306314 (`assistant_model_rspike2235`, option 37546), 306318 and 306319 (option 37550), metric `spike_mcp_metric` (868), experiment 819.
 
 ## Review role (PR #8)
-After the apply, the lead records the `simulate-principal-policy` results here and in PR #8:
-- each deny must show `explicitDeny`;
-- the matched statement must come from `rm-review-deny`, recording the exact source ID returned;
-- `lambda:GetFunction` and `s3:ListBucket` on the state bucket must be `allowed`.
+Applied from `dev` at 96128dc on 2026-11-27T01:44:02Z: "Apply complete! Resources: 3 added, 0 changed, 0 destroyed". `aws iam simulate-principal-policy --policy-source-arn arn:aws:iam::818928662830:role/rm-review-readonly …`, with columns action, resource, decision, matched policy:
+```
+2026-11-27T01:44:16Z
+secretsmanager:GetSecretValue	arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/api-key-LfCEnV	explicitDeny	role_rm-review-readonly_rm-review-deny
+secretsmanager:GetSecretValue	arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-dawJYr	explicitDeny	role_rm-review-readonly_rm-review-deny
+s3:GetObject	arn:aws:s3:::rm-tfstate-818928662830/rollout-marshal/terraform.tfstate	explicitDeny	role_rm-review-readonly_rm-review-deny
+bedrock-agentcore:GetResourceApiKey	*	explicitDeny	role_rm-review-readonly_rm-review-deny
+kms:Decrypt	*	explicitDeny	role_rm-review-readonly_rm-review-deny
+lambda:GetFunction	*	allowed	ReadOnlyAccess
+s3:ListBucket	arn:aws:s3:::rm-tfstate-818928662830	allowed	ReadOnlyAccess
+```
+Every deny is `explicitDeny` from `role_rm-review-readonly_rm-review-deny`, and both controls are `allowed`. `aws --profile rm-review sts get-caller-identity` returns `arn:aws:sts::818928662830:assumed-role/rm-review-readonly/…`.
 
-Contract change c2 does not wait for these; they follow the apply.
+## Reads the lead recorded at Gate 1
+**Flagsmith usage** (read only, after `aws sts get-caller-identity` gave 818928662830). The command was `uv run python agent/spike/admin_api.py get /api/v1/organisations/41656/usage-data/total-count/`, at 2026-11-27T01:10:25Z:
+```
+{"request": "GET /api/v1/organisations/41656/usage-data/total-count/", "status": 200, "body": {"count": 150}}
+```
+`usage-data/`'s daily breakdown shows `"identities": 150` for 2026-11-26: 1.2's 150 identity requests. 1.3's reads of the same API at 22:35Z and 22:49Z gave 0. So a read lags by more than 25 minutes and less than about 2 hours 46 minutes.
+
+**botocore's `InvokeAgentRuntime`** (local, no AWS call). For each botocore copy in the uv cache, the lead printed `__version__` and the operation from `botocore/data/bedrock-agentcore/2024-02-28/service-2.json.gz`:
+```
+__version__ = '1.42.97' | InvokeAgentRuntime POST /runtimes/{agentRuntimeArn}/invocations
+__version__ = '1.44.12' | InvokeAgentRuntime POST /runtimes/{agentRuntimeArn}/invocations
+```
+1.42.97 is the version 1.2 read in the python3.13 Lambda runtime, so 4.1 bundles no boto3.
+
+**The agent stack's exports**, by `aws cloudformation list-exports`, filtered to names starting `AgentCore-rm-default`: `AgentCore-rm-default-rm-agent-RoleArn`, `-RuntimeArn` and `-RuntimeId`, all from stack `AgentCore-rm-default`.
