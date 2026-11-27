@@ -3402,6 +3402,10 @@ def test_contract_c4_fis_names_and_logging():
         "9).",
         "- Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied with it. Files: "
         "`evidence/3.6-app-smoke.md`.",
+        "- Needs: for the build half (the FIS module and `scripts/inject_fault.sh`), 3.5; for "
+        "the fault run, 3.6 and 4.1 applied with the recalibrated threshold.",
+        "After 3.6 and the FIS module applied: the alarm reaches ALARM within 5 minutes of the "
+        "fault starting and leaves ALARM after it ends; times recorded.",
         "4.3's build half merges, and the lead applies `infra/modules/fis` with the app module, "
         "before 3.6 (design.md section 9).",
         "- design.md section 9 holds the module's names and interface. An organisation SCP denies "
@@ -3426,7 +3430,7 @@ def test_fis_and_app_module_interfaces():
     gives = (names.APP_CHEAPER_EXTRA_LAYERS_INPUT, names.APP_CHEAPER_EXTRA_ENV_INPUT)
     if fis:
         # The module pins the layer from names (section 9), not from SSM's moving value.
-        assert "FIS_EXTENSION_LAYER_ARN" in fis
+        assert "local.names.FIS_EXTENSION_LAYER_ARN" in re.sub(r"#.*", "", fis)
         for name in takes:
             assert f'variable "{name}"' in fis, name
         for name in gives:
