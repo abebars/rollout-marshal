@@ -2737,9 +2737,9 @@ def test_contract_c4_judge():
         "sum to an integer." in sec5
     )
     assert (
-        "Task 3.3 resolved the prices from the page's own price files, from US East (N. Virginia)'s "
-        '"Geo and In-region Cross-region Inference" table, not the cheaper Global one (section 13).'
-        in sec5
+        "Task 3.3 resolved the prices from the page's own price files, from US East "
+        '(N. Virginia)\'s "Geo and In-region Cross-region Inference" table, not the cheaper Global '
+        "one (section 13)." in sec5
     )
     connect = names.JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS
     read = names.JUDGE_BEDROCK_READ_TIMEOUT_SECONDS
@@ -3342,6 +3342,10 @@ def test_contract_c4_fis_names_and_logging():
         "as the fault "
         "run has it: the lead applies the FIS module with the app module first (design.md section "
         "9).",
+        "- Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied with it. Files: "
+        "`evidence/3.6-app-smoke.md`.",
+        "4.3's build half merges, and the lead applies `infra/modules/fis` with the app module, "
+        "before 3.6 (design.md section 9).",
         "- design.md section 9 holds the module's names and interface. An organisation SCP denies "
         f"FIS to `{names.REVIEW_ROLE}`, so the lead reads FIS state with the SSO profile "
         "and records "
