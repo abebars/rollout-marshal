@@ -7,6 +7,8 @@ does not give.
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import json
 import math
 import re
@@ -214,6 +216,9 @@ NOT_A_NAME = {
     "TransactWriteItems": "DynamoDB API operation that carries every pointer change",
     "2#ROLLED_BACK": "example of dedupe_key(); test_dedupe_key_matches_design checks it",
     "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
+    "marshal decline <run_id>": "command line: CLI_NAME plus ACTION_DECLINE (contract change c5)",
+    "marshal approve <run_id> <awaiting>": "command line: CLI_NAME plus ACTION_APPROVE and an "
+    "AWAITING_VALUES entry (contract change c5)",
     "flag.variant": "SDK attribute the exposure call sends",
     "flag.value": "SDK attribute: the variant's value, which names the model served",
     "api_key_authorization()": "helper in contracts.names; test_spike_findings_match_design",
@@ -277,11 +282,17 @@ NOT_A_NAME = {
     ),
     "ThrottlingException": "Bedrock's error code for a throttled request",
     "errorType": "Lambda's name for a function error's type; see ANSWER_ERROR_THROTTLED",
-    "app/__init__.py": "a file in the answer and router zips (section 12 owns paths)",
+    "app/__init__.py": "a file in the answer, router and judge zips (section 12 owns paths)",
     "app/answer/": "the answer functions' code, in their zip (section 12 owns paths)",
     "app/router/": "rm-router's code, in its zip (section 12 owns paths)",
-    "contracts/__init__.py": "a file in the answer and router zips (section 12 owns paths)",
-    "contracts/names.py": "this module, in the answer and router zips",
+    "app/judge/": "rm-judge's code, in its zip (section 12 owns paths)",
+    "app/bedrock_fields.py": "a file in the answer and judge zips (section 12 owns paths)",
+    "RECORD": "a wheel's dist-info file, left out of the zips (contract change c6)",
+    "<function>-role": "pattern: a function name plus APP_ROLE_SUFFIX (contract change c6)",
+    "<function>-policy": "pattern: a function name plus APP_POLICY_SUFFIX (contract change c6)",
+    "/aws/lambda/<function>": "pattern: APP_LOG_GROUP_PREFIX plus a function name (c6)",
+    "contracts/__init__.py": "a file in every app zip (section 12 owns paths)",
+    "contracts/names.py": "this module, in every app zip",
     '{"answer": <text>}': "rm-router's 200 body; test_contract_c3 checks the table",
     '{"error": "bad_request"}': "rm-router's 400 body; test_contract_c3 checks the table",
     '{"error": "AnswerThrottled"}': "rm-router's 503 body; test_contract_c3 checks the table",
@@ -880,7 +891,7 @@ def test_contract_c3_tasks_point_at_the_new_text():
         "- The response contract, the flag fallbacks, the flush thread and the SDK settings are "
         "in design.md sections 4 and 5.",
         f"- Payload format {names.API_PAYLOAD_FORMAT_VERSION}, the handler paths and what the "
-        "answer and router zips hold are in design.md section 5.",
+        "answer, router and judge zips hold are in design.md section 5.",
         f"- The router's 400 for another run's identity is the router's HTTP answer "
         f"(`{names.ROUTER_ERROR_BAD_REQUEST}`, design.md section 5), not the agent's "
         f"`{names.ERROR_BAD_REQUEST}`.",
@@ -1398,6 +1409,9 @@ def design_payloads() -> list[dict]:
         "<text>": "Test moving the support assistant from Claude Fable 5.1 to Claude Sonnet 5.",
         "<id>": "r202611271530",
         "<ISO 8601>": "2026-11-27T15:42:00Z",
+        f"<{names.AWAITS_LAUNCH}, {names.AWAITS_RESUME} or {names.AWAITS_PROMOTION}>": (
+            names.AWAITS_PROMOTION
+        ),
     }
     out = []
     for line in section(7, keep_fences=True).splitlines():
@@ -1430,6 +1444,14 @@ def test_design_payload_examples_validate():
         {"action": "start", "prompt": "x"},
         {"action": "approve", "run_id": "r202611271530", "actor": "agent"},
         {"action": "approve", "run_id": "rspike", "actor": "engineer"},
+        {"action": "approve", "run_id": "r202611271530", "actor": "engineer"},
+        {
+            "action": "approve",
+            "run_id": "r202611271530",
+            "awaiting": "promote",
+            "actor": "engineer",
+        },
+        {"action": "decline", "run_id": "r202611271530", "awaiting": "launch", "actor": "engineer"},
         {"action": "decline", "actor": "engineer"},
         {"action": "check", "run_id": "r202611271530"},
         {"action": "status", "actor": "engineer"},
@@ -2462,7 +2484,11 @@ PINNED_RULE_SENTENCES = (
     "Legality is judged after the `RUN_ACTIVE` check and before anything pending: an action the "
     "table does not allow from the run's state returns `ILLEGAL_IN_STATE` whatever is pending.",
     "The message names the pending target, its age and `marshal check <run_id>` (for a `PLANNED` "
-    "run with no pointer: the run was reset; start a new one).",
+    "run with no pointer: the run was reset; `marshal decline <run_id>` ends it unless a launch "
+    "is pending on it; start a new one).",
+    "Its message names the failed effect, the command `marshal check <run_id>`, and when that "
+    "will act (for a `PLANNED` run with no pointer, which `check` may not act on: `marshal "
+    "decline <run_id>`, or, with a launch pending on it, start a new one).",
     "After a claim, every effect failure, and a commit that fails other than by a lost race, is "
     "`EFFECT_FAILED`.",
     "still ends it, unless a launch is pending on it; such a run stays `PLANNED` and, with no "
@@ -2535,7 +2561,7 @@ PINNED_RULE_SENTENCES = (
     "A request takes about the identity request plus the longer of the answer and the flush.",
     "Packaging (task 3.5): each zip keeps the repo's paths, so a handler is its module's path "
     "plus the function. The answer functions' zip holds `app/__init__.py`, `app/answer/`, "
-    "`contracts/__init__.py` and `contracts/names.py`.",
+    "`app/bedrock_fields.py`, `contracts/__init__.py` and `contracts/names.py`.",
     # contract change c3: what task 2.1 settled (section 6)
     "A commit's `actor` must equal the Actor column of its row, and its `reason` must be a "
     "non-empty string; otherwise it is refused before any write.",
@@ -2780,9 +2806,158 @@ def test_contract_c4_judge():
     )
 
 
+def test_contract_c5_approve_names_what_it_approves():
+    """Contract change c5: approve carries awaiting, and a mismatch is illegal (design.md 7)."""
+    sec7 = flat_section(7)
+    launch, resume, promotion = names.AWAITING_VALUES
+    assert (
+        f"`{names.ACTION_APPROVE}` names what it approves: `awaiting` is the value the run's last "
+        f"response gave, `{launch}`, `{resume}` or `{promotion}`. Legality includes it: an "
+        f"`{names.ACTION_APPROVE}` whose `awaiting` is not the one the run's state gives returns "
+        f"`{names.ERROR_ILLEGAL_IN_STATE}`, naming what the run awaits, and changes nothing. So an "
+        "alarm between the engineer's read and the approve cannot turn one approval into another "
+        "(task 2.5's review). The CLI takes it as the second argument, `marshal approve <run_id> "
+        "<awaiting>`, and every message that asks for an approval names the command with its "
+        "value." in sec7
+    )
+    assert set(names.AWAITING_BY_STATE.values()) == set(names.AWAITING_VALUES)
+    spec = re.sub(
+        r"\s+",
+        " ",
+        (
+            ROOT / "openspec/changes/build-rollout-marshal/specs/experiment-agent/spec.md"
+        ).read_text(),
+    )
+    assert (
+        f"- **WHEN** the engineer approves with an `awaiting` the run does not await, such as "
+        f"`{promotion}` for a run an alarm has since moved to `{names.STATE_AWAITING_RESUME}` - "
+        f"**THEN** the response carries error `{names.ERROR_ILLEGAL_IN_STATE}` naming what the run "
+        "awaits, and nothing changes" in spec
+    )
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    assert (
+        "- `approve` carries `awaiting` (design.md section 7, contract change c5): the handler "
+        f"refuses a mismatch with `{names.ERROR_ILLEGAL_IN_STATE}`, its messages name `marshal "
+        "approve <run_id> <awaiting>`, and the CLI sends the value as its second argument (a 2.6 "
+        "follow-up in this task's pull request)." in tasks
+    )
+    assert '- Produces: `marshal start "<prompt>"`, `approve <run_id> <awaiting>`,' in tasks
+
+
+def test_contract_c6_app_names():
+    """Contract change c6: task 3.5's names (design.md section 5), and that the module, the
+    build and the scripts still carry them, as a literal or as a names reference, once they
+    exist."""
+    sec5 = flat_section(5)
+    answer_zip, router_zip, judge_zip = names.APP_ZIPS
+    assert (
+        f"`{names.JUDGE_FUNCTION}`'s holds `app/__init__.py`, `app/judge/`, "
+        f"`app/bedrock_fields.py`, `{names.PRICES_FILE}`, the same two `contracts` files and the "
+        f"same SDK, for handler `{names.JUDGE_HANDLER}`." in sec5
+    )
+    scripts = (names.BOOTSTRAP_FLAGSMITH_SCRIPT, names.SEED_EXPERIMENT_SCRIPT, names.RESET_SCRIPT)
+    assert (
+        f"Names (task 3.5): each app function's role is `<function>{names.APP_ROLE_SUFFIX}`, with "
+        f"inline policy `<function>{names.APP_POLICY_SUFFIX}`, and its log group "
+        f"`{names.APP_LOG_GROUP_PREFIX}<function>`, as `{names.FLAGSMITH_ADMIN_FUNCTION}`'s are. "
+        f"The HTTP API is `{names.API_NAME}`, with stage `{names.API_STAGE}` (auto-deploy) and the "
+        f"Lambda permission statement `{names.API_PERMISSION_STATEMENT}`. Each app function has "
+        f"{names.APP_FUNCTION_MEMORY_MB} MB, task 1.2's size. `make build` writes `{answer_zip}`, "
+        f"`{router_zip}` and `{judge_zip}` into `{names.APP_BUILD_DIR}`, and leaves out each "
+        "dependency's console scripts and `RECORD`, whose shebangs and hashes would tie the zips "
+        f"to the build's path. The root module outputs `{names.APP_ASK_URL_OUTPUT}`, marked "
+        "sensitive, so plan and apply output never prints the URL as an output. "
+        f"`{scripts[0]}`, `{scripts[1]}` and `{scripts[2]}` call the Admin API at "
+        f"`{names.FLAGSMITH_API_BASE_URL}`, and exit {names.SCRIPT_EXIT_OK} when done, "
+        f"{names.SCRIPT_EXIT_FAILED} on a failure, {names.SCRIPT_EXIT_USAGE} on bad arguments and "
+        f"{names.SCRIPT_EXIT_REFUSED} when they refuse. `{names.SEED_EXPERIMENT_SCRIPT}` gives its "
+        f'experiment the hypothesis "{names.SEED_HYPOTHESIS}", and each metric it creates the '
+        f'description "<name>{names.SEED_METRIC_DESCRIPTION_SUFFIX}".' in sec5
+    )
+    admin = names.FLAGSMITH_ADMIN_FUNCTION
+    assert names.FLAGSMITH_ADMIN_ROLE == admin + names.APP_ROLE_SUFFIX
+    assert names.FLAGSMITH_ADMIN_POLICY == admin + names.APP_POLICY_SUFFIX
+    assert names.FLAGSMITH_ADMIN_LOG_GROUP == names.APP_LOG_GROUP_PREFIX + admin
+    assert names.JUDGE_HANDLER.startswith("app.judge.")
+    assert len(set(names.APP_ZIPS)) == len(names.APP_ZIPS)
+    exits = (
+        names.SCRIPT_EXIT_OK,
+        names.SCRIPT_EXIT_FAILED,
+        names.SCRIPT_EXIT_USAGE,
+        names.SCRIPT_EXIT_REFUSED,
+    )
+    assert exits == (0, 1, 2, 3)
+    shown = names.MODEL_DISPLAY_NAMES
+    assert shown[names.MODEL_CHEAPER] in names.SEED_HYPOTHESIS
+    assert shown[names.MODEL_CURRENT] in names.SEED_HYPOTHESIS
+
+    def carries(text: str, literal: str, const: str) -> bool:
+        """The code holds the value itself, or reads it from names (Python or Terraform)."""
+        return literal in text or f"names.{const}" in text
+
+    module = "".join(p.read_text() for p in sorted((ROOT / "infra/modules/app").glob("*.tf")))
+    if module:  # task 3.5
+        for literal, const in (
+            (f'"{names.API_NAME}"', "API_NAME"),
+            (f'"{names.API_STAGE}"', "API_STAGE"),
+            (f'"{names.API_PERMISSION_STATEMENT}"', "API_PERMISSION_STATEMENT"),
+            (f"= {names.APP_FUNCTION_MEMORY_MB}", "APP_FUNCTION_MEMORY_MB"),
+            (f'{names.APP_ROLE_SUFFIX}"', "APP_ROLE_SUFFIX"),
+            (f'{names.APP_POLICY_SUFFIX}"', "APP_POLICY_SUFFIX"),
+            (f'"{names.JUDGE_HANDLER}"', "JUDGE_HANDLER"),
+            (f'/{names.APP_BUILD_DIR.rstrip("/")}"', "APP_BUILD_DIR"),
+            *((zip_name, "APP_ZIPS") for zip_name in names.APP_ZIPS),
+        ):
+            assert carries(module, literal, const), literal
+        log_group = re.search(r'name\s*=\s*"/aws/lambda/\$\{', module)
+        assert log_group or "names.APP_LOG_GROUP_PREFIX" in module
+    build_spec = importlib.util.find_spec("app.build_zips")
+    if build_spec is not None:  # task 3.5
+        build = importlib.import_module("app.build_zips")
+        assert build.BUILD_DIR == ROOT / names.APP_BUILD_DIR
+        zips = build.ZIPS
+        assert tuple(zips) == names.APP_ZIPS
+        both = ("app/__init__.py", "contracts/__init__.py", "contracts/names.py")
+        own = {
+            answer_zip: ("app/answer/handler.py", "app/bedrock_fields.py"),
+            router_zip: ("app/router/handler.py",),
+            judge_zip: ("app/judge/handler.py", "app/bedrock_fields.py", names.PRICES_FILE),
+        }
+        for zip_name, files in own.items():
+            assert {*both, *files} <= set(zips[zip_name]["files"]), zip_name
+        assert [zips[z]["dependencies"] for z in names.APP_ZIPS] == [False, True, True]
+    bootstrap = ROOT / names.BOOTSTRAP_FLAGSMITH_SCRIPT
+    if bootstrap.is_file():  # task 3.5: the scripts' shared Admin API client
+        source = bootstrap.read_text()
+        url = f'API_BASE_URL = "{names.FLAGSMITH_API_BASE_URL}"'
+        assert carries(source, url, "FLAGSMITH_API_BASE_URL")
+        ok, failed, refused = (
+            names.SCRIPT_EXIT_OK,
+            names.SCRIPT_EXIT_FAILED,
+            names.SCRIPT_EXIT_REFUSED,
+        )
+        literal = f"EXIT_OK, EXIT_FAILED, EXIT_REFUSED = {ok}, {failed}, {refused}"
+        assert carries(source, literal, "SCRIPT_EXIT_REFUSED")
+    seed = ROOT / names.SEED_EXPERIMENT_SCRIPT
+    if seed.is_file():
+        found = re.sub(r'"\s*\n\s*"', "", seed.read_text())  # join implicit concatenation
+        assert carries(found, names.SEED_HYPOTHESIS, "SEED_HYPOTHESIS")
+        suffix = names.SEED_METRIC_DESCRIPTION_SUFFIX
+        assert carries(found, suffix, "SEED_METRIC_DESCRIPTION_SUFFIX")
+    root = ROOT / "infra/app.tf"
+    if root.is_file():
+        block = re.search(
+            rf'output "{names.APP_ASK_URL_OUTPUT}" \{{(.*?)\n\}}', root.read_text(), flags=re.S
+        )
+        assert block and re.search(r"\bsensitive\s*=\s*true\b", block.group(1))
+
+
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
+    "APP_ZIPS": test_contract_c6_app_names,
     "PRICES_FIELDS": test_contract_c4_judge,
     "PRICE_FIELDS": test_contract_c4_judge,
     "MODEL_DISPLAY_NAMES": test_contract_c3_models_and_the_router,
@@ -2947,16 +3122,22 @@ def test_every_schema_copy_of_a_name_matches_names():
         tuple(b["properties"]["action"].get("enum", [b["properties"]["action"].get("const")])): b
         for b in invoke["oneOf"]
     }
-    engineer_actions = (names.ACTION_APPROVE, names.ACTION_DECLINE, names.ACTION_CHECK)
+    approve = (names.ACTION_APPROVE,)
+    engineer_actions = (names.ACTION_DECLINE, names.ACTION_CHECK)
     assert set(branches) == {
         (names.ACTION_START,),
+        approve,
         engineer_actions,
         (names.ACTION_STATUS,),
         (names.ACTION_ALARM,),
         (names.ACTION_TICK,),
     }
-    for key in [(names.ACTION_START,), engineer_actions]:
+    for key in [(names.ACTION_START,), approve, engineer_actions]:
         assert branches[key]["properties"]["actor"] == {"const": names.ACTOR_ENGINEER}
+    # Contract change c5: approve names what it approves.
+    assert branches[approve]["properties"]["awaiting"] == {"enum": list(names.AWAITING_VALUES)}
+    assert branches[approve]["required"] == ["action", "run_id", "awaiting", "actor"]
+    assert "awaiting" not in branches[engineer_actions]["properties"]
     alarm = branches[(names.ACTION_ALARM,)]["properties"]
     assert alarm["alarm_name"] == {"const": names.ALARM_NAME}
     assert alarm["alarm_state"] == {"const": names.ALARM_STATE_ALARM}
@@ -3303,9 +3484,11 @@ def test_contract_c4_fis_names_and_logging():
         f"records the reads, and `{names.INJECT_FAULT_SCRIPT}` runs with that profile" in sec2
     )
     assert (
-        f"`{names.ROUTER_FUNCTION}` and `{names.JUDGE_FUNCTION}` log at INFO or above, "
-        "never DEBUG, because at DEBUG the Flagsmith SDK logs identifiers and botocore logs "
-        "response bodies, the server key among them (tasks 3.2 and 3.3's reviews)." in sec5
+        f"`{names.ROUTER_FUNCTION}` and `{names.JUDGE_FUNCTION}` log JSON at exactly INFO. "
+        "Never DEBUG: at DEBUG the Flagsmith SDK logs identifiers and botocore logs response "
+        "bodies, the server key among them. Never WARN: Lambda gives a printed line with no "
+        "level, such as an EMF metric line, the level INFO, and drops it under WARN (Lambda's "
+        '"Log-level filtering" page; tasks 3.2, 3.3 and 3.5\'s reviews).' in sec5
     )
     assert (
         "the FIS extension layer (its arm64 ARN is published in SSM; the module pins "
@@ -3334,7 +3517,8 @@ def test_contract_c4_fis_names_and_logging():
     for line in (
         f"- design.md section 5 sets `{names.ROUTER_FUNCTION}`'s and "
         f"`{names.JUDGE_FUNCTION}`'s log "
-        "level, INFO or above, and section 9 names the module interface the FIS module meets: "
+        "level, exactly INFO, and holds this task's names (contract change c6); section 9 "
+        "names the module interface the FIS module meets: "
         f"outputs `{names.APP_CHEAPER_FUNCTION_NAME_OUTPUT}` and "
         f"`{names.APP_CHEAPER_ROLE_NAME_OUTPUT}`, inputs `{names.APP_CHEAPER_EXTRA_LAYERS_INPUT}` "
         f"and `{names.APP_CHEAPER_EXTRA_ENV_INPUT}`.",

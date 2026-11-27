@@ -27,12 +27,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from contracts import names
 
-# The names the engineer uses (KICKOFF.md's sample prompt), for the move check.
-MODEL_DISPLAY_NAMES = {  # names.MODEL_DISPLAY_NAMES after c3
-    names.MODEL_CURRENT: "Claude Fable 5.1",
-    names.MODEL_CHEAPER: "Claude Sonnet 5",
-    names.MODEL_JUDGE: "Claude Haiku 5.5",
-}
 # tasks.md 2.3: a report-length call near this tells the lead to adjust it.
 BOTOCORE_READ_TIMEOUT_SECONDS = Config().read_timeout
 _MOVE = (names.MODEL_CURRENT, names.MODEL_CHEAPER)  # the only move design.md section 3 plans
@@ -78,11 +72,13 @@ def _keys(value: Any) -> set[str]:
 def _display(model_id: Any) -> str:
     if not isinstance(model_id, str):
         return repr(model_id)
-    return MODEL_DISPLAY_NAMES.get(model_id, repr(model_id))
+    return names.MODEL_DISPLAY_NAMES.get(model_id, repr(model_id))
 
 
 def _system_prompt() -> str:
-    models = "\n".join(f"- {model_id}: {name}" for model_id, name in MODEL_DISPLAY_NAMES.items())
+    models = "\n".join(
+        f"- {model_id}: {name}" for model_id, name in names.MODEL_DISPLAY_NAMES.items()
+    )
     split = f"{100 - names.TREATMENT_PERCENT}/{names.TREATMENT_PERCENT}"
     guardrails = " and ".join(names.GUARDRAIL_METRICS)
     return (
