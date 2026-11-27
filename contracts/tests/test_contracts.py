@@ -1875,7 +1875,10 @@ def test_other_files_repeat_the_rules():
         f"`{names.CW_DIMENSION_VARIANT}={names.VARIANT_CHEAPER}`" in claude
     )
     assert "An empty result means unknown, not zero" in claude
-    assert "ask the human to read the Usage page after each load" in claude
+    assert (
+        "Task 1.3's usage reads returned nothing, so ask the human to read the Usage page after "
+        "each load" in claude
+    )
     spec = re.sub(
         r"\s+",
         " ",
