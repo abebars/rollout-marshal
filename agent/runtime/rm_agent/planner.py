@@ -76,12 +76,14 @@ def _keys(value: Any) -> set[str]:
 
 
 def _display(model_id: Any) -> str:
+    if not isinstance(model_id, str):
+        return repr(model_id)
     return MODEL_DISPLAY_NAMES.get(model_id, repr(model_id))
 
 
 def _system_prompt() -> str:
     models = "\n".join(f"- {model_id}: {name}" for model_id, name in MODEL_DISPLAY_NAMES.items())
-    split = f"{names.TREATMENT_PERCENT}/{names.TREATMENT_PERCENT}"
+    split = f"{100 - names.TREATMENT_PERCENT}/{names.TREATMENT_PERCENT}"
     guardrails = " and ".join(names.GUARDRAIL_METRICS)
     return (
         "You plan an experiment that moves a customer support assistant from one Claude "
@@ -181,7 +183,10 @@ def _plan(hypothesis: str, summary: str) -> dict[str, Any]:
         "cheaper_model": names.MODEL_CHEAPER,
         "primary_metric": names.PRIMARY_METRIC,
         "guardrail_metrics": list(names.GUARDRAIL_METRICS),
-        "split": {variant: names.TREATMENT_PERCENT for variant in names.VARIANTS},
+        "split": {
+            names.VARIANT_CURRENT: 100 - names.TREATMENT_PERCENT,
+            names.VARIANT_CHEAPER: names.TREATMENT_PERCENT,
+        },
         "min_identities_per_variation": names.MIN_IDENTITIES_PER_VARIATION,
         "stop_rules": {
             "rollback_alarm": names.ALARM_NAME,

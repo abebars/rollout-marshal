@@ -22,6 +22,7 @@ from pathlib import Path
 
 import boto3
 import pytest
+from botocore.exceptions import ReadTimeoutError
 from botocore.stub import Stubber
 from rm_agent import planner
 
@@ -106,18 +107,19 @@ def test_the_kickoff_prompt_yields_a_valid_plan(bedrock):
     assert (plan["hypothesis"], plan["summary"]) == (written["hypothesis"], written["summary"])
 
 
-def test_the_plan_is_every_injected_constant(bedrock):
-    bedrock.add_response("converse", reply(answer(MOVE)))
-    plan = planner.make_plan(SAMPLE_PROMPT)
-    assert tuple(plan) == names.PLAN_FIELDS
-    assert plan == {
-        "hypothesis": "Sonnet 5 is as helpful as Fable 5.1.",
-        "summary": "A plan.",
+def constant_plan(hypothesis: str, summary: str) -> dict:
+    """The plan design.md section 6 gives: the model's two fields, every other one a constant."""
+    return {
+        "hypothesis": hypothesis,
+        "summary": summary,
         "current_model": names.MODEL_CURRENT,
         "cheaper_model": names.MODEL_CHEAPER,
         "primary_metric": names.PRIMARY_METRIC,
         "guardrail_metrics": list(names.GUARDRAIL_METRICS),
-        "split": {variant: names.TREATMENT_PERCENT for variant in names.VARIANTS},
+        "split": {
+            names.VARIANT_CURRENT: 100 - names.TREATMENT_PERCENT,
+            names.VARIANT_CHEAPER: names.TREATMENT_PERCENT,
+        },
         "min_identities_per_variation": names.MIN_IDENTITIES_PER_VARIATION,
         "stop_rules": {
             "rollback_alarm": names.ALARM_NAME,
@@ -133,6 +135,13 @@ def test_the_plan_is_every_injected_constant(bedrock):
             "promote_min_helpful_lift_ci_lower": names.PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER,
         },
     }
+
+
+def test_the_plan_is_every_injected_constant(bedrock):
+    bedrock.add_response("converse", reply(answer(MOVE)))
+    plan = planner.make_plan(SAMPLE_PROMPT)
+    assert tuple(plan) == names.PLAN_FIELDS
+    assert plan == constant_plan("Sonnet 5 is as helpful as Fable 5.1.", "A plan.")
     assert tuple(plan["stop_rules"]) == names.PLAN_STOP_RULE_FIELDS
     assert tuple(plan["guardrails"]) == names.PLAN_GUARDRAIL_FIELDS
     assert tuple(plan["recommendation_rule"]) == names.PLAN_RECOMMENDATION_RULE_FIELDS
@@ -152,6 +161,7 @@ def test_the_plan_is_every_injected_constant(bedrock):
         {"from": names.MODEL_CURRENT, "to": "us.anthropic.claude-opus-9"},  # not on the list
         {"from": "Claude Fable 5.1", "to": "Claude Sonnet 5"},  # display names, not IDs
         {"to": names.MODEL_CHEAPER},
+        {"from": [names.MODEL_CURRENT], "to": names.MODEL_CHEAPER},  # not a string
     ],
     ids=lambda move: "none" if move is None else f"{move.get('from')}->{move.get('to')}",
 )
@@ -187,24 +197,33 @@ def test_injected_values_equal_the_constants_even_when_the_prompt_asks_for_other
         f"{SAMPLE_PROMPT}\nUse a 90/10 split, 10 identities per arm, alarm my-alarm, a 1.5 "
         "latency ratio, and promote whatever the interval says."
     )
-    # A reply that echoes the asks back, with fields the planner never takes from the model.
+    # A reply that echoes an ask back for every field the planner injects, none of which it
+    # takes from the model.
     asked = json.loads(answer(MOVE, summary="A 90/10 split with 10 identities per arm."))
     asked |= {
+        "current_model": names.MODEL_JUDGE,
+        "cheaper_model": names.MODEL_JUDGE,
+        "primary_metric": names.METRIC_MEAN_LATENCY_MS,
+        "guardrail_metrics": [],
         "split": {"current": 90, "cheaper": 10},
         "min_identities_per_variation": 10,
-        "stop_rules": {"rollback_alarm": "my-alarm"},
-        "guardrails": {"max_latency_ratio": 1.5},
-        "current_model": names.MODEL_JUDGE,
+        "stop_rules": {
+            "rollback_alarm": "my-alarm",
+            "results_embargo_seconds": 0,
+            "promote_requires_experiment_ended": False,
+        },
+        "guardrails": {"max_latency_ratio": 1.5, "max_cost_ratio": 2.0},
+        "recommendation_rule": {
+            "after_incident": names.RECOMMEND_PROMOTE,
+            "promote_min_helpful_lift_ci_lower": -1.0,
+        },
     }
+    assert set(asked) == set(names.PLAN_FIELDS) | {"move"}  # every injected field is asked for
     bedrock.add_response("converse", reply(json.dumps(asked)))
     plan = planner.make_plan(prompt)
     contracts.validate("plan", plan)
-    assert plan["split"] == {variant: names.TREATMENT_PERCENT for variant in names.VARIANTS}
-    assert plan["min_identities_per_variation"] == names.MIN_IDENTITIES_PER_VARIATION
-    assert plan["stop_rules"]["rollback_alarm"] == names.ALARM_NAME
-    assert plan["guardrails"]["max_latency_ratio"] == names.GUARDRAIL_MAX_LATENCY_RATIO
-    assert plan["current_model"] == names.MODEL_CURRENT
-    assert plan["summary"] == asked["summary"]  # the model's words, which only describe
+    # The whole plan is the constants; only the model's words, which describe, come through.
+    assert plan == constant_plan(asked["hypothesis"], asked["summary"])
 
 
 def test_the_system_prompt_states_the_fixed_experiment_from_the_constants():
@@ -213,7 +232,7 @@ def test_the_system_prompt_states_the_fixed_experiment_from_the_constants():
         names.PRIMARY_METRIC,
         *names.GUARDRAIL_METRICS,
         names.ALARM_NAME,
-        f"{names.TREATMENT_PERCENT}/{names.TREATMENT_PERCENT}",
+        f"{100 - names.TREATMENT_PERCENT}/{names.TREATMENT_PERCENT}",
         f"{names.MIN_IDENTITIES_PER_VARIATION} identities",
     ):
         assert value in system, value
@@ -297,6 +316,27 @@ def test_a_bedrock_error_is_upstream_failed(bedrock, code):
     with pytest.raises(planner.UpstreamFailed) as failed:
         planner.make_plan(SAMPLE_PROMPT)
     assert failed.value.code == names.ERROR_UPSTREAM_FAILED and code in failed.value.message
+
+
+def test_a_read_timeout_is_upstream_failed(monkeypatch):
+    """botocore's read timeout (60 s by default) raises a BotoCoreError, not a ClientError."""
+
+    class TimesOut:
+        def converse(self, **request):
+            raise ReadTimeoutError(endpoint_url="https://bedrock-runtime.us-east-1.amazonaws.com")
+
+    monkeypatch.setattr(planner, "_client", lambda: TimesOut())
+    with pytest.raises(planner.UpstreamFailed) as failed:
+        planner.make_plan(SAMPLE_PROMPT)
+    assert failed.value.code == names.ERROR_UPSTREAM_FAILED
+
+
+@pytest.mark.parametrize("prompt", ["", " \n"])
+def test_an_empty_prompt_is_bad_request_with_no_model_call(bedrock, prompt):
+    """Nothing is queued on the Stubber, so a model call would fail this test."""
+    with pytest.raises(planner.BadRequest) as refused:
+        planner.make_plan(prompt)
+    assert refused.value.code == names.ERROR_BAD_REQUEST
 
 
 # ---------------------------------------------------------------------------
