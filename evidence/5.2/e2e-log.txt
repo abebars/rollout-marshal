@@ -1,0 +1,139 @@
+e2e from 58997aa
+2026-11-27T20:42:26.424634Z  account 818928662830: ok
+2026-11-27T20:42:27.159992Z  alarm rm-cheaper-latency-p95: OK
+2026-11-27T20:42:27.989723Z  rm-invoker: STUB is not 1
+2026-11-27T20:42:28.781270Z  fault template: EXTB2oxga85m1Pyax, tagged Name=rm-delay-cheaper
+2026-11-27T20:42:29.537201Z  route: rm-api's endpoint plus /ask (never shown)
+2026-11-27T20:42:29.563561Z  rm-load.lock: no other load holds it
+2026-11-27T20:42:29.563659Z  record: <scratchpad>/record.json
+2026-11-27T20:42:29.563696Z  start sent: marshal start "Test moving the support assistant from Claude Fable 5.1 to Claude Sonnet 5."
+run:      r202611272042
+state:    PLANNED
+message:  Planned run r202611272042: We'll run a 50/50 split experiment between Claude Fable 5.1 (current) and Claude Sonnet 5 (cheaper), with helpful_rate as the primary metric and mean_latency_ms and mean_cost_micro_usd tracked as guardrails. Results will be considered valid once each variation reaches at least 50 identities. If the rm-cheaper-latency-p95 alarm triggers, Claude Sonnet 5 will be automatically rolled back without requiring approval. No promotion will happen automatically — the experiment will continue until you end it and approve the outcome.
+Hypothesis: Claude Sonnet 5 will achieve a helpful_rate at least as high as Claude Fable 5.1 without breaching the mean_latency_ms or mean_cost_micro_usd guardrails.
+Split: 50 percent current (us.anthropic.claude-fable-5-1), 50 percent cheaper (us.anthropic.claude-sonnet-5).
+Primary metric: helpful_rate. Guardrails: the cheaper arm's mean_latency_ms at most 110 percent of the current arm's, and its mean_cost_micro_usd at most 100 percent of it.
+Floor: at least 50 identities per variation, and no results are read in the first 600 seconds.
+Alarm: rm-cheaper-latency-p95 rolls the run back without asking.
+Rule: any incident means hold, re-run; otherwise promote only if the lower bound of Flagsmith's 95 percent credible interval for the lift on helpful_rate is at or above -5 percent and both guardrails pass; otherwise hold. Promotion also waits for the experiment to be ended in Flagsmith, and for your approve.
+Approve with `marshal approve r202611272042 launch`, or decline with `marshal decline r202611272042`.
+awaiting: launch
+2026-11-27T20:42:36.140690Z  status: PLANNED
+2026-11-27T20:42:36.140690Z  plan returned: run r202611272042 is PLANNED
+2026-11-27T20:42:36.141022Z  waiting for the human, run r202611272042
+
+PAUSE: review the plan above. To launch it, type in another terminal:
+    uv run marshal approve r202611272042 launch
+Run it from the repository root, with the same AWS_PROFILE as this shell.
+e2e.py approves nothing itself; it reads the run's status every 10 s until the run moves.
+These are the human's steps (CLAUDE.md): e2e.py and the agents take none of them.
+
+2026-11-27T20:44:38.858507Z  still PLANNED; waiting for the launch approval, 2 min 02 s of 180 min
+2026-11-27T20:46:39.242785Z  still PLANNED; waiting for the launch approval, 4 min 03 s of 180 min
+2026-11-27T20:48:49.088316Z  still PLANNED; waiting for the launch approval, 6 min 12 s of 180 min
+2026-11-27T20:49:18.855147Z  status: PLANNED, PLANNED -> RUNNING pending
+2026-11-27T20:49:18.855147Z  approve seen: the launch is claimed
+2026-11-27T20:49:51.537862Z  status: RUNNING
+2026-11-27T20:49:51.537862Z  RUNNING: run r202611272042 is running
+2026-11-27T20:49:51.539745Z  child output is also kept in <tmp>/rm-e2e-logs
+2026-11-27T20:49:51.548080Z  started scripts/load.py --run-id r202611272042 --users 150 --questions 10 --url <not shown> (pid 93430)
+2026-11-27T20:49:51.553691Z  started scripts/inject_fault.sh (pid 93431)
+2026-11-27T20:49:54.326423Z  [load] load: 1500 requests, 150 users x 10 questions of run r202611272042, at most 10 at a time
+2026-11-27T20:49:54.326585Z  [fault] inject_fault: template rm-delay-cheaper is EXTB2oxga85m1Pyax
+2026-11-27T20:49:54.326614Z  [fault] inject_fault: experiment EXPbCtqcpM2cfPus38 started at 2026-11-27T20:49:53Z (state initiating)
+2026-11-27T20:49:54.326647Z  [fault] inject_fault: 2026-11-27T20:49:53Z state initiating
+2026-11-27T20:50:14.398365Z  [fault] inject_fault: 2026-11-27T20:50:08Z state running
+2026-11-27T20:50:24.312179Z  [fault] inject_fault: 2026-11-27T20:50:24Z state running
+2026-11-27T20:50:44.503136Z  [fault] inject_fault: 2026-11-27T20:50:39Z state running
+2026-11-27T20:51:04.455271Z  [fault] inject_fault: 2026-11-27T20:50:55Z state running
+2026-11-27T20:51:14.302103Z  [fault] inject_fault: 2026-11-27T20:51:10Z state running
+2026-11-27T20:51:34.371315Z  [fault] inject_fault: 2026-11-27T20:51:25Z state running
+2026-11-27T20:51:44.438207Z  [fault] inject_fault: 2026-11-27T20:51:41Z state running
+2026-11-27T20:51:54.339750Z  still RUNNING; waiting for ROLLED_BACK, 2 min 02 s of 15 min
+2026-11-27T20:52:04.345077Z  [fault] inject_fault: 2026-11-27T20:51:56Z state running
+2026-11-27T20:52:14.625935Z  [fault] inject_fault: 2026-11-27T20:52:12Z state running
+2026-11-27T20:52:34.731786Z  [fault] inject_fault: 2026-11-27T20:52:27Z state running
+2026-11-27T20:52:44.424169Z  [fault] inject_fault: 2026-11-27T20:52:42Z state running
+2026-11-27T20:53:04.393093Z  [fault] inject_fault: 2026-11-27T20:52:58Z state running
+2026-11-27T20:53:14.295185Z  [fault] inject_fault: 2026-11-27T20:53:13Z state running
+2026-11-27T20:53:24.455291Z  status: RUNNING, RUNNING -> ROLLED_BACK pending
+2026-11-27T20:53:34.362140Z  [fault] inject_fault: 2026-11-27T20:53:29Z state running
+2026-11-27T20:53:44.509562Z  [fault] inject_fault: 2026-11-27T20:53:44Z state running
+2026-11-27T20:53:54.651898Z  still RUNNING; waiting for ROLLED_BACK, 4 min 03 s of 15 min
+2026-11-27T20:54:04.545947Z  [fault] inject_fault: 2026-11-27T20:53:59Z state running
+2026-11-27T20:54:24.660338Z  status: ROLLED_BACK
+2026-11-27T20:54:24.660798Z  [fault] inject_fault: 2026-11-27T20:54:15Z state running
+2026-11-27T20:54:37.297960Z  [fault] inject_fault: 2026-11-27T20:54:30Z state running
+2026-11-27T20:54:47.488693Z  [fault] inject_fault: 2026-11-27T20:54:46Z state running
+2026-11-27T20:55:07.772105Z  [fault] inject_fault: 2026-11-27T20:55:01Z state running
+2026-11-27T20:55:17.731056Z  [fault] inject_fault: 2026-11-27T20:55:16Z state running
+2026-11-27T20:55:38.011078Z  [fault] inject_fault: 2026-11-27T20:55:32Z state running
+2026-11-27T20:55:57.617849Z  [fault] inject_fault: 2026-11-27T20:55:47Z state running
+2026-11-27T20:56:07.415500Z  [fault] inject_fault: 2026-11-27T20:56:03Z state running
+2026-11-27T20:56:27.497303Z  [fault] inject_fault: experiment EXPbCtqcpM2cfPus38 ended at 2026-11-27T20:56:18Z: completed (FIS start 2026-11-27T20:49:52.910000+00:00, end 2026-11-27T20:56:04.925000+00:00: Experiment completed.)
+2026-11-27T20:56:27.497601Z  inject_fault.sh ended, exit 0: the experiment completed
+2026-11-27T20:56:27.497686Z  still ROLLED_BACK; waiting for AWAITING_RESUME, 2 min 02 s of 25 min
+2026-11-27T20:58:27.595408Z  still ROLLED_BACK; waiting for AWAITING_RESUME, 4 min 02 s of 25 min
+2026-11-27T21:00:37.722394Z  still ROLLED_BACK; waiting for AWAITING_RESUME, 6 min 13 s of 25 min
+2026-11-27T21:02:07.560657Z  status: AWAITING_RESUME
+2026-11-27T21:02:07.561352Z  waiting for the human, run r202611272042
+
+PAUSE: the cheaper model is healthy again. To resume the experiment, type:
+    uv run marshal approve r202611272042 resume
+Run it from the repository root, with the same AWS_PROFILE as this shell.
+These are the human's steps (CLAUDE.md): e2e.py and the agents take none of them.
+
+2026-11-27T21:02:40.313405Z  status: AWAITING_RESUME, AWAITING_RESUME -> RUNNING pending
+2026-11-27T21:02:40.314011Z  resume seen: the resume is claimed
+2026-11-27T21:03:03.253571Z  status: RUNNING
+2026-11-27T21:03:03.254019Z  RUNNING again: run r202611272042 is resumed
+2026-11-27T21:04:26.057707Z  status: RESULTS_READY
+2026-11-27T21:04:26.058392Z  RESULTS_READY: Run r202611272042 has results: the report is at s3://rm-reports-818928662830/runs/r202611272042/report.md. To promote, end the experiment in the Flagsmith dashboard, then `marshal approve r202611272042 promotion`; `marshal decline r202611272042` holds it.
+2026-11-27T21:04:26.058533Z  waiting for the human, run r202611272042
+
+PAUSE: results are ready. Choose one, in another terminal.
+  To hold the run, type:
+    uv run marshal decline r202611272042
+    then end the experiment in the Flagsmith dashboard: a hold leaves it running.
+  Or, to promote it, end the experiment in the Flagsmith dashboard, then type:
+    uv run marshal approve r202611272042 promotion
+Run it from the repository root, with the same AWS_PROFILE as this shell.
+  Note which metric the dashboard shows as primary, and the rollout decision you choose: evidence/5.1-e2e.md records both.
+These are the human's steps (CLAUDE.md): e2e.py and the agents take none of them.
+
+2026-11-27T21:04:48.709248Z  [load] sent=1500 ok=1500 failed=0
+2026-11-27T21:04:48.709360Z  load.py ended, exit 0: sent=1500 ok=1500 failed=0
+2026-11-27T21:05:08.852948Z  status: HELD
+2026-11-27T21:05:08.853566Z  HELD: Run r202611272042 is held: it changes no more, and Flagsmith is left as it was.
+
+==== Summary for evidence/5.1-e2e.md ====
+run:      r202611272042
+outcome:  completed
+timestamps (UTC):
+  start sent:     2026-11-27T20:42:29.563696Z
+  plan returned:  2026-11-27T20:42:36.140690Z
+  approve seen:   2026-11-27T20:49:18.855147Z
+  RUNNING:        2026-11-27T20:49:51.537862Z
+history (rm-runs, RUN#r202611272042):
+  1. 2026-11-27T20:42:36.083615Z  (none) -> PLANNED  engineer: start
+  2. 2026-11-27T20:49:47.462621Z  PLANNED -> RUNNING  engineer: approve
+  3. 2026-11-27T20:54:15.557941Z  RUNNING -> ROLLED_BACK  agent: tick, resuming RUNNING -> ROLLED_BACK
+  4. 2026-11-27T21:02:01.064735Z  ROLLED_BACK -> AWAITING_RESUME  agent: tick
+  5. 2026-11-27T21:03:00.613882Z  AWAITING_RESUME -> RUNNING  engineer: approve
+  6. 2026-11-27T21:04:20.442009Z  RUNNING -> RESULTS_READY  agent: tick
+  7. 2026-11-27T21:05:06.381702Z  RESULTS_READY -> HELD  engineer: decline
+  reads as 5.1's Pass (PLANNED, RUNNING, ROLLED_BACK, AWAITING_RESUME, RUNNING, RESULTS_READY, then HELD or PROMOTED): yes
+answers sent: 1500 (load.py: sent=1500 ok=1500 failed=0, exit 0)
+fault: inject_fault.sh exit 0, FIS experiment EXPbCtqcpM2cfPus38
+report: s3://rm-reports-818928662830/runs/r202611272042/report.md
+SNS message IDs (notified):
+  2#ROLLED_BACK: d4d69364-89fe-56cd-8bec-f0e779c918a8
+  3#AWAITING_RESUME: f7db8425-09a9-58d8-a045-e7a6fba19a4e
+  5#RESULTS_READY: 7f686463-dcf2-5423-88df-07e02e6603cb
+Stop lines (CLAUDE.md): read both now, before any further load.
+  cost:  uv run python evidence/3.6-scripts/smoke_reads.py cost --answers-sent <all answers since the cutoff; this run sent 1500> --remaining-planned <answers still planned>
+  usage: uv run python evidence/3.6-scripts/smoke_reads.py usage
+         The total lags (more than 25 minutes at Gate 1, and it may wait for the day to close): also read usage-data/'s daily rows, or the Usage page in the dashboard.
+
+2026-11-27T21:05:09.471776Z  record written to <scratchpad>/record.json
+e2e exit 0 at 2026-11-27T21:05:09Z
