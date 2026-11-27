@@ -579,7 +579,7 @@ engineer's credentials, prints the response, and exits 0 when its error is
 null, 1 when it carries an error code, and 2 for a usage error. The root
 project is packaged from task 2.6 on, with a hatchling build of `cli` and
 `contracts`, so the console script installs and `uv run marshal` works;
-the lead switches it on when 2.6 merges (Gate 1: unpackaged, uv installs no
+the lead switches it on in 2.6's branch before its review (Gate 1: unpackaged, uv installs no
 console script).
 
 The CLI and `rm-invoker` share one `InvokeAgentRuntime` client setting: read

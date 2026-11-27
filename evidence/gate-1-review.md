@@ -123,9 +123,14 @@ Every deny is `explicitDeny` from `role_rm-review-readonly_rm-review-deny`, and 
 ```
 `usage-data/`'s daily breakdown shows `"identities": 150` for 2026-11-26: 1.2's 150 identity requests. 1.3's reads of the same API at 22:35Z and 22:49Z gave 0. So a read lags by more than 25 minutes and less than about 2 hours 46 minutes.
 
-**botocore's `InvokeAgentRuntime`** (local, no AWS call). For each botocore copy in the uv cache, the lead printed `__version__` and the operation from `botocore/data/bedrock-agentcore/2024-02-28/service-2.json.gz`:
+**botocore's `InvokeAgentRuntime`** (local, no AWS call). The command was:
+```
+for d in ~/.cache/uv/archive-v0/OB2IHWa_E_PFC12k ~/.cache/uv/archive-v0/PZEeVsr0U62VvFdw/lib/python3.12/site-packages ~/.cache/uv/archive-v0/2V0IY6Jgg5S0wnJT; do v=$(grep -m1 "^__version__" $d/botocore/__init__.py); n=$(gzip -dc $d/botocore/data/bedrock-agentcore/2024-02-28/service-2.json.gz | python3 -c "import json,sys; d=json.load(sys.stdin); op=d['operations'].get('InvokeAgentRuntime'); print('InvokeAgentRuntime', op['http']['method'], op['http']['requestUri'] if op else None)"); echo "$v | $n"; done
+```
+Its output:
 ```
 __version__ = '1.42.97' | InvokeAgentRuntime POST /runtimes/{agentRuntimeArn}/invocations
+__version__ = '1.44.12' | InvokeAgentRuntime POST /runtimes/{agentRuntimeArn}/invocations
 __version__ = '1.44.12' | InvokeAgentRuntime POST /runtimes/{agentRuntimeArn}/invocations
 ```
 1.42.97 is the version 1.2 read in the python3.13 Lambda runtime, so 4.1 bundles no boto3.

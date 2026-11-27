@@ -281,15 +281,15 @@ their tasks name, not against each other.
     - **Freshness and the admin interface.** 2.2 states and tests when a
       results read is current after a refresh. `is_final` true counts as
       current. Both cases recorded in `evidence/1.4-logs/` must pass:
-      `ended_refresh_log.json` entry 3 (final, with `as_of` before
-      `refresh_requested_at`) is current, and `end_status_log.json` entry 3
-      (the pre-end snapshot) is not.
-    - **Metric IDs.** The metric ID is an int from the Admin API, a string
-      in MCP create's `metrics[].metric`, and an int in the results'
-      `metric_id`. A test pins all three. It proposes
+      `ended_refresh_log.json` index 3, 0-based (final, with `as_of` before
+      `refresh_requested_at`), is current, and `end_status_log.json` index 3,
+      0-based (the pre-end snapshot), is not. 2.2 also proposes
       `rm-flagsmith-admin`'s tool names, input schemas, direct-invoke
       shape and Gateway call shape, and the lead records them in design.md
       section 7 before 2.2 merges.
+    - **Metric IDs.** The metric ID is an int from the Admin API, a string
+      in MCP create's `metrics[].metric`, and an int in the results'
+      `metric_id`. A test pins all three.
     - **The live test** also changes a scratch `spike_` string feature
       `current → cheaper → current` and toggles a scratch kill switch, each
       through a v2 version. It reads each change back through the SDK's
@@ -413,15 +413,13 @@ their tasks name, not against each other.
     client setting shared with `rm-invoker` (read timeout 290 seconds, one
     attempt); prints state, message, what it waits for, any `pending`
     target and any error code. `main()` in `cli/marshal.py` returns an exit
-    code; when this task merges, the lead adds the console script
-    `marshal = cli.marshal:main` to `pyproject.toml`.
+    code; on this task's branch, before its review, the lead adds the
+    console script `marshal = cli.marshal:main` to `pyproject.toml`.
   - It reads the runtime's ARN from `/rm/agent-runtime-arn`. It exits 0
     when the response's error is null, 1 when it carries an error code,
     and 2 on a usage error.
-  - When 2.6 merges, the lead makes the root project packaged (hatchling,
-    `cli` and `contracts`), so `uv run marshal --help` exits 0. The
-    contracts test runs exactly that.
-  - Packaging, which the lead does on 2.6's branch before its review:
+  - Packaging, which the lead does on 2.6's branch before its review, so
+    `uv run marshal --help` exits 0 (the contracts test runs exactly that):
     remove `[tool.uv] package = false`; add `[build-system]` with
     hatchling, `[tool.hatch.build.targets.wheel] packages = ["cli",
     "contracts"]`, and `[project.scripts] marshal = "cli.marshal:main"`.
@@ -495,7 +493,7 @@ their tasks name, not against each other.
     emits latency; with no active run, `rm-judge` is not invoked; the judge
     payload's `assigned` is the flag's value, while the exposure sends
     `flag.variant` (`control` or `cheaper`), and only when the identity is
-    in the experiment and `flag.variant` is set; every metric carries
+    in the experiment, the flag is enabled and `flag.variant` is set; every metric carries
     exactly the `Variant` dimension set. A test runs the real SDK against
     a slow local events endpoint, as 1.2's
     `app/spike/tests/test_sdk_events.py` does against its fake on
@@ -586,6 +584,10 @@ their tasks name, not against each other.
   - Do: `bootstrap_flagsmith.py`, `seed_experiment.py rsmoke<HHMM>`,
     `load.py --run-id <run_id> --users 150 --questions 2`; after the human ends the
     experiment, `reset.py`.
+  - It checks Flagsmith's per-identity aggregation, which the docs'
+    statistics page describes. It records each arm's `n` against its
+    identities in `evidence/3.6-app-smoke.md`, settling whether `n` counts
+    identities or events (design.md section 7).
   - Pass, read through the API found in 1.3 (or **Human** on the
     dashboard if none exists): both variations show at least 50
     identities; CloudWatch has `AnswerLatencyMs` datapoints for both
@@ -626,10 +628,6 @@ their tasks name, not against each other.
     function's role `rm-invoker-role`, and `rm-tick` sits in the `default`
     group with execution role `rm-scheduler-role` (design.md section 7). The tick schedule's input is
     the tick payload, `{"action": "tick"}`.
-  - It checks Flagsmith's per-identity aggregation, which the docs'
-    statistics page describes. It records each arm's `n` against its
-    identities, settling whether `n` counts identities or events
-    (design.md section 7).
   - Pass: `terraform validate` clean, and the plan from `infra/` lists
     this task's resources to add and destroys nothing outside them.
     After 4.1 is applied: **Human** confirms the SNS subscription email
