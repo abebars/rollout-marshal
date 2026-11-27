@@ -1,0 +1,10 @@
+{
+  "source_url": "https://aws.amazon.com/bedrock/pricing/",
+  "retrieved_on": "2026-11-27",
+  "currency": "USD",
+  "per_million_tokens": {
+    "us.anthropic.claude-fable-5-1": {"input": 11.0, "output": 55.0},
+    "us.anthropic.claude-sonnet-5": {"input": 2.2, "output": 11.0},
+    "us.anthropic.claude-haiku-5-5": {"input": 0.11, "output": 0.55}
+  }
+}
