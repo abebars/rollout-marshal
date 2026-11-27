@@ -751,7 +751,7 @@ their tasks name, not against each other.
     answers sent, the report's S3 key, and the SNS message IDs from the run
     item's `notified`. **Gate 3** runs here.
 
-- [ ] 5.2 **Two more clean runs** (cut to one further clean run, 2026-11-27)
+- [x] 5.2 **Two more clean runs** (cut to one further clean run, 2026-11-27) (PR #40 merged; run r202611272042 HELD)
   - Needs: 5.1.
   - Cut (CLAUDE.md cut order, item 2): Ahmed chose on 2026-11-27, after
     3.6's cost projection passed 60,000,000 micro-USD (66,736,705 by the
