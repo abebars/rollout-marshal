@@ -2954,6 +2954,26 @@ def test_contract_c6_app_names():
         assert block and re.search(r"\bsensitive\s*=\s*true\b", block.group(1))
 
 
+def test_contract_c7_alarm_recalibration():
+    """Contract change c7: 4.1's threshold rule applied to 3.6's baseline (design.md 5)."""
+    base, margin = names.ALARM_BASELINE_P95_MS, names.ALARM_THRESHOLD_FAULT_MARGIN_MS
+    threshold = math.ceil((base + margin) / 1000) * 1000
+    assert threshold == names.ALARM_THRESHOLD_MS
+    assert base <= 8000  # above 8000 ms the rule asks the human first
+    alarm_margin = round(base + names.FIS_DELAY_MS - threshold, 1)
+    headroom = round(threshold - base, 1)
+    sec5 = flat_section(5)
+    assert (
+        "Recalibrated by task 4.1 on 2026-11-27 (contract change c7): 3.6's baseline p95 for "
+        f"exactly `Variant=cheaper` is B = {base} ms (170 samples, 08:11 to 08:15Z, with the FIS "
+        f"extension on and no fault), so T = {threshold} ms, the default, and no re-apply was "
+        f"needed. Under the {names.FIS_DELAY_MS} ms fault the p95 lands about B + "
+        f"{names.FIS_DELAY_MS} − T = {alarm_margin} ms above the threshold (the alarm margin); "
+        f"without it, it sits T − B = {headroom} ms below (the headroom)." in sec5
+    )
+    assert alarm_margin > 0 and headroom > 0
+
+
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
