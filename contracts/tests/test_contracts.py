@@ -1244,7 +1244,7 @@ def test_load_plans_match_design():
     assert (
         names.LOAD_SMOKE.users * names.LOAD_SMOKE.questions
         + names.LOAD_FAULT.users * names.LOAD_FAULT.questions
-        + 3 * names.LOAD_FULL.users * names.LOAD_FULL.questions
+        + 2 * names.LOAD_FULL.users * names.LOAD_FULL.questions
         == names.ANSWER_BUDGET
     )
 
@@ -2972,6 +2972,26 @@ def test_contract_c7_alarm_recalibration():
         f"without it, it sits T − B = {headroom} ms below (the headroom)." in sec5
     )
     assert alarm_margin > 0 and headroom > 0
+
+
+def test_contract_c8_after_the_runs():
+    """Contract change c8: what 3.6, 4.1 and 4.3 settled, and the 5.2 cut (Gate 2, G9 and G10)."""
+    worst, threshold = names.ALARM_WORST_MINUTE_P95_MS, names.ALARM_THRESHOLD_MS
+    assert names.ALARM_BASELINE_P95_MS < worst < threshold
+    sec5 = flat_section(5)
+    assert (
+        f"the worst minute's p95 for `Variant=cheaper` was {worst} ms (08:11Z, 8 samples), so the "
+        f"smallest one-minute headroom seen is T − {worst} = {round(threshold - worst, 1)} ms. "
+        f"T stays {threshold} ms (contract change c8)." in sec5
+    )
+    assert "so `n` counts identities (contract change c8)." in flat_section(7)
+    assert "stays open until task 3.6" not in DESIGN
+    assert names.ANSWER_BUDGET == 300 + 300 + 2 * 1_500
+    rows = {row[0]: row[2] for row in table_rows(section(13), "| Claim | Task | Result |")}
+    events = rows["Whether Flagsmith event calls count toward the 50,000 request cap"]
+    assert events.startswith("documented, not observed: docs.flagsmith.com/")
+    emf = rows["p95 alarms on embedded-metric custom metrics with a dimension behave as designed"]
+    assert emf.startswith("verified by 4.3's fault run")
 
 
 # Every tuple, list, dict or set constant names the test that ties it to its
