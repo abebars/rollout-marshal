@@ -476,7 +476,7 @@ their tasks name, not against each other.
     only if 4.3's FIS timebox runs out.
   - Pass: unit tests green.
 
-- [ ] 3.2 **Router**
+- [x] 3.2 **Router**
   - Needs: 1.4. Files: `app/router/handler.py`, tests.
   - Produces: the evaluation order in design.md section 4; synchronous
     invoke of the answer function; latency measured around it;
