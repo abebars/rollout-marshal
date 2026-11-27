@@ -31,6 +31,7 @@ class FakeFlagsmith:
         self.metrics: list[dict] = []
         self.experiments: list[dict] = []
         self.fail: dict[tuple[str, str], int] = {}  # (method, path regex) -> status
+        self.experiment_page_size = 0  # 0: one page; n: pages of n, linked by `next`
         self.usage_count = 150  # GET .../usage-data/total-count/
         self.results: dict[int, list[dict]] = {}  # experiment ID -> its results replies, in turn
         self.refreshes: list[int] = []
@@ -170,7 +171,18 @@ class FakeFlagsmith:
             if method == "GET":
                 status = query.get("status", [None])[0]
                 found = [e for e in self.experiments if status in (None, e["status"])]
-                return 200, {"results": copy.deepcopy(found)}
+                if not self.experiment_page_size:
+                    return 200, {"results": copy.deepcopy(found), "next": None}
+                page = int(query.get("page", ["1"])[0])
+                size = self.experiment_page_size
+                more = page * size < len(found)
+                base = f"https://api.flagsmith.com/api/v1/environments/{DEV_KEY}/experiments/"
+                link = f"{base}?page={page + 1}"
+                return 200, {
+                    "count": len(found),
+                    "next": link if more else None,
+                    "results": copy.deepcopy(found[(page - 1) * size : page * size]),
+                }
             if method == "POST":
                 if "experiment_rollout" not in body:
                     return 400, {"experiment_rollout": ["This field is required."]}

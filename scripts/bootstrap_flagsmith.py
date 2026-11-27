@@ -37,6 +37,7 @@ import json
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
@@ -82,6 +83,17 @@ def urllib_transport(method: str, url: str, headers: dict, body: object) -> tupl
         return status, json.loads(raw) if raw else None
     except ValueError:
         return status, None
+
+
+def path_of(url: object) -> str | None:
+    """A list reply's `next` link as a path under the Admin API, or None when there is no
+    next page. A link to any other host is refused."""
+    if not url:
+        return None
+    parts, base = urllib.parse.urlsplit(str(url)), urllib.parse.urlsplit(API_BASE_URL)
+    if (parts.scheme, parts.netloc) != (base.scheme, base.netloc):
+        raise Refused(f"a next page outside {API_BASE_URL}")
+    return parts.path + (f"?{parts.query}" if parts.query else "")
 
 
 def redact_path(path: str) -> str:

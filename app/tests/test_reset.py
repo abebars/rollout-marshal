@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 import boto3
 import pytest
+import rm_agent.tools.schedule as schedule_tool  # 2.4's, which reset.py imports
 from botocore.stub import Stubber
 
 from app.tests.aws_fakes import FakeDynamo, pointer, run_item
@@ -75,8 +76,10 @@ def admin(flagsmith):
 
 
 @pytest.fixture
-def scheduler():
+def scheduler(monkeypatch):
+    """botocore's Stubber on a real Scheduler client, given to 2.4's set_tick as its own."""
     client = boto3.client("scheduler", region_name=names.REGION)
+    monkeypatch.setattr(schedule_tool, "_client", lambda: client)
     with Stubber(client) as stubber:
         client.stubber = stubber
         yield client
@@ -97,10 +100,9 @@ def _expect_tick(scheduler, schedule=TICK, *, disabled=True):
 
 
 def _run(admin, dynamodb, scheduler, *argv):
+    """scheduler is the fixture, already 2.4's client; it is named so each test needs it."""
     lines = []
-    code = reset.main(
-        list(argv), admin=admin, dynamodb=dynamodb, scheduler=scheduler, out=lines.append
-    )
+    code = reset.main(list(argv), admin=admin, dynamodb=dynamodb, out=lines.append)
     return code, "\n".join(lines)
 
 
@@ -195,18 +197,34 @@ def test_a_schedule_that_is_not_the_tick_is_never_written(admin, scheduler):
     assert code == bootstrap.EXIT_FAILED and names.TICK_SCHEDULE in text
 
 
-def test_the_written_fields_are_those_get_schedule_returns_and_update_schedule_takes():
-    client = boto3.client("scheduler", region_name=names.REGION)
-    fields = set(reset.tick_update_fields(client))
-    assert {
-        "Name",
-        "GroupName",
-        "ScheduleExpression",
-        "Target",
-        "FlexibleTimeWindow",
-        "State",
-    } <= fields
-    assert not fields & {"Arn", "CreationDate", "LastModificationDate"}
+def test_the_tick_is_disabled_by_2_4s_set_tick_itself():
+    assert reset.set_tick is schedule_tool.set_tick
+
+
+def test_running_experiments_come_from_every_page_of_the_unfiltered_list(admin, flagsmith):
+    """PR #27's review: the ?status= filter was never run, and only page one was read."""
+    flagsmith.experiments[:] = [
+        {"id": 830, "name": "assistant_model_rone0101", "status": "running"},
+        {"id": 831, "name": "assistant_model_rtwo0101", "status": "completed"},
+        {"id": 832, "name": "assistant_model_rthree0101", "status": "running"},
+    ]
+    flagsmith.experiment_page_size = 2
+
+    running = reset.running_experiments(admin)
+
+    assert [e["id"] for e in running] == [830, 832]
+    listed = [p for m, p, _ in flagsmith.requests if "/experiments/" in p]
+    assert listed == [
+        f"/api/v1/environments/{DEV_KEY}/experiments/",
+        f"/api/v1/environments/{DEV_KEY}/experiments/?page=2",
+    ]
+    assert not [p for p in listed if "status=" in p]
+
+
+def test_a_next_page_on_another_host_is_refused(admin, flagsmith, monkeypatch):
+    with pytest.raises(bootstrap.Refused, match="next page"):
+        bootstrap.path_of("https://elsewhere.example/api/v1/environments/x/experiments/?page=2")
+    assert bootstrap.path_of(None) is None
 
 
 def test_nothing_printed_holds_a_key(admin, scheduler):

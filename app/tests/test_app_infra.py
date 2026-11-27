@@ -195,3 +195,41 @@ def test_the_module_pins_no_provider_and_creates_no_zip():
     assert 'required_providers { aws = { source = "hashicorp/aws" } }' in FILES["versions.tf"]
     assert "version" not in FILES["versions.tf"].replace("required_providers", "")
     assert "archive_file" not in TF  # app/build.sh builds the zips (tasks.md 3.5)
+
+
+def test_iam_scope_and_route_permission_are_pinned():
+    """PR #27's review: each loosening survived the checks above. A `*` for a profile, the
+    models, the logs or the key; the key handed to another function; and a wider route
+    permission each fail here."""
+    functions = FILES["functions.tf"]
+    attach = block(functions, 'data "aws_iam_policy_document" "fn"')
+    assert re.findall(r'each\.key == "(\w+)" \?', attach) == ["router", "judge"]
+    profile = "data.aws_bedrock_inference_profile.model[each.value]"
+    raw = (MODULE / "functions.tf").read_text()
+    assert re.findall(r"^\s*resources\s*=\s*(.+?)\s*$", raw, flags=re.M) == [
+        f"[{profile}.inference_profile_arn]",
+        f"[for model in {profile}.models : model.model_arn]",
+        "[local.default_project_arn]",
+        '["${local.log_group_arns[each.key]}:*"]',
+        "[local.runs_table_arn]",
+        "[data.aws_secretsmanager_secret.server_key.arn]",
+        '[for key in ["current", "cheaper", "judge"] : local.function_arns[key]]',
+        "[data.aws_secretsmanager_secret.server_key.arn]",
+    ]
+    assert TF.count("data.aws_secretsmanager_secret.server_key.arn") == 2  # router and judge
+    assert (
+        'source_arn = "${aws_apigatewayv2_api.ask.execution_arn}/*/'
+        '${split(" ", local.names.API_ROUTE_KEY)[0]}${local.route_path}"'
+    ) in FILES["api.tf"]
+    locals_tf = FILES["locals.tf"]
+    log_arns = block(locals_tf, "log_group_arns =")
+    assert ':log-group:/aws/lambda/${fn.name}"' in log_arns
+    table = "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${local.names.RUNS_TABLE}"
+    assert f'runs_table_arn = "{table}"' in locals_tf
+    assert ':function:${fn.name}"' in block(locals_tf, "function_arns =")
+
+
+def test_each_function_has_the_memory_c6_records():
+    """256 MB, task 1.2's spike size, which c6 records."""
+    assert "memory_mb = 256" in FILES["locals.tf"]
+    assert "memory_size = local.memory_mb" in FILES["functions.tf"]
