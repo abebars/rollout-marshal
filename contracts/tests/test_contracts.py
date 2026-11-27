@@ -532,8 +532,14 @@ def test_contract_c2():
     assert "topK" in names.FORBIDDEN_SAMPLING_PARAMETERS
     spec = ROOT / "openspec/changes/build-rollout-marshal/specs/experiment-agent/spec.md"
     assert (
-        "the lower bound of the 95 percent credible interval for the lift on `helpful_rate` is "
-        "at or above -0.05, and both guardrails pass" in spec.read_text()
+        f"the lower bound of the {names.CREDIBLE_INTERVAL_PERCENT} percent credible interval for "
+        "the lift on `helpful_rate` is at or above -0.05, and both guardrails pass"
+        in spec.read_text()
+    )
+    assert (
+        f"recommend `promote` only if the lower bound of the {names.CREDIBLE_INTERVAL_PERCENT} "
+        "percent credible interval that Flagsmith gives for the lift on `helpful_rate`"
+        in flat_section(6)
     )
     sec7 = re.sub(r"\s+", " ", section(7))
     assert f"`{names.AGENT_STACK}` creates it with the Bedrock, logging and Gateway grants" in sec7
@@ -627,13 +633,14 @@ def test_contract_c3_models_and_the_router():
             body(names.ANSWER_ERROR_THROTTLED),
         ],
         [
-            "Any other `errorType`, including Lambda's own timeout, or an invoke exception",
+            "Any other `errorType`, including Lambda's own timeout, an invoke exception, or a "
+            "reply that is not the served arm's `answer_response`",
             "502",
             f'`{{"error": <errorType or "{names.ROUTER_ERROR_INVOKE_FAILED}">}}`',
         ],
         [
-            f"A failed `{names.RUNS_TABLE}` read or a pointer with a bad `run_id`; with an active "
-            "run, a failed read of the key or the identity flags",
+            f"A failed `{names.RUNS_TABLE}` read or a launched pointer whose `run_id` is not a run "
+            "ID; with an active run, a failed read of the key or the identity flags",
             "502",
             body(names.ROUTER_ERROR_UPSTREAM_FAILED),
         ],
@@ -652,12 +659,16 @@ def test_contract_c3_models_and_the_router():
 
     # Section 5: the SDK settings and the time budget.
     timeout, retries = names.FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS, names.FLAGSMITH_SDK_RETRIES
-    identity_slow = timeout * (1 + retries)
+    # requests applies the one value to the connect and to the read, and urllib3 retries no read
+    # error on a POST, so one attempt is a connect plus a read; a retried connect adds one more.
+    identity_one = 2 * timeout
+    identity_slow = identity_one + retries * timeout
     assert (
         f"The router's Flagsmith client sets `request_timeout_seconds={timeout}` and urllib3 "
-        f"`Retry(total={retries}, backoff_factor=0)`. They bound the identity request: "
-        f"{timeout} seconds, or about {identity_slow} seconds if a connect error is retried."
-        in sec5
+        f"`Retry(total={retries}, backoff_factor=0)`. They bound the identity request, a POST "
+        f"that urllib3 does not retry after a read error: about {identity_one} seconds (requests "
+        f"applies the {timeout} seconds to the connect and to the read), or about {identity_slow} "
+        "seconds if a connect error is retried." in sec5
     )
     send = int(re.search(r"so one send can take about (\d+) seconds", sec5).group(1))
     queued = int(
@@ -696,11 +707,17 @@ def test_contract_c3_models_and_the_router():
         f"`contracts` files, and the `{names.FLAGSMITH_SDK_PACKAGE}` SDK with its dependencies "
         f"as `uv.lock` pins them, for handler `{names.ROUTER_HANDLER}`." in sec5
     )
-    # The answer handler is merged (task 3.1), so its path names a real function. The
-    # router's arrives with task 3.2.
-    module, function = names.ANSWER_HANDLER.rsplit(".", 1)
-    source = (ROOT / (module.replace(".", "/") + ".py")).read_text()
-    assert f"\ndef {function}(" in source
+    # Both handlers are merged (tasks 3.1 and 3.2), so each path names a real function, and the
+    # answer handler defines the typed errors and reads the model from the named variable.
+    sources = {}
+    for handler in (names.ANSWER_HANDLER, names.ROUTER_HANDLER):
+        module, function = handler.rsplit(".", 1)
+        sources[handler] = (ROOT / (module.replace(".", "/") + ".py")).read_text()
+        assert f"\ndef {function}(" in sources[handler], handler
+    answer_source = sources[names.ANSWER_HANDLER]
+    for error in (names.ANSWER_ERROR_THROTTLED, names.ANSWER_ERROR_FAILED):
+        assert f"\nclass {error}(Exception):" in answer_source, error
+    assert f'"{names.ANSWER_MODEL_ENV}"' in answer_source
 
 
 def test_contract_c3_state():
@@ -864,8 +881,25 @@ def test_contract_c3_tasks_point_at_the_new_text():
         f"`{names.ERROR_BAD_REQUEST}`.",
         "- `evidence/3.6-results.json` holds the experiment read's `experiment_metrics` list "
         "(`metric_name`, `metric`) next to the raw `results`; 2.2's waiting test reads it.",
+        "- A tick that refreshes results without moving the run records `last_refresh_at` "
+        "through a conditional update. 2.5 adds that helper to `agent/runtime/rm_agent/state.py`, "
+        "beside 2.1's writes, since no commit carries it then.",
+        "Files: `agent/runtime/rm_agent/handlers.py`, `agent/runtime/main.py`, "
+        "`agent/tests/test_handlers.py`, and the one `agent/runtime/rm_agent/state.py` helper "
+        "below, with its tests in `agent/tests/test_state.py`.",
     ):
         assert line in tasks, line
+    spec = re.sub(
+        r"\s+",
+        " ",
+        (ROOT / "openspec/changes/build-rollout-marshal/specs/assistant-api/spec.md").read_text(),
+    )
+    assert (
+        "The one exception is the router's exposure flush: the router waits for it only while "
+        "Lambda has time left, and skips it when no thread can be started (design.md sections 4 "
+        "and 5). A flush still running then, or skipped, is logged, and loses at most that "
+        "request's exposure." in spec
+    )
 
 
 def test_router_flush_numbers_match_the_sdk():
@@ -2468,10 +2502,12 @@ PINNED_RULE_SENTENCES = (
     "It is created with `default_enabled` true, so its value is served.",
     "`rm-router` starts it on a thread right after step 3, so it runs while the answer invoke "
     "runs, and a `finally` joins that thread before every return, error paths included, waiting "
-    "at most Lambda's remaining time minus 1 second (section 5). The router tracks nothing else "
-    "while the answer runs.",
-    "`flush_events()` before every handler returns; `rm-router` bounds how long it waits for it "
-    "(section 5).",
+    "at most Lambda's remaining time minus 1 second (section 5). If no thread can be started, it "
+    "returns without flushing (section 5). The router tracks nothing else while the answer runs.",
+    "`flush_events()` before every handler returns; `rm-router` bounds how long it waits for it, "
+    "and skips it when no thread can be started (section 5).",
+    "Judging and outcome events happen in `rm-judge`, off the request path; the router's exposure, "
+    "flushed beside the answer (section 4, step 6), is the one exception.",
     "so a throttle is not hidden in the measured latency. Errors are typed by exception class, "
     "and Lambda reports the class name as `errorType`:",
     "Their messages carry no question, reply or key. That `errorType` is the simple class name is "
@@ -2486,7 +2522,9 @@ PINNED_RULE_SENTENCES = (
     "So the flush runs beside the answer (section 4, step 6), and the router bounds its join to "
     "Lambda's remaining time minus 1 second (`context.get_remaining_time_in_millis()`). If the "
     "flush is still running then, the router returns anyway and logs one warning that names no "
-    "identity. A late flush loses at most that request's exposure.",
+    "identity. A late flush loses at most that request's exposure. If no thread can be started, "
+    "the router logs one warning and returns without flushing, because the SDK's own flush has no "
+    "timeout; the SDK's 10 second timer or a later flush sends the events.",
     "A request takes about the identity request plus the longer of the answer and the flush.",
     "Packaging (task 3.5): each zip keeps the repo's paths, so a handler is its module's path "
     "plus the function. The answer functions' zip holds `app/__init__.py`, `app/answer/`, "
@@ -2505,8 +2543,9 @@ PINNED_RULE_SENTENCES = (
     '`context.client_context.custom["bedrockAgentCoreToolName"]`, as `flagsmith-admin___<tool>`.',
     "The environment key: the agent passes `environment_api_key`, which it already holds for its "
     "MCP calls. The Lambda never logs it or returns it.",
-    "`get_results(id, metric_ids, refreshed_at=None)` raises `ResultsNotCurrent` until the read "
-    "is current",
+    "`get_results(id, metric_ids, refreshed_at=None)`, given a refresh time, raises "
+    "`ResultsNotCurrent` until the read is current (without one, a read with no results comes "
+    "back not ready)",
     "2. `is_final` is true, or `as_of` is at or after `refresh_requested_at`;",
     "3. `last_error_at` is null or earlier than `refresh_requested_at`. This condition is inferred "
     "from the field's name, not observed.",

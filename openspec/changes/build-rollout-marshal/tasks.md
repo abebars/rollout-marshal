@@ -358,7 +358,9 @@ their tasks name, not against each other.
 
 - [ ] 2.5 **Action handlers**
   - Needs: 2.1, 2.2, 2.3, 2.4. Files: `agent/runtime/rm_agent/handlers.py`,
-    `agent/runtime/main.py`, `agent/tests/test_handlers.py`.
+    `agent/runtime/main.py`, `agent/tests/test_handlers.py`, and the one
+    `agent/runtime/rm_agent/state.py` helper below, with its tests in
+    `agent/tests/test_state.py`.
   - Produces: `handle(payload) -> dict` for every action in design.md
     section 7, applying each transition by claim, effects, commit.
   - Tests, with fakes for every tool: one per row of the transition table,

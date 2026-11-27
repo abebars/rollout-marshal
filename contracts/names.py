@@ -496,6 +496,7 @@ RECOMMENDATIONS = (RECOMMEND_HOLD_RERUN, RECOMMEND_PROMOTE, RECOMMEND_HOLD)
 # credible interval for the lift on helpful_rate is at or above minus 5 percent, as a
 # fraction of relative lift. Flagsmith has no "not worse" probability (task 1.4).
 PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER = -0.05
+CREDIBLE_INTERVAL_PERCENT = 95  # the interval Flagsmith gives, and the report shows (2.4)
 EXPERIMENT_STATUS_ENDED = "completed"  # "ended in Flagsmith"; paused is not ended
 EXPERIMENT_STATUS_PAUSED = "paused"
 # After the create, and after the start (design.md section 7's spellings, task 1.3).

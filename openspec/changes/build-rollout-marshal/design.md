@@ -100,7 +100,7 @@ seconds.
 | Flags call | `get_identity_flags`, once per answer |
 | Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when the flag is enabled, `flag.experiment.in_experiment` and `flag.variant` is set |
 | Outcome call | `track_event`, with the identity and a numeric `value`. The SDK sends the value as a string, and Flagsmith aggregates it as a number (task 1.2) |
-| Flush | `flush_events()` before every handler returns; `rm-router` bounds how long it waits for it (section 5). Buffer settings alone do not survive a Lambda freeze, and a buffer of one item drops events tracked in a row (task 1.2) |
+| Flush | `flush_events()` before every handler returns; `rm-router` bounds how long it waits for it, and skips it when no thread can be started (section 5). Buffer settings alone do not survive a Lambda freeze, and a buffer of one item drops events tracked in a row (task 1.2) |
 
 Available metric aggregations are occurrence, count, sum and mean. There
 is no "rate"; occurrence counts an identity once, which is useless at 10
@@ -199,6 +199,7 @@ Router evaluation order, per request:
    right after step 3, so it runs while the answer invoke runs, and a
    `finally` joins that thread before every return, error paths included,
    waiting at most Lambda's remaining time minus 1 second (section 5).
+   If no thread can be started, it returns without flushing (section 5).
    The router tracks nothing else while the answer runs.
 
 Results can be refreshed at most once every 5 minutes. The run item keeps
@@ -223,7 +224,9 @@ rm-router -> CloudWatch embedded metrics
 - `rm-router` hands `rm-judge` this payload: `{run_id, identity, assigned,
   served, model_id, question, answer, input_tokens, output_tokens,
   latency_ms}`.
-- Judging and Flagsmith events happen in `rm-judge`, off the request path.
+- Judging and outcome events happen in `rm-judge`, off the request path;
+  the router's exposure, flushed beside the answer (section 4, step 6), is
+  the one exception.
   API Gateway's 30 second limit applies to the request path only.
 - Answer Lambdas return whole responses. No response streaming (FIS Lambda
   faults do not support it).
@@ -254,8 +257,8 @@ section 11), with payload format version `2.0`, and answers:
 | An answer | 200 | `{"answer": <text>}` |
 | Bad input, including another run's identity (section 4, step 1) | 400 | `{"error": "bad_request"}` |
 | The answer's `errorType` is `AnswerThrottled` | 503 | `{"error": "AnswerThrottled"}` |
-| Any other `errorType`, including Lambda's own timeout, or an invoke exception | 502 | `{"error": <errorType or "invoke_failed">}` |
-| A failed `rm-runs` read or a pointer with a bad `run_id`; with an active run, a failed read of the key or the identity flags | 502 | `{"error": "upstream_failed"}` |
+| Any other `errorType`, including Lambda's own timeout, an invoke exception, or a reply that is not the served arm's `answer_response` | 502 | `{"error": <errorType or "invoke_failed">}` |
+| A failed `rm-runs` read or a launched pointer whose `run_id` is not a run ID; with an active run, a failed read of the key or the identity flags | 502 | `{"error": "upstream_failed"}` |
 
 With no active run, a failed key read or default-model read is not a 502:
 the router serves `current` with a 200 (section 4, step 1).
@@ -269,7 +272,9 @@ Also on the request path:
 - The router's Lambda client makes one attempt.
 - The router's Flagsmith client sets `request_timeout_seconds=3` and
   urllib3 `Retry(total=1, backoff_factor=0)`. They bound the identity
-  request: 3 seconds, or about 6 seconds if a connect error is retried.
+  request, a POST that urllib3 does not retry after a read error: about 6
+  seconds (requests applies the 3 seconds to the connect and to the read),
+  or about 9 seconds if a connect error is retried.
 - The SDK's events processor ignores both (it has its own session, a 3
   second timeout and up to 3 attempts), so one send can take about 12
   seconds. A flush queued behind the SDK's own 10 second timer send waits
@@ -278,9 +283,12 @@ Also on the request path:
   4, step 6), and the router bounds its join to Lambda's remaining time
   minus 1 second (`context.get_remaining_time_in_millis()`). If the flush is still
   running then, the router returns anyway and logs one warning that names
-  no identity. A late flush loses at most that request's exposure.
+  no identity. A late flush loses at most that request's exposure. If no
+  thread can be started, the router logs one warning and returns without
+  flushing, because the SDK's own flush has no timeout; the SDK's 10 second
+  timer or a later flush sends the events.
 - A request takes about the identity request plus the longer of the answer
-  and the flush. With one send, that is about 16 to 19 seconds with the
+  and the flush. With one send, that is about 16 to 22 seconds with the
   cheaper answer under the fault (about 13 seconds), inside the router's
   29 second timeout; for a slower flush, the join's bound stops the wait
   before that timeout. An answer that runs to its own 25 second timeout is
@@ -730,8 +738,9 @@ requires.
   128 MB, and a 4 second timeout per request: a tool makes at most 6
   requests, 24 seconds, inside the 30 second Lambda timeout.
 
-The agent's side: `get_results(id, metric_ids, refreshed_at=None)` raises
-`ResultsNotCurrent` until the read is current, and
+The agent's side: `get_results(id, metric_ids, refreshed_at=None)`, given a
+refresh time, raises `ResultsNotCurrent` until the read is current (without
+one, a read with no results comes back not ready), and
 `refresh_results(id, last_refresh_at)` returns the new refresh time, or
 None when it skipped one (within 300 seconds of the last refresh, or on a
 429). A read is current after a refresh asked for at `refreshed_at` when

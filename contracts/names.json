@@ -162,6 +162,7 @@
   "CLI_NAME": "marshal",
   "CONTROL_LABEL": "control",
   "CONTROL_VALUE": "current",
+  "CREDIBLE_INTERVAL_PERCENT": 95,
   "CW_DIMENSION_SETS": [
     [
       "Variant"
