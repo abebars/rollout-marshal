@@ -14,8 +14,8 @@ locals {
   judge_handler  = "app.judge.handler.handler"
   model_env      = local.names.ANSWER_MODEL_ENV
 
-  # Not in design.md, for the lead's next contract change. The roles, policies and log
-  # groups follow rm-invoker's names (functions.tf).
+  # Contract change c6 records it. The roles, policies and log groups follow
+  # rm-flagsmith-admin's names (functions.tf).
   api_name = "rm-api"
 
   # app/build.sh writes the three zips here; the two answer functions share one.

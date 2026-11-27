@@ -1,7 +1,8 @@
 # The four functions (design.md section 5): rm-answer-current and rm-answer-cheaper (one
 # handler, deployed twice), rm-router and rm-judge. Each has its own role, whose inline
 # policy grants only what its function calls. Role, policy and log-group names follow
-# rm-invoker's: <function>-role, <function>-policy, /aws/lambda/<function>.
+# rm-flagsmith-admin's (design.md section 7), as contract change c6 records them:
+# <function>-role, <function>-policy, /aws/lambda/<function>.
 
 # Metadata only (ARN and name): rm-router and rm-judge read the value at run time.
 data "aws_secretsmanager_secret" "server_key" {

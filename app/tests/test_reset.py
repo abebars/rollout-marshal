@@ -221,10 +221,26 @@ def test_running_experiments_come_from_every_page_of_the_unfiltered_list(admin, 
     assert not [p for p in listed if "status=" in p]
 
 
-def test_a_next_page_on_another_host_is_refused(admin, flagsmith, monkeypatch):
-    with pytest.raises(bootstrap.Refused, match="next page"):
+def test_a_next_page_on_another_host_is_a_failure_not_a_refusal():
+    """It comes after reset's writes, and Refused means nothing was written."""
+    with pytest.raises(bootstrap.FlagsmithError, match="next page"):
         bootstrap.path_of("https://elsewhere.example/api/v1/environments/x/experiments/?page=2")
+    assert not issubclass(bootstrap.FlagsmithError, bootstrap.Refused)
     assert bootstrap.path_of(None) is None
+
+
+def test_a_list_whose_next_points_at_itself_stops_after_max_pages(admin, flagsmith, scheduler):
+    flagsmith.experiment_next = (
+        f"https://api.flagsmith.com/api/v1/environments/{DEV_KEY}/experiments/"
+    )
+    _expect_tick(scheduler)
+
+    code, text = _run(admin, FakeDynamo(), scheduler)
+
+    assert code == bootstrap.EXIT_FAILED
+    assert f"ran past {reset.MAX_PAGES} pages" in text and reset.MAX_PAGES == 50
+    listed = [p for m, p, _ in flagsmith.requests if m == "GET" and "/experiments/" in p]
+    assert len(listed) == reset.MAX_PAGES
 
 
 def test_nothing_printed_holds_a_key(admin, scheduler):

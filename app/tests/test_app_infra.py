@@ -233,3 +233,31 @@ def test_each_function_has_the_memory_c6_records():
     """256 MB, task 1.2's spike size, which c6 records."""
     assert "memory_mb = 256" in FILES["locals.tf"]
     assert "memory_size = local.memory_mb" in FILES["functions.tf"]
+
+
+def test_each_role_gets_its_own_policy_with_exactly_these_actions():
+    """PR #27's second review: a function given another's policy, a `logs:*` or a
+    `lambda:*`, and a second permission each passed before."""
+    functions = FILES["functions.tf"]
+    attach = block(functions, 'resource "aws_iam_role_policy" "fn"')
+    assert "role = aws_iam_role.fn[each.key].id" in attach
+    assert "policy = data.aws_iam_policy_document.fn[each.key].json" in attach
+    function = block(functions, 'resource "aws_lambda_function" "fn"')
+    assert "role = aws_iam_role.fn[each.key].arn" in function
+    raw = (MODULE / "functions.tf").read_text()
+    assert re.findall(r"^\s*actions\s*=\s*(.+?)\s*$", raw, flags=re.M) == [
+        '["sts:AssumeRole"]',
+        '["bedrock:InvokeModel"]',
+        '["bedrock:InvokeModel"]',
+        '["bedrock:InvokeModel"]',
+        '["logs:CreateLogStream", "logs:PutLogEvents"]',
+        '["dynamodb:GetItem"]',
+        '["secretsmanager:GetSecretValue"]',
+        '["lambda:InvokeFunction"]',
+        '["secretsmanager:GetSecretValue"]',
+    ]
+    assert TF.count('resource "aws_lambda_permission"') == 1
+    permission = block(FILES["api.tf"], 'resource "aws_lambda_permission" "api"')
+    assert 'action = "lambda:InvokeFunction"' in permission
+    assert 'principal = "apigateway.amazonaws.com"' in permission
+    assert 'function_name = aws_lambda_function.fn["router"].function_name' in permission
