@@ -782,7 +782,7 @@ Agent tools:
 | Flagsmith MCP tools | features, multivariate options, experiments | AgentCore Gateway MCP target, API key from AgentCore Identity |
 | `flagsmith_admin` | get-or-create metrics, start experiment, refresh and read results, read experiment status | Lambda `rm-flagsmith-admin` as a Gateway target |
 | `state` | `rm-runs` | boto3 in the agent |
-| `signals` | alarm state, CloudWatch metric statistics | boto3 in the agent |
+| `signals` | the latency alarm's state and threshold (DescribeAlarms) | boto3 in the agent |
 | `probe` | 5 direct invokes of `rm-answer-cheaper` | boto3 in the agent |
 | `schedule` | enable or disable the `rm-tick` schedule | boto3 in the agent |
 | `notify` | SNS topic `rm-incidents` | boto3 in the agent |
@@ -864,10 +864,13 @@ The runtime's role is the CLI stack's own: `AgentCore-rm-default` creates
 it with the Bedrock, logging and Gateway grants. Task 2.7's Terraform reads
 its ARN from the stack's export `AgentCore-rm-default-rm-agent-RoleArn` and
 attaches
-inline policy `rm-agent-runtime-tools`: read and write on `rm-runs`,
-publish to `rm-incidents`, get and put on the reports bucket, read alarms
-and metrics, invoke `rm-answer-cheaper` for the probe, and get and update
-`rm-tick` with pass-role on `rm-scheduler-role`.
+inline policy `rm-agent-runtime-tools`, each statement on its exact
+resource and only what the tools call (task 2.7): get, put, update and
+delete on `rm-runs`, which also authorise its transactions; publish to
+`rm-incidents`; put under the reports bucket's runs/ prefix; describe the
+alarm `rm-cheaper-latency-p95`; invoke `rm-answer-cheaper` for the probe;
+and get and update `rm-tick`, with pass-role on `rm-scheduler-role` to
+`scheduler.amazonaws.com` only.
 
 A target's name shapes the tool names the Gateway gives its tools, so these
 names never change: the Flagsmith tools appear as `flagsmith___<tool>`, all
