@@ -292,7 +292,7 @@ ANSWER_ERROR_FAILED = "AnswerFailed"  # any other error, max_tokens, no text, a 
 ROUTER_HANDLER = "app.router.handler.handler"
 JUDGE_HANDLER = "app.judge.handler.handler"  # task 3.5 (contract change c6)
 # Task 3.5's names (contract change c6, design.md section 5). Each app function's role,
-# inline policy and log group follow rm-invoker's pattern.
+# inline policy and log group follow rm-flagsmith-admin's pattern.
 APP_ROLE_SUFFIX = "-role"
 APP_POLICY_SUFFIX = "-policy"
 APP_LOG_GROUP_PREFIX = "/aws/lambda/"
@@ -303,9 +303,11 @@ APP_FUNCTION_MEMORY_MB = 256  # task 1.2's spike size
 APP_BUILD_DIR = "app/build/"
 APP_ZIPS = ("rm-answer.zip", "rm-router.zip", "rm-judge.zip")  # answer, router, judge
 FLAGSMITH_API_BASE_URL = "https://api.flagsmith.com"
+# bootstrap_flagsmith.py, seed_experiment.py and reset.py (load.py has its own, task 3.4)
 SCRIPT_EXIT_OK = 0
 SCRIPT_EXIT_FAILED = 1
-SCRIPT_EXIT_REFUSED = 3  # load, bootstrap, seed and reset
+SCRIPT_EXIT_USAGE = 2  # argparse's own
+SCRIPT_EXIT_REFUSED = 3
 SEED_HYPOTHESIS = (
     "Claude Sonnet 5 answers support questions as helpfully as Claude Fable 5.1, at no more"
     " latency or cost. Seeded by scripts/seed_experiment.py, without the agent."

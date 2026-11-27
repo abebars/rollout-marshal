@@ -736,6 +736,7 @@
   "SCRIPT_EXIT_FAILED": 1,
   "SCRIPT_EXIT_OK": 0,
   "SCRIPT_EXIT_REFUSED": 3,
+  "SCRIPT_EXIT_USAGE": 2,
   "SDK_EXPOSURE_CALL": "track_exposure_event",
   "SDK_FLAGS_CALL": "get_identity_flags",
   "SDK_FLUSH_CALL": "flush_events",
