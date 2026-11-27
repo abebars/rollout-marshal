@@ -280,6 +280,8 @@ def test_the_probe_fails_when_the_slowest_is_exactly_at_the_threshold(fake_lambd
 
 
 def test_the_probe_client_makes_one_attempt_and_reads_as_long_as_an_answer(monkeypatch):
+    for name in _AWS_ENV:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
     monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
@@ -691,9 +693,9 @@ def test_known_bias_names_both_biases():
         assert names.KILL_SWITCH_FEATURE in bias
         assert "enrolled in" in bias and "without ever being served it" in bias
         assert (
-            f"first seen while `{names.KILL_SWITCH_FEATURE}` is off is enrolled in "
-            f"`{names.VARIANT_CHEAPER}`"
-        ) in bias
+            f"- An identity first seen while `{names.KILL_SWITCH_FEATURE}` is off is "
+            f"enrolled in `{names.VARIANT_CHEAPER}` without ever being served it."
+        ) in bias.splitlines()
     incident = _section(
         report.render_report(make_run(incidents=INCIDENT), make_results(), now=START),
         "Recommendation",
@@ -740,10 +742,16 @@ def test_a_heading_in_the_models_text_adds_no_section():
     """The hypothesis and the prose are the model's words, put in as they came."""
     run = make_run()
     run["plan"]["hypothesis"] = "## Appendix\nSonnet 5 is as good.\n   # Also\n#tag"
-    prose = {"Results": "## Not a section\nWhy, in prose.", "Setup": " ### Nor this"}
+    prose = {
+        "Results": "## Not a section\nWhy, in prose.\n  ### Deeper\nMore prose.",
+        "Setup": " ### Nor this",
+    }
     markdown = report.render_report(run, make_results(), prose=prose, now=START)
     assert _sections(markdown) == list(names.REPORT_SECTIONS)
     assert "\\## Appendix" in markdown and "\\## Not a section" in markdown
+    # Indented, and not on the first line: re.M and the {0,3} indent both count.
+    assert "\n   \\# Also\n" in markdown and "\n  \\### Deeper\n" in markdown
+    assert "\n \\### Nor this" in markdown
     assert "Why, in prose." in _section(markdown, "Results")
 
 
