@@ -1,0 +1,16 @@
+{
+  "name": "rm",
+  "version": 2,
+  "managedBy": "CDK",
+  "runtimes": [
+    {
+      "name": "rm_agent",
+      "build": "CodeZip",
+      "modelProvider": "Bedrock",
+      "entrypoint": "agent.py",
+      "codeLocation": "spike",
+      "runtimeVersion": "PYTHON_3_13",
+      "protocol": "HTTP"
+    }
+  ]
+}

@@ -1,0 +1,5268 @@
+{
+ "count": 54,
+ "source": "tools/list on rm-gateway (https://rm-gateway-a1eznsykah.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp), signed with SigV4 by mcp-proxy-for-aws 2.0.0, 2026-11-26T22:2xZ; listed through agent/spike/agent.py FlagsmithTools.list_tools",
+ "tools": [
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Adds a feature flag to a release pipeline for staged rollout.",
+   "inputSchema": {
+    "properties": {
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "features": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "(Path parameter)",
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 255,
+      "type": "string"
+     },
+     "project": {
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "string"
+     },
+     "published_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "published_by": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "stages_count": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id__path",
+     "project_pk",
+     "name"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___add_feature_to_release_pipeline",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Creates a new change request for feature flag modifications in an environment.",
+   "inputSchema": {
+    "properties": {
+     "approvals": {
+      "items": {
+       "description": "Adds nested create feature",
+       "properties": {
+        "approved_at": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "id": {
+         "type": "integer"
+        },
+        "user": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "user"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "change_sets": {
+      "items": {
+       "description": "Adds nested create feature",
+       "properties": {
+        "feature": {
+         "type": "integer"
+        },
+        "feature_states_to_create": {
+         "description": "List of feature states to create as part of this change.",
+         "type": "array"
+        },
+        "feature_states_to_update": {
+         "description": "List of feature states to update as part of this change.",
+         "type": "array"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "live_from": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "segment_ids_to_delete_overrides": {
+         "description": "List of segment IDs for which the overrides should be deleted as part of this change.",
+         "items": {
+          "type": "integer"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "feature",
+        "feature_states_to_create",
+        "feature_states_to_update",
+        "segment_ids_to_delete_overrides"
+       ],
+       "type": "object"
+      },
+      "type": [
+       "array",
+       "null"
+      ]
+     },
+     "committed_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "committed_by": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "deleted_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "environment_api_key": {
+      "type": "string"
+     },
+     "environment_feature_versions": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "feature_states": {
+      "items": {
+       "description": "Adds nested create feature",
+       "properties": {
+        "enabled": {
+         "type": "boolean"
+        },
+        "feature": {
+         "type": "integer"
+        },
+        "feature_segment": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "feature_state_value": {
+         "properties": {
+          "boolean_value": {
+           "type": [
+            "boolean",
+            "null"
+           ]
+          },
+          "integer_value": {
+           "maximum": 2147483647.0,
+           "minimum": -2147483648.0,
+           "type": [
+            "integer",
+            "null"
+           ]
+          },
+          "string_value": {
+           "maxLength": 20000,
+           "type": [
+            "string",
+            "null"
+           ]
+          },
+          "type": {
+           "anyOf": [
+            {
+             "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+             "enum": [
+              "int",
+              "unicode",
+              "bool"
+             ],
+             "type": "string"
+            },
+            {
+             "enum": [
+              ""
+             ]
+            },
+            {
+             "type": "null"
+            }
+           ]
+          }
+         },
+         "type": "object"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "live_from": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "multivariate_feature_state_values": {
+         "items": {
+          "properties": {
+           "id": {
+            "type": "integer"
+           },
+           "multivariate_feature_option": {
+            "type": "integer"
+           },
+           "percentage_allocation": {
+            "format": "double",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "type": "number"
+           }
+          },
+          "required": [
+           "multivariate_feature_option",
+           "percentage_allocation"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "feature"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "group_assignments": {
+      "items": {
+       "description": "Adds nested create feature",
+       "properties": {
+        "group": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "group"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "ignore_conflicts": {
+      "type": "boolean"
+     },
+     "title": {
+      "maxLength": 500,
+      "type": "string"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "user": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "feature_states",
+     "title"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_environment_feature_change_request",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Creates a new version for a feature flag in a specific environment. Applies to environments with v2 feature versioning (use_v2_feature_versioning: true).",
+   "inputSchema": {
+    "properties": {
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "created_by": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_pk": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     },
+     "feature_states_to_create": {
+      "description": "Array of feature states that will be created in the new version. Note: these can only include segment overrides.",
+      "items": {
+       "description": "Adds nested create feature",
+       "properties": {
+        "change_request": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "created_at": {
+         "format": "date-time",
+         "type": "string"
+        },
+        "deleted_at": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "enabled": {
+         "type": "boolean"
+        },
+        "environment": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "feature": {
+         "type": "integer"
+        },
+        "feature_segment": {
+         "anyOf": [
+          {
+           "properties": {
+            "id": {
+             "type": "integer"
+            },
+            "priority": {
+             "minimum": 0.0,
+             "type": "integer"
+            },
+            "segment": {
+             "type": "integer"
+            },
+            "uuid": {
+             "format": "uuid",
+             "type": "string"
+            }
+           },
+           "required": [
+            "segment"
+           ],
+           "type": "object"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "feature_state_value": {
+         "properties": {
+          "boolean_value": {
+           "type": [
+            "boolean",
+            "null"
+           ]
+          },
+          "integer_value": {
+           "maximum": 2147483647.0,
+           "minimum": -2147483648.0,
+           "type": [
+            "integer",
+            "null"
+           ]
+          },
+          "string_value": {
+           "maxLength": 20000,
+           "type": [
+            "string",
+            "null"
+           ]
+          },
+          "type": {
+           "anyOf": [
+            {
+             "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+             "enum": [
+              "int",
+              "unicode",
+              "bool"
+             ],
+             "type": "string"
+            },
+            {
+             "enum": [
+              ""
+             ]
+            },
+            {
+             "type": "null"
+            }
+           ]
+          }
+         },
+         "type": "object"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "identity": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "live_from": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "multivariate_feature_state_values": {
+         "items": {
+          "properties": {
+           "id": {
+            "type": "integer"
+           },
+           "multivariate_feature_option": {
+            "type": "integer"
+           },
+           "percentage_allocation": {
+            "format": "double",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "type": "number"
+           }
+          },
+          "required": [
+           "multivariate_feature_option",
+           "percentage_allocation"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "updated_at": {
+         "format": "date-time",
+         "type": "string"
+        },
+        "uuid": {
+         "format": "uuid",
+         "type": "string"
+        }
+       },
+       "required": [
+        "feature_state_value"
+       ],
+       "type": "object"
+      },
+      "type": [
+       "array",
+       "null"
+      ]
+     },
+     "feature_states_to_update": {
+      "description": "Array of feature states to update in the new version.",
+      "items": {
+       "description": "Adds nested create feature",
+       "properties": {
+        "change_request": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "created_at": {
+         "format": "date-time",
+         "type": "string"
+        },
+        "deleted_at": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "enabled": {
+         "type": "boolean"
+        },
+        "environment": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "feature": {
+         "type": "integer"
+        },
+        "feature_segment": {
+         "anyOf": [
+          {
+           "properties": {
+            "id": {
+             "type": "integer"
+            },
+            "priority": {
+             "minimum": 0.0,
+             "type": "integer"
+            },
+            "segment": {
+             "type": "integer"
+            },
+            "uuid": {
+             "format": "uuid",
+             "type": "string"
+            }
+           },
+           "required": [
+            "segment"
+           ],
+           "type": "object"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "feature_state_value": {
+         "properties": {
+          "boolean_value": {
+           "type": [
+            "boolean",
+            "null"
+           ]
+          },
+          "integer_value": {
+           "maximum": 2147483647.0,
+           "minimum": -2147483648.0,
+           "type": [
+            "integer",
+            "null"
+           ]
+          },
+          "string_value": {
+           "maxLength": 20000,
+           "type": [
+            "string",
+            "null"
+           ]
+          },
+          "type": {
+           "anyOf": [
+            {
+             "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+             "enum": [
+              "int",
+              "unicode",
+              "bool"
+             ],
+             "type": "string"
+            },
+            {
+             "enum": [
+              ""
+             ]
+            },
+            {
+             "type": "null"
+            }
+           ]
+          }
+         },
+         "type": "object"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "identity": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "live_from": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "multivariate_feature_state_values": {
+         "items": {
+          "properties": {
+           "id": {
+            "type": "integer"
+           },
+           "multivariate_feature_option": {
+            "type": "integer"
+           },
+           "percentage_allocation": {
+            "format": "double",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "type": "number"
+           }
+          },
+          "required": [
+           "multivariate_feature_option",
+           "percentage_allocation"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "updated_at": {
+         "format": "date-time",
+         "type": "string"
+        },
+        "uuid": {
+         "format": "uuid",
+         "type": "string"
+        }
+       },
+       "required": [
+        "feature_state_value"
+       ],
+       "type": "object"
+      },
+      "type": [
+       "array",
+       "null"
+      ]
+     },
+     "is_live": {
+      "type": "boolean"
+     },
+     "live_from": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "publish_immediately": {
+      "default": false,
+      "description": "Boolean to confirm whether the new version should be publish immediately or not.",
+      "type": "boolean"
+     },
+     "published": {
+      "type": "boolean"
+     },
+     "published_by": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "segment_ids_to_delete_overrides": {
+      "description": "List of segment ids for which the segment overrides will be removed in the new version.",
+      "items": {
+       "type": "integer"
+      },
+      "type": [
+       "array",
+       "null"
+      ]
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_pk",
+     "feature_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_environment_feature_version",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Creates a new feature state for a specific version in an environment. Applies to environments with v2 feature versioning (use_v2_feature_versioning: true).",
+   "inputSchema": {
+    "properties": {
+     "change_request": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "deleted_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "enabled": {
+      "type": "boolean"
+     },
+     "environment": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "environment_feature_version_pk": {
+      "format": "uuid",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_pk": {
+      "type": "integer"
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     },
+     "feature_segment": {
+      "anyOf": [
+       {
+        "properties": {
+         "id": {
+          "type": "integer"
+         },
+         "priority": {
+          "minimum": 0.0,
+          "type": "integer"
+         },
+         "segment": {
+          "type": "integer"
+         },
+         "uuid": {
+          "format": "uuid",
+          "type": "string"
+         }
+        },
+        "required": [
+         "segment"
+        ],
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "feature_state_value": {
+      "properties": {
+       "boolean_value": {
+        "type": [
+         "boolean",
+         "null"
+        ]
+       },
+       "integer_value": {
+        "maximum": 2147483647.0,
+        "minimum": -2147483648.0,
+        "type": [
+         "integer",
+         "null"
+        ]
+       },
+       "string_value": {
+        "maxLength": 20000,
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "type": {
+        "anyOf": [
+         {
+          "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+          "enum": [
+           "int",
+           "unicode",
+           "bool"
+          ],
+          "type": "string"
+         },
+         {
+          "enum": [
+           ""
+          ]
+         },
+         {
+          "type": "null"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "identity": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "live_from": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "multivariate_feature_state_values": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "integer"
+        },
+        "multivariate_feature_option": {
+         "type": "integer"
+        },
+        "percentage_allocation": {
+         "format": "double",
+         "maximum": 100.0,
+         "minimum": 0.0,
+         "type": "number"
+        }
+       },
+       "required": [
+        "multivariate_feature_option",
+        "percentage_allocation"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_feature_version_pk",
+     "environment_pk",
+     "feature_pk",
+     "feature_state_value"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_environment_feature_version_state",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "(Beta) Creates an experiment for a multivariate feature. Metrics can be attached inline. Only one active experiment per feature is allowed.",
+   "inputSchema": {
+    "properties": {
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "ended_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_api_key": {
+      "type": "string"
+     },
+     "experiment_rollout": {
+      "allOf": [
+       {
+        "properties": {
+         "audience": {
+          "properties": {
+           "match": {
+            "allOf": [
+             {
+              "description": "* `any` - Any\n* `all` - All",
+              "enum": [
+               "any",
+               "all"
+              ],
+              "type": "string"
+             }
+            ],
+            "default": "any"
+           },
+           "segment_ids": {
+            "items": {
+             "type": "integer"
+            },
+            "maxItems": 1,
+            "type": "array"
+           }
+          },
+          "required": [
+           "segment_ids"
+          ],
+          "type": "object"
+         },
+         "enabled": {
+          "type": "boolean"
+         },
+         "feature_state_value": {
+          "properties": {
+           "type": {
+            "description": "* `integer` - integer\n* `string` - string\n* `boolean` - boolean",
+            "enum": [
+             "integer",
+             "string",
+             "boolean"
+            ],
+            "type": "string"
+           },
+           "value": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "type",
+           "value"
+          ],
+          "type": "object"
+         },
+         "multivariate_feature_state_values": {
+          "items": {
+           "properties": {
+            "multivariate_feature_option": {
+             "type": "integer"
+            },
+            "percentage_allocation": {
+             "format": "double",
+             "maximum": 100.0,
+             "minimum": 0.0,
+             "type": "number"
+            }
+           },
+           "required": [
+            "multivariate_feature_option",
+            "percentage_allocation"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "rollout_percentage": {
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "number"
+         }
+        },
+        "required": [
+         "enabled",
+         "feature_state_value",
+         "multivariate_feature_state_values",
+         "rollout_percentage"
+        ],
+        "type": "object"
+       }
+      ]
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "hypothesis": {
+      "type": "string"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "metrics": {
+      "items": {
+       "properties": {
+        "expected_direction": {
+         "description": "* `increase` - Increase\n* `decrease` - Decrease\n* `not_increase` - Should not increase\n* `not_decrease` - Should not decrease",
+         "enum": [
+          "increase",
+          "decrease",
+          "not_increase",
+          "not_decrease"
+         ],
+         "type": "string"
+        },
+        "metric": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "expected_direction",
+        "metric"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "name": {
+      "maxLength": 255,
+      "type": "string"
+     },
+     "rollout_decision": {
+      "anyOf": [
+       {
+        "description": "* `control` - Control\n* `variant` - Variant\n* `disable` - Disable",
+        "enum": [
+         "control",
+         "variant",
+         "disable"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "rollout_variant": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "started_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "status": {
+      "allOf": [
+       {
+        "description": "* `created` - Created\n* `running` - Running\n* `paused` - Paused\n* `completed` - Completed",
+        "enum": [
+         "created",
+         "running",
+         "paused",
+         "completed"
+        ],
+        "type": "string"
+       }
+      ]
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "feature",
+     "hypothesis",
+     "name"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_experiment",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Creates a new feature flag in the specified project with default settings.",
+   "inputSchema": {
+    "properties": {
+     "code_references_counts": {
+      "items": {
+       "properties": {
+        "count": {
+         "type": "integer"
+        },
+        "last_feature_found_at": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "last_successful_repository_scanned_at": {
+         "format": "date-time",
+         "type": "string"
+        },
+        "repository_url": {
+         "format": "uri",
+         "type": "string"
+        }
+       },
+       "required": [
+        "count",
+        "last_feature_found_at",
+        "last_successful_repository_scanned_at",
+        "repository_url"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "created_date": {
+      "format": "date-time",
+      "title": "DateCreated",
+      "type": "string"
+     },
+     "default_enabled": {
+      "type": "boolean"
+     },
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_feature_state": {
+      "anyOf": [
+       {
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         },
+         "environment": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "feature_segment": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "feature_state_value": {
+          "type": [
+           "string",
+           "integer",
+           "boolean",
+           "null"
+          ]
+         },
+         "id": {
+          "type": "integer"
+         },
+         "identity": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         }
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "group_owners": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "initial_value": {
+      "maxLength": 20000,
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "is_archived": {
+      "type": "boolean"
+     },
+     "is_num_identity_overrides_complete": {
+      "default": true,
+      "type": "boolean"
+     },
+     "is_server_key_only": {
+      "type": "boolean"
+     },
+     "last_modified_in_any_environment": {
+      "description": "Datetime representing the last time that the feature was modified in any environment in the given project. Note: requires feature versioning v2 enabled on the environment.",
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "last_modified_in_current_environment": {
+      "description": "Datetime representing the last time that the feature was modified in any environment in the current environment. Note: requires that the environment query parameter is passed and feature versioning v2 enabled on the environment.",
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "lifecycle_stage": {
+      "allOf": [
+       {
+        "description": "* `new` - new\n* `live` - live\n* `stale` - stale\n* `permanent` - permanent\n* `needs_monitoring` - needs_monitoring\n* `to_remove` - to_remove",
+        "enum": [
+         "new",
+         "live",
+         "stale",
+         "permanent",
+         "needs_monitoring",
+         "to_remove"
+        ],
+        "type": "string"
+       }
+      ]
+     },
+     "metadata": {
+      "items": {
+       "properties": {
+        "field_value": {
+         "maxLength": 2000,
+         "type": "string"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "model_field": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "field_value",
+        "model_field"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "multivariate_options": {
+      "items": {
+       "properties": {
+        "boolean_value": {
+         "type": [
+          "boolean",
+          "null"
+         ]
+        },
+        "default_percentage_allocation": {
+         "format": "double",
+         "maximum": 100.0,
+         "minimum": 0.0,
+         "type": "number"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "integer_value": {
+         "maximum": 2147483647.0,
+         "minimum": -2147483648.0,
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "key": {
+         "description": "A stable, human-readable identifier for the variant.",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "string_value": {
+         "maxLength": 20000,
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "type": {
+         "anyOf": [
+          {
+           "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+           "enum": [
+            "int",
+            "unicode",
+            "bool"
+           ],
+           "type": "string"
+          },
+          {
+           "enum": [
+            ""
+           ]
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "uuid": {
+         "format": "uuid",
+         "type": "string"
+        }
+       },
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "name": {
+      "maxLength": 2000,
+      "type": "string"
+     },
+     "num_identity_overrides": {
+      "description": "Number of identity overrides that exist for the given feature in the environment provided by the `environment` query parameter. Note: will return null for Edge enabled projects.",
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "num_segment_overrides": {
+      "description": "Number of segment overrides that exist for the given feature in the environment provided by the `environment` query parameter.",
+      "type": "integer"
+     },
+     "owners": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     },
+     "project": {
+      "description": "Changing the project selected will remove previous Feature States for the previously associated projects Environments that are related to this Feature. New default Feature States will be created for the new selected projects Environments for this Feature. Also this will remove any Tags associated with a feature as Tags are Project defined",
+      "type": "integer"
+     },
+     "project_pk": {
+      "description": "Changing the project selected will remove previous Feature States for the previously associated projects Environments that are related to this Feature. New default Feature States will be created for the new selected projects Environments for this Feature. Also this will remove any Tags associated with a feature as Tags are Project defined",
+      "type": "integer"
+     },
+     "segment_feature_state": {
+      "anyOf": [
+       {
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         },
+         "environment": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "feature_segment": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "feature_state_value": {
+          "type": [
+           "string",
+           "integer",
+           "boolean",
+           "null"
+          ]
+         },
+         "id": {
+          "type": "integer"
+         },
+         "identity": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         }
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "tags": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     },
+     "type": {
+      "anyOf": [
+       {
+        "description": "* `STANDARD` - STANDARD\n* `MULTIVARIATE` - MULTIVARIATE",
+        "enum": [
+         "STANDARD",
+         "MULTIVARIATE"
+        ],
+        "type": "string"
+       },
+       {
+        "enum": [
+         ""
+        ]
+       }
+      ]
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "project_pk",
+     "name"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_feature",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Creates a new multivariate option for a feature flag.",
+   "inputSchema": {
+    "properties": {
+     "boolean_value": {
+      "type": [
+       "boolean",
+       "null"
+      ]
+     },
+     "default_percentage_allocation": {
+      "format": "double",
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "type": "number"
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "integer_value": {
+      "maximum": 2147483647.0,
+      "minimum": -2147483648.0,
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "key": {
+      "description": "A stable, human-readable identifier for the variant.",
+      "maxLength": 255,
+      "pattern": "^[-a-zA-Z0-9_]+$",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "project_pk": {
+      "type": "string"
+     },
+     "string_value": {
+      "maxLength": 20000,
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "type": {
+      "anyOf": [
+       {
+        "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+        "enum": [
+         "int",
+         "unicode",
+         "bool"
+        ],
+        "type": "string"
+       },
+       {
+        "enum": [
+         ""
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "feature_pk",
+     "project_pk",
+     "feature"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_feature_multivariate_option",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "(Beta) Creates a metric with name, description, aggregation type, expected direction, and event definition.",
+   "inputSchema": {
+    "properties": {
+     "aggregation": {
+      "description": "* `count` - Count\n* `sum` - Sum\n* `mean` - Mean\n* `occurrence` - Occurrence (event happened at least once)",
+      "enum": [
+       "count",
+       "sum",
+       "mean",
+       "occurrence"
+      ],
+      "type": "string"
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     },
+     "direction": {
+      "description": "* `up` - Higher is better\n* `down` - Lower is better\n* `informational` - Informational only",
+      "enum": [
+       "up",
+       "down",
+       "informational"
+      ],
+      "type": "string"
+     },
+     "environment_api_key": {
+      "type": "string"
+     },
+     "experiments": {
+      "items": {
+       "description": "A lightweight view of an experiment using a metric, as returned in the\nmetric's ``experiments`` field.",
+       "properties": {
+        "id": {
+         "type": "integer"
+        },
+        "name": {
+         "type": "string"
+        },
+        "status": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name",
+        "status"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "name": {
+      "maxLength": 255,
+      "type": "string"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "definition",
+     "name"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_metric",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Send an invitation to join the organisation with specified role and permissions.",
+   "inputSchema": {
+    "properties": {
+     "date_created": {
+      "format": "date-time",
+      "title": "DateCreated",
+      "type": "string"
+     },
+     "email": {
+      "format": "email",
+      "maxLength": 254,
+      "type": "string"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "organisation_pk": {
+      "type": "integer"
+     },
+     "permission_groups": {
+      "items": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "type": "array"
+     },
+     "role": {
+      "description": "* `ADMIN` - Admin\n* `USER` - User",
+      "enum": [
+       "ADMIN",
+       "USER"
+      ],
+      "type": "string"
+     }
+    },
+    "required": [
+     "organisation_pk",
+     "email"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_organization_invite",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Creates a new user segment for audience targeting within the project.",
+   "inputSchema": {
+    "properties": {
+     "cohort": {
+      "anyOf": [
+       {
+        "properties": {
+         "deletion_requested_at": {
+          "format": "date-time",
+          "type": [
+           "string",
+           "null"
+          ]
+         },
+         "environment": {
+          "type": "integer"
+         },
+         "environment_api_key": {
+          "type": "string"
+         },
+         "environment_name": {
+          "type": "string"
+         },
+         "id": {
+          "type": "integer"
+         },
+         "source_type": {
+          "description": "* `csv` - CSV\n* `amplitude` - Amplitude\n* `mixpanel` - Mixpanel",
+          "enum": [
+           "csv",
+           "amplitude",
+           "mixpanel"
+          ],
+          "type": "string"
+         },
+         "version": {
+          "maximum": 2147483647.0,
+          "minimum": 0.0,
+          "type": "integer"
+         }
+        },
+        "required": [
+         "environment"
+        ],
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "feature": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "has_overrides": {
+      "description": "Whether any feature override points at this segment, counting overrides that are live now or scheduled to go live.",
+      "type": "boolean"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "managed_by": {
+      "anyOf": [
+       {
+        "description": "* `` - Unmanaged\n* `cohort` - Cohort\n* `dependency` - Flag dependency\n* `experiment` - Experiment\n* `release_pipeline` - Gradual rollout",
+        "enum": [
+         "cohort",
+         "dependency",
+         "experiment",
+         "release_pipeline"
+        ],
+        "type": "string"
+       },
+       {
+        "enum": [
+         ""
+        ]
+       }
+      ]
+     },
+     "membership_counts": {
+      "items": {
+       "properties": {
+        "count": {
+         "type": "integer"
+        },
+        "environment": {
+         "type": "integer"
+        },
+        "last_synced_at": {
+         "format": "date-time",
+         "type": "string"
+        }
+       },
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "metadata": {
+      "items": {
+       "properties": {
+        "field_value": {
+         "maxLength": 2000,
+         "type": "string"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "model_field": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "field_value",
+        "model_field"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "name": {
+      "maxLength": 2000,
+      "type": "string"
+     },
+     "project": {
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "integer"
+     },
+     "rules": {
+      "items": {
+       "description": "Adds nested create feature",
+       "properties": {
+        "conditions": {
+         "items": {
+          "properties": {
+           "delete": {
+            "type": "boolean"
+           },
+           "description": {
+            "type": [
+             "string",
+             "null"
+            ]
+           },
+           "id": {
+            "type": "integer"
+           },
+           "operator": {
+            "description": "* `EQUAL` - Exactly Matches\n* `GREATER_THAN` - Greater than\n* `LESS_THAN` - Less than\n* `CONTAINS` - Contains\n* `GREATER_THAN_INCLUSIVE` - Greater than or equal to\n* `LESS_THAN_INCLUSIVE` - Less than or equal to\n* `NOT_CONTAINS` - Does not contain\n* `NOT_EQUAL` - Does not match\n* `REGEX` - Matches regex\n* `PERCENTAGE_SPLIT` - Percentage split\n* `MODULO` - Modulo Operation\n* `IS_SET` - Is set\n* `IS_NOT_SET` - Is not set\n* `IN` - In",
+            "enum": [
+             "EQUAL",
+             "GREATER_THAN",
+             "LESS_THAN",
+             "CONTAINS",
+             "GREATER_THAN_INCLUSIVE",
+             "LESS_THAN_INCLUSIVE",
+             "NOT_CONTAINS",
+             "NOT_EQUAL",
+             "REGEX",
+             "PERCENTAGE_SPLIT",
+             "MODULO",
+             "IS_SET",
+             "IS_NOT_SET",
+             "IN"
+            ],
+            "type": "string"
+           },
+           "property": {
+            "maxLength": 1000,
+            "type": [
+             "string",
+             "null"
+            ]
+           },
+           "value": {
+            "maxLength": 1000,
+            "type": [
+             "string",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "operator"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "delete": {
+         "type": "boolean"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "rules": {
+         "items": {
+          "description": "Adds nested create feature",
+          "properties": {
+           "conditions": {
+            "items": {
+             "properties": {
+              "delete": {
+               "type": "boolean"
+              },
+              "description": {
+               "type": [
+                "string",
+                "null"
+               ]
+              },
+              "id": {
+               "type": "integer"
+              },
+              "operator": {
+               "description": "* `EQUAL` - Exactly Matches\n* `GREATER_THAN` - Greater than\n* `LESS_THAN` - Less than\n* `CONTAINS` - Contains\n* `GREATER_THAN_INCLUSIVE` - Greater than or equal to\n* `LESS_THAN_INCLUSIVE` - Less than or equal to\n* `NOT_CONTAINS` - Does not contain\n* `NOT_EQUAL` - Does not match\n* `REGEX` - Matches regex\n* `PERCENTAGE_SPLIT` - Percentage split\n* `MODULO` - Modulo Operation\n* `IS_SET` - Is set\n* `IS_NOT_SET` - Is not set\n* `IN` - In",
+               "enum": [
+                "EQUAL",
+                "GREATER_THAN",
+                "LESS_THAN",
+                "CONTAINS",
+                "GREATER_THAN_INCLUSIVE",
+                "LESS_THAN_INCLUSIVE",
+                "NOT_CONTAINS",
+                "NOT_EQUAL",
+                "REGEX",
+                "PERCENTAGE_SPLIT",
+                "MODULO",
+                "IS_SET",
+                "IS_NOT_SET",
+                "IN"
+               ],
+               "type": "string"
+              },
+              "property": {
+               "maxLength": 1000,
+               "type": [
+                "string",
+                "null"
+               ]
+              },
+              "value": {
+               "maxLength": 1000,
+               "type": [
+                "string",
+                "null"
+               ]
+              }
+             },
+             "required": [
+              "operator"
+             ],
+             "type": "object"
+            },
+            "type": "array"
+           },
+           "delete": {
+            "type": "boolean"
+           },
+           "id": {
+            "type": "integer"
+           },
+           "type": {
+            "description": "* `ALL` - all\n* `ANY` - any\n* `NONE` - none",
+            "enum": [
+             "ALL",
+             "ANY",
+             "NONE"
+            ],
+            "type": "string"
+           }
+          },
+          "required": [
+           "type"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "type": {
+         "description": "* `ALL` - all\n* `ANY` - any\n* `NONE` - none",
+         "enum": [
+          "ALL",
+          "ANY",
+          "NONE"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "type"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "version_of": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "project_pk",
+     "name",
+     "rules"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_project_segment",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Creates a segment override for a feature in an environment in a single call, setting both the segment binding and its value. Applies to environments without v2 feature versioning (use_v2_feature_versioning: false).",
+   "inputSchema": {
+    "properties": {
+     "change_request": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "deleted_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "enabled": {
+      "type": "boolean"
+     },
+     "environment": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "environment_api_key": {
+      "type": "string"
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     },
+     "feature_segment": {
+      "anyOf": [
+       {
+        "properties": {
+         "id": {
+          "type": "integer"
+         },
+         "priority": {
+          "minimum": 0.0,
+          "type": "integer"
+         },
+         "segment": {
+          "type": "integer"
+         },
+         "uuid": {
+          "format": "uuid",
+          "type": "string"
+         }
+        },
+        "required": [
+         "segment"
+        ],
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "feature_state_value": {
+      "properties": {
+       "boolean_value": {
+        "type": [
+         "boolean",
+         "null"
+        ]
+       },
+       "integer_value": {
+        "maximum": 2147483647.0,
+        "minimum": -2147483648.0,
+        "type": [
+         "integer",
+         "null"
+        ]
+       },
+       "string_value": {
+        "maxLength": 20000,
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "type": {
+        "anyOf": [
+         {
+          "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+          "enum": [
+           "int",
+           "unicode",
+           "bool"
+          ],
+          "type": "string"
+         },
+         {
+          "enum": [
+           ""
+          ]
+         },
+         {
+          "type": "null"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "identity": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "live_from": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "multivariate_feature_state_values": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "integer"
+        },
+        "multivariate_feature_option": {
+         "type": "integer"
+        },
+        "percentage_allocation": {
+         "format": "double",
+         "maximum": 100.0,
+         "minimum": 0.0,
+         "type": "number"
+        }
+       },
+       "required": [
+        "multivariate_feature_option",
+        "percentage_allocation"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "feature_pk",
+     "feature_state_value"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___create_segment_override",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": true,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Deletes a multivariate option.",
+   "inputSchema": {
+    "properties": {
+     "feature_pk": {
+      "type": "integer"
+     },
+     "id": {
+      "description": "A unique integer value identifying this multivariate feature option.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "feature_pk",
+     "id",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___delete_feature_multivariate_option",
+   "outputSchema": null
+  },
+  {
+   "annotations": {
+    "destructive_hint": true,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Deletes a segment override. Applies to environments without v2 feature versioning (use_v2_feature_versioning: false).",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "description": "A unique integer value identifying this feature segment.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___delete_feature_segment",
+   "outputSchema": null
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves feature state information for a specific version in an environment. Applies to environments with v2 feature versioning (use_v2_feature_versioning: true).",
+   "inputSchema": {
+    "properties": {
+     "environment_feature_version_pk": {
+      "format": "uuid",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_pk": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment_feature_version_pk",
+     "environment_pk",
+     "feature_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_environment_feature_version_states",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object",
+    "x-fastmcp-wrap-result": true
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves version information for a feature flag in a specific environment. Applies to environments with v2 feature versioning (use_v2_feature_versioning: true).",
+   "inputSchema": {
+    "properties": {
+     "environment_pk": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "page_size": {
+      "description": "Number of results to return per page.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment_pk",
+     "feature_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_environment_feature_versions",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "(Beta) Retrieves experiment details including feature configuration, attached metrics, and rollout state.",
+   "inputSchema": {
+    "properties": {
+     "environment_api_key": {
+      "type": "string"
+     },
+     "experiment_id": {
+      "description": "A unique integer value identifying this experiment.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "experiment_id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_experiment",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "(Beta) Retrieves variant exposure counts for an experiment. Returns null if not yet computed.",
+   "inputSchema": {
+    "properties": {
+     "environment_api_key": {
+      "type": "string"
+     },
+     "experiment_id": {
+      "description": "A unique integer value identifying this experiment.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "experiment_id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_experiment_exposures",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "(Beta) Retrieves statistical results for an experiment's metrics. Returns null if not yet computed.",
+   "inputSchema": {
+    "properties": {
+     "environment_api_key": {
+      "type": "string"
+     },
+     "experiment_id": {
+      "description": "A unique integer value identifying this experiment.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "experiment_id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_experiment_results",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves code references and usage information for the feature flag.",
+   "inputSchema": {
+    "properties": {
+     "feature_pk": {
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "feature_pk",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_feature_code_references",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves evaluation data and analytics for a specific feature flag.",
+   "inputSchema": {
+    "properties": {
+     "client_application_name": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "client_application_version": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_id": {
+      "type": "integer"
+     },
+     "id": {
+      "description": "A unique integer value identifying this feature.",
+      "type": "integer"
+     },
+     "period": {
+      "default": 30,
+      "description": "number of days",
+      "type": "integer"
+     },
+     "project_pk": {
+      "description": "Changing the project selected will remove previous Feature States for the previously associated projects Environments that are related to this Feature. New default Feature States will be created for the new selected projects Environments for this Feature. Also this will remove any Tags associated with a feature as Tags are Project defined",
+      "type": "integer"
+     },
+     "user_agent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "environment_id",
+     "id",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_feature_evaluation_data",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves external resources linked to the feature flag.",
+   "inputSchema": {
+    "properties": {
+     "feature_pk": {
+      "type": "integer"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "feature_pk",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_feature_external_resources",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves detailed information about a specific feature flag.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "description": "A unique integer value identifying this feature.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "description": "Changing the project selected will remove previous Feature States for the previously associated projects Environments that are related to this Feature. New default Feature States will be created for the new selected projects Environments for this Feature. Also this will remove any Tags associated with a feature as Tags are Project defined",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_feature_flag",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves feature health monitoring events and metrics for the project.",
+   "inputSchema": {
+    "properties": {
+     "project_pk": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_feature_health_events",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object",
+    "x-fastmcp-wrap-result": true
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves the count of features in each lifecycle stage for the specified environment.",
+   "inputSchema": {
+    "properties": {
+     "environment_pk": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_feature_lifecycle_counts",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "(Beta) Retrieves details of a specific metric, including which experiments use it.",
+   "inputSchema": {
+    "properties": {
+     "environment_api_key": {
+      "type": "string"
+     },
+     "id": {
+      "description": "A unique integer value identifying this metric.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_metric",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves comprehensive information about a specific project including configuration and statistics.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "description": "A unique integer value identifying this project.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_project",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves detailed information about a specific user segment.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "description": "A unique integer value identifying this segment.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_project_segment",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves detailed information about a specific release pipeline.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project_pk": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___get_release_pipeline",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all change requests for an environment.",
+   "inputSchema": {
+    "properties": {
+     "committed": {
+      "description": "Filter on the committed status of a change request.",
+      "type": [
+       "boolean",
+       "null"
+      ]
+     },
+     "environment_api_key": {
+      "type": "string"
+     },
+     "feature_id": {
+      "description": "Filter for a particular feature.",
+      "type": "integer"
+     },
+     "live_from_after": {
+      "description": "Filter change requests due to go live after this datetime.",
+      "format": "date-time",
+      "type": "string"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "page_size": {
+      "description": "Number of results to return per page.",
+      "type": "integer"
+     },
+     "search": {
+      "description": "Fuzzy search across Change Request titles.",
+      "minLength": 1,
+      "type": "string"
+     },
+     "segment_id": {
+      "description": "Filter change requests which match a specific segment id.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment_api_key"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_environment_change_requests",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Lists all environments the user has access to",
+   "inputSchema": {
+    "properties": {
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "project": {
+      "description": "ID of the project to filter by.",
+      "type": "integer"
+     }
+    },
+    "required": [],
+    "type": "object"
+   },
+   "name": "flagsmith___list_environments",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "(Beta) Lists experiments for an environment. Supports filtering by status and searching by experiment or feature name.",
+   "inputSchema": {
+    "properties": {
+     "environment_api_key": {
+      "type": "string"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "page_size": {
+      "description": "Number of results to return per page.",
+      "type": "integer"
+     },
+     "q": {
+      "description": "Search by experiment or feature name.",
+      "type": "string"
+     },
+     "status": {
+      "description": "Filter by experiment status (DRAFT, RUNNING, PAUSED, COMPLETED).",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_api_key"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_experiments",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all multivariate options for a feature flag.",
+   "inputSchema": {
+    "properties": {
+     "feature_pk": {
+      "type": "integer"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "feature_pk",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_feature_multivariate_options",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Lists segment overrides for a feature in an environment.",
+   "inputSchema": {
+    "properties": {
+     "environment": {
+      "type": "integer"
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "environment",
+     "feature"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_feature_segments",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "(Beta) Lists experiment metrics for an environment. Supports search by name via the q parameter.",
+   "inputSchema": {
+    "properties": {
+     "environment_api_key": {
+      "type": "string"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "page_size": {
+      "description": "Number of results to return per page.",
+      "type": "integer"
+     },
+     "q": {
+      "description": "Search metrics by name.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_api_key"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_metrics",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all permission groups within the organisation.",
+   "inputSchema": {
+    "properties": {
+     "organisation_pk": {
+      "type": "integer"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "organisation_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_organization_groups",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all pending invitations for the organisation.",
+   "inputSchema": {
+    "properties": {
+     "organisation_pk": {
+      "type": "integer"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "organisation_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_organization_invites",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all custom roles defined within the organisation.",
+   "inputSchema": {
+    "properties": {
+     "organisation_pk": {
+      "type": "string"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "organisation_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_organization_roles",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Lists all organisations accessible with the provided user API key.",
+   "inputSchema": {
+    "properties": {
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     }
+    },
+    "required": [],
+    "type": "object"
+   },
+   "name": "flagsmith___list_organizations",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all change requests for a project.",
+   "inputSchema": {
+    "properties": {
+     "committed": {
+      "description": "Filter on the committed status of a change request.",
+      "type": [
+       "boolean",
+       "null"
+      ]
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "page_size": {
+      "description": "Number of results to return per page.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "string"
+     },
+     "search": {
+      "description": "Fuzzy search across Change Request titles.",
+      "minLength": 1,
+      "type": "string"
+     },
+     "segment_id": {
+      "description": "Filter change requests which match a specific segment id.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_project_change_requests",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all environments configured for the specified project.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "description": "A unique integer value identifying this project.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_project_environments",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Lists a project's feature flags (paginated). Pass `environment=<id>` to also get each feature's live state for that environment in `environment_feature_state`, along with override counts. Works for both v1 and v2 versioned environments.",
+   "inputSchema": {
+    "properties": {
+     "environment": {
+      "description": "Integer ID of the environment to view features in the context of.",
+      "type": "integer"
+     },
+     "group_owners": {
+      "description": "Comma separated list of group owner ids to filter on",
+      "minLength": 1,
+      "type": "string"
+     },
+     "identity": {
+      "description": "ID of the identity to sort features with identity overrides first.",
+      "minLength": 1,
+      "type": "string"
+     },
+     "is_archived": {
+      "type": "boolean"
+     },
+     "is_enabled": {
+      "description": "Boolean value to filter features as enabled or disabled.",
+      "type": [
+       "boolean",
+       "null"
+      ]
+     },
+     "lifecycle_stage": {
+      "description": "Lifecycle stage to filter on. Requires `environment`.\n\n* `new` - new\n* `live` - live\n* `stale` - stale\n* `permanent` - permanent\n* `needs_monitoring` - needs_monitoring\n* `to_remove` - to_remove",
+      "enum": [
+       "new",
+       "live",
+       "stale",
+       "permanent",
+       "needs_monitoring",
+       "to_remove"
+      ],
+      "minLength": 1,
+      "type": "string"
+     },
+     "owners": {
+      "description": "Comma separated list of owner ids to filter on",
+      "minLength": 1,
+      "type": "string"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "page_size": {
+      "description": "Number of results to return per page.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "description": "Changing the project selected will remove previous Feature States for the previously associated projects Environments that are related to this Feature. New default Feature States will be created for the new selected projects Environments for this Feature. Also this will remove any Tags associated with a feature as Tags are Project defined",
+      "type": "integer"
+     },
+     "search": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "segment": {
+      "description": "Integer ID of the segment to retrieve segment overrides for.",
+      "type": "integer"
+     },
+     "sort_direction": {
+      "default": "ASC",
+      "description": "* `ASC` - ASC\n* `DESC` - DESC",
+      "enum": [
+       "ASC",
+       "DESC"
+      ],
+      "minLength": 1,
+      "type": "string"
+     },
+     "sort_field": {
+      "default": "created_date",
+      "description": "* `created_date` - created_date\n* `name` - name",
+      "enum": [
+       "created_date",
+       "name"
+      ],
+      "minLength": 1,
+      "type": "string"
+     },
+     "tag_strategy": {
+      "default": "INTERSECTION",
+      "description": "* `UNION` - UNION\n* `INTERSECTION` - INTERSECTION",
+      "enum": [
+       "UNION",
+       "INTERSECTION"
+      ],
+      "minLength": 1,
+      "type": "string"
+     },
+     "tags": {
+      "description": "Comma separated list of tag ids to filter on (AND with INTERSECTION, and OR with UNION via tag_strategy)",
+      "minLength": 1,
+      "type": "string"
+     },
+     "type": {
+      "description": "Feature type to filter on (STANDARD or MULTIVARIATE).\n\n* `STANDARD` - STANDARD\n* `MULTIVARIATE` - MULTIVARIATE",
+      "enum": [
+       "STANDARD",
+       "MULTIVARIATE"
+      ],
+      "minLength": 1,
+      "type": "string"
+     },
+     "value_search": {
+      "description": "Value of type int, string, or boolean to filter features based on their values",
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_project_features",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all release pipelines configured for the specified project.",
+   "inputSchema": {
+    "properties": {
+     "ordering": {
+      "description": "Which field to use when ordering the results.",
+      "type": "string"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "page_size": {
+      "description": "Number of results to return per page.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_project_release_pipelines",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all user segments defined for audience targeting within the project.",
+   "inputSchema": {
+    "properties": {
+     "identity": {
+      "description": "Optionally provide the id of an identity to get only the segments they match",
+      "minLength": 1,
+      "type": "string"
+     },
+     "include_feature_specific": {
+      "default": true,
+      "type": "boolean"
+     },
+     "page": {
+      "description": "A page number within the paginated result set.",
+      "type": "integer"
+     },
+     "page_size": {
+      "description": "Number of results to return per page.",
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "integer"
+     },
+     "q": {
+      "description": "Search term to find segment with given term in their name",
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_project_segments",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Retrieves all projects within a specified organisation.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "description": "A unique integer value identifying this organisation.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___list_projects_in_organization",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Publishes a feature version to make it live in the environment. Applies to environments with v2 feature versioning (use_v2_feature_versioning: true).",
+   "inputSchema": {
+    "properties": {
+     "environment_pk": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     },
+     "id": {
+      "type": "string"
+     },
+     "live_from": {
+      "format": "date-time",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_pk",
+     "feature_pk",
+     "id"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___publish_environment_feature_version",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Updates a feature state in an environment, including enabled status and value. Applies to environments without v2 feature versioning (use_v2_feature_versioning: false).",
+   "inputSchema": {
+    "properties": {
+     "change_request": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "deleted_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "enabled": {
+      "type": "boolean"
+     },
+     "environment": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "environment_api_key": {
+      "type": "string"
+     },
+     "environment_feature_version": {
+      "format": "uuid",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "feature_segment": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "feature_state_value": {
+      "type": [
+       "string",
+       "integer",
+       "number",
+       "boolean",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "A unique integer value identifying this feature state. (Path parameter)",
+      "type": "integer"
+     },
+     "identifier": {
+      "description": "Can be passed as an alternative to `identity`",
+      "type": "string"
+     },
+     "identity": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "live_from": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "multivariate_feature_state_values": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "integer"
+        },
+        "multivariate_feature_option": {
+         "type": "integer"
+        },
+        "percentage_allocation": {
+         "format": "double",
+         "maximum": 100.0,
+         "minimum": 0.0,
+         "type": "number"
+        }
+       },
+       "required": [
+        "multivariate_feature_option",
+        "percentage_allocation"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "version": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "id__path",
+     "feature"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_environment_feature_state",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Updates an existing feature state for a specific version in an environment. Applies to environments with v2 feature versioning (use_v2_feature_versioning: true).",
+   "inputSchema": {
+    "properties": {
+     "change_request": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "deleted_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "enabled": {
+      "type": "boolean"
+     },
+     "environment": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "environment_feature_version_pk": {
+      "format": "uuid",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_pk": {
+      "type": "integer"
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     },
+     "feature_segment": {
+      "anyOf": [
+       {
+        "properties": {
+         "id": {
+          "type": "integer"
+         },
+         "priority": {
+          "minimum": 0.0,
+          "type": "integer"
+         },
+         "segment": {
+          "type": "integer"
+         },
+         "uuid": {
+          "format": "uuid",
+          "type": "string"
+         }
+        },
+        "required": [
+         "segment"
+        ],
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "feature_state_value": {
+      "properties": {
+       "boolean_value": {
+        "type": [
+         "boolean",
+         "null"
+        ]
+       },
+       "integer_value": {
+        "maximum": 2147483647.0,
+        "minimum": -2147483648.0,
+        "type": [
+         "integer",
+         "null"
+        ]
+       },
+       "string_value": {
+        "maxLength": 20000,
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "type": {
+        "anyOf": [
+         {
+          "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+          "enum": [
+           "int",
+           "unicode",
+           "bool"
+          ],
+          "type": "string"
+         },
+         {
+          "enum": [
+           ""
+          ]
+         },
+         {
+          "type": "null"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "A unique integer value identifying this feature state. (Path parameter)",
+      "type": "integer"
+     },
+     "identity": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "live_from": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "multivariate_feature_state_values": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "integer"
+        },
+        "multivariate_feature_option": {
+         "type": "integer"
+        },
+        "percentage_allocation": {
+         "format": "double",
+         "maximum": 100.0,
+         "minimum": 0.0,
+         "type": "number"
+        }
+       },
+       "required": [
+        "multivariate_feature_option",
+        "percentage_allocation"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_feature_version_pk",
+     "environment_pk",
+     "feature_pk",
+     "id__path",
+     "feature_state_value"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_environment_feature_version_state",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "(Beta) Updates an experiment's name or its hypothesis.",
+   "inputSchema": {
+    "properties": {
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "ended_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_api_key": {
+      "type": "string"
+     },
+     "experiment_id": {
+      "description": "A unique integer value identifying this experiment.",
+      "type": "integer"
+     },
+     "experiment_rollout": {
+      "allOf": [
+       {
+        "properties": {
+         "audience": {
+          "properties": {
+           "match": {
+            "allOf": [
+             {
+              "description": "* `any` - Any\n* `all` - All",
+              "enum": [
+               "any",
+               "all"
+              ],
+              "type": "string"
+             }
+            ],
+            "default": "any"
+           },
+           "segment_ids": {
+            "items": {
+             "type": "integer"
+            },
+            "maxItems": 1,
+            "type": "array"
+           }
+          },
+          "required": [
+           "segment_ids"
+          ],
+          "type": "object"
+         },
+         "enabled": {
+          "type": "boolean"
+         },
+         "feature_state_value": {
+          "properties": {
+           "type": {
+            "description": "* `integer` - integer\n* `string` - string\n* `boolean` - boolean",
+            "enum": [
+             "integer",
+             "string",
+             "boolean"
+            ],
+            "type": "string"
+           },
+           "value": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "type",
+           "value"
+          ],
+          "type": "object"
+         },
+         "multivariate_feature_state_values": {
+          "items": {
+           "properties": {
+            "multivariate_feature_option": {
+             "type": "integer"
+            },
+            "percentage_allocation": {
+             "format": "double",
+             "maximum": 100.0,
+             "minimum": 0.0,
+             "type": "number"
+            }
+           },
+           "required": [
+            "multivariate_feature_option",
+            "percentage_allocation"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "rollout_percentage": {
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "number"
+         }
+        },
+        "required": [
+         "enabled",
+         "feature_state_value",
+         "multivariate_feature_state_values",
+         "rollout_percentage"
+        ],
+        "type": "object"
+       }
+      ]
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "hypothesis": {
+      "type": "string"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "metrics": {
+      "items": {
+       "properties": {
+        "expected_direction": {
+         "description": "* `increase` - Increase\n* `decrease` - Decrease\n* `not_increase` - Should not increase\n* `not_decrease` - Should not decrease",
+         "enum": [
+          "increase",
+          "decrease",
+          "not_increase",
+          "not_decrease"
+         ],
+         "type": "string"
+        },
+        "metric": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "expected_direction",
+        "metric"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "name": {
+      "maxLength": 255,
+      "type": "string"
+     },
+     "rollout_decision": {
+      "anyOf": [
+       {
+        "description": "* `control` - Control\n* `variant` - Variant\n* `disable` - Disable",
+        "enum": [
+         "control",
+         "variant",
+         "disable"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "rollout_variant": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "started_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "status": {
+      "allOf": [
+       {
+        "description": "* `created` - Created\n* `running` - Running\n* `paused` - Paused\n* `completed` - Completed",
+        "enum": [
+         "created",
+         "running",
+         "paused",
+         "completed"
+        ],
+        "type": "string"
+       }
+      ]
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "experiment_id",
+     "feature",
+     "hypothesis",
+     "name"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_experiment",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Updates feature flag properties such as name and description.",
+   "inputSchema": {
+    "properties": {
+     "code_references_counts": {
+      "items": {
+       "properties": {
+        "count": {
+         "type": "integer"
+        },
+        "last_feature_found_at": {
+         "format": "date-time",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "last_successful_repository_scanned_at": {
+         "format": "date-time",
+         "type": "string"
+        },
+        "repository_url": {
+         "format": "uri",
+         "type": "string"
+        }
+       },
+       "required": [
+        "count",
+        "last_feature_found_at",
+        "last_successful_repository_scanned_at",
+        "repository_url"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "created_date": {
+      "format": "date-time",
+      "title": "DateCreated",
+      "type": "string"
+     },
+     "default_enabled": {
+      "type": "boolean"
+     },
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "environment_feature_state": {
+      "anyOf": [
+       {
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         },
+         "environment": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "feature_segment": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "feature_state_value": {
+          "type": [
+           "string",
+           "integer",
+           "boolean",
+           "null"
+          ]
+         },
+         "id": {
+          "type": "integer"
+         },
+         "identity": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         }
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "group_owners": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "A unique integer value identifying this feature. (Path parameter)",
+      "type": "integer"
+     },
+     "initial_value": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "is_archived": {
+      "type": "boolean"
+     },
+     "is_num_identity_overrides_complete": {
+      "default": true,
+      "type": "boolean"
+     },
+     "is_server_key_only": {
+      "type": "boolean"
+     },
+     "last_modified_in_any_environment": {
+      "description": "Datetime representing the last time that the feature was modified in any environment in the given project. Note: requires feature versioning v2 enabled on the environment.",
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "last_modified_in_current_environment": {
+      "description": "Datetime representing the last time that the feature was modified in any environment in the current environment. Note: requires that the environment query parameter is passed and feature versioning v2 enabled on the environment.",
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "lifecycle_stage": {
+      "allOf": [
+       {
+        "description": "* `new` - new\n* `live` - live\n* `stale` - stale\n* `permanent` - permanent\n* `needs_monitoring` - needs_monitoring\n* `to_remove` - to_remove",
+        "enum": [
+         "new",
+         "live",
+         "stale",
+         "permanent",
+         "needs_monitoring",
+         "to_remove"
+        ],
+        "type": "string"
+       }
+      ]
+     },
+     "metadata": {
+      "items": {
+       "properties": {
+        "field_value": {
+         "maxLength": 2000,
+         "type": "string"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "model_field": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "field_value",
+        "model_field"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "multivariate_options": {
+      "items": {
+       "properties": {
+        "boolean_value": {
+         "type": [
+          "boolean",
+          "null"
+         ]
+        },
+        "default_percentage_allocation": {
+         "format": "double",
+         "maximum": 100.0,
+         "minimum": 0.0,
+         "type": "number"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "integer_value": {
+         "maximum": 2147483647.0,
+         "minimum": -2147483648.0,
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "key": {
+         "description": "A stable, human-readable identifier for the variant.",
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "string_value": {
+         "maxLength": 20000,
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "type": {
+         "anyOf": [
+          {
+           "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+           "enum": [
+            "int",
+            "unicode",
+            "bool"
+           ],
+           "type": "string"
+          },
+          {
+           "enum": [
+            ""
+           ]
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "uuid": {
+         "format": "uuid",
+         "type": "string"
+        }
+       },
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "name": {
+      "type": "string"
+     },
+     "num_identity_overrides": {
+      "description": "Number of identity overrides that exist for the given feature in the environment provided by the `environment` query parameter. Note: will return null for Edge enabled projects.",
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "num_segment_overrides": {
+      "description": "Number of segment overrides that exist for the given feature in the environment provided by the `environment` query parameter.",
+      "type": "integer"
+     },
+     "owners": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     },
+     "project": {
+      "description": "Changing the project selected will remove previous Feature States for the previously associated projects Environments that are related to this Feature. New default Feature States will be created for the new selected projects Environments for this Feature. Also this will remove any Tags associated with a feature as Tags are Project defined",
+      "type": "integer"
+     },
+     "project_pk": {
+      "description": "Changing the project selected will remove previous Feature States for the previously associated projects Environments that are related to this Feature. New default Feature States will be created for the new selected projects Environments for this Feature. Also this will remove any Tags associated with a feature as Tags are Project defined",
+      "type": "integer"
+     },
+     "segment_feature_state": {
+      "anyOf": [
+       {
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         },
+         "environment": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "feature_segment": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "feature_state_value": {
+          "type": [
+           "string",
+           "integer",
+           "boolean",
+           "null"
+          ]
+         },
+         "id": {
+          "type": "integer"
+         },
+         "identity": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         }
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "tags": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     },
+     "type": {
+      "anyOf": [
+       {
+        "description": "* `STANDARD` - STANDARD\n* `MULTIVARIATE` - MULTIVARIATE",
+        "enum": [
+         "STANDARD",
+         "MULTIVARIATE"
+        ],
+        "type": "string"
+       },
+       {
+        "enum": [
+         ""
+        ]
+       }
+      ]
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id__path",
+     "project_pk"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_feature",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Updates an existing multivariate option.",
+   "inputSchema": {
+    "properties": {
+     "boolean_value": {
+      "type": [
+       "boolean",
+       "null"
+      ]
+     },
+     "default_percentage_allocation": {
+      "format": "double",
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "type": "number"
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "feature_pk": {
+      "type": "integer"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "A unique integer value identifying this multivariate feature option. (Path parameter)",
+      "type": "integer"
+     },
+     "integer_value": {
+      "maximum": 2147483647.0,
+      "minimum": -2147483648.0,
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "key": {
+      "description": "A stable, human-readable identifier for the variant.",
+      "maxLength": 255,
+      "pattern": "^[-a-zA-Z0-9_]+$",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "project_pk": {
+      "type": "string"
+     },
+     "string_value": {
+      "maxLength": 20000,
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "type": {
+      "anyOf": [
+       {
+        "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+        "enum": [
+         "int",
+         "unicode",
+         "bool"
+        ],
+        "type": "string"
+       },
+       {
+        "enum": [
+         ""
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "feature_pk",
+     "id__path",
+     "project_pk",
+     "feature"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_feature_multivariate_option",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Updates a feature state, including its enabled status and value. Also updates a segment override's value for environments without v2 feature versioning (use_v2_feature_versioning: false).",
+   "inputSchema": {
+    "properties": {
+     "change_request": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "deleted_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "enabled": {
+      "type": "boolean"
+     },
+     "environment": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "environment_feature_version": {
+      "format": "uuid",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "feature": {
+      "type": "integer"
+     },
+     "feature_segment": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "feature_state_value": {
+      "properties": {
+       "boolean_value": {
+        "type": [
+         "boolean",
+         "null"
+        ]
+       },
+       "integer_value": {
+        "maximum": 2147483647.0,
+        "minimum": -2147483648.0,
+        "type": [
+         "integer",
+         "null"
+        ]
+       },
+       "string_value": {
+        "maxLength": 20000,
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "type": {
+        "anyOf": [
+         {
+          "description": "* `int` - Integer\n* `unicode` - String\n* `bool` - Boolean",
+          "enum": [
+           "int",
+           "unicode",
+           "bool"
+          ],
+          "type": "string"
+         },
+         {
+          "enum": [
+           ""
+          ]
+         },
+         {
+          "type": "null"
+         }
+        ]
+       }
+      },
+      "type": "object"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "A unique integer value identifying this feature state. (Path parameter)",
+      "type": "integer"
+     },
+     "identifier": {
+      "description": "Can be passed as an alternative to `identity`",
+      "type": "string"
+     },
+     "identity": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "live_from": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "multivariate_feature_state_values": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "integer"
+        },
+        "multivariate_feature_option": {
+         "type": "integer"
+        },
+        "percentage_allocation": {
+         "format": "double",
+         "maximum": 100.0,
+         "minimum": 0.0,
+         "type": "number"
+        }
+       },
+       "required": [
+        "multivariate_feature_option",
+        "percentage_allocation"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "version": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "id__path",
+     "environment",
+     "feature"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_feature_state",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "(Beta) Updates a metric's properties.",
+   "inputSchema": {
+    "properties": {
+     "aggregation": {
+      "description": "* `count` - Count\n* `sum` - Sum\n* `mean` - Mean\n* `occurrence` - Occurrence (event happened at least once)",
+      "enum": [
+       "count",
+       "sum",
+       "mean",
+       "occurrence"
+      ],
+      "type": "string"
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     },
+     "direction": {
+      "description": "* `up` - Higher is better\n* `down` - Lower is better\n* `informational` - Informational only",
+      "enum": [
+       "up",
+       "down",
+       "informational"
+      ],
+      "type": "string"
+     },
+     "environment_api_key": {
+      "type": "string"
+     },
+     "experiments": {
+      "items": {
+       "description": "A lightweight view of an experiment using a metric, as returned in the\nmetric's ``experiments`` field.",
+       "properties": {
+        "id": {
+         "type": "integer"
+        },
+        "name": {
+         "type": "string"
+        },
+        "status": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name",
+        "status"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "A unique integer value identifying this metric. (Path parameter)",
+      "type": "integer"
+     },
+     "name": {
+      "maxLength": 255,
+      "type": "string"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     }
+    },
+    "required": [
+     "environment_api_key",
+     "id__path",
+     "definition",
+     "name"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_metric",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Updates project configuration settings such as the project name and feature visibility.",
+   "inputSchema": {
+    "properties": {
+     "edge_v2_migration_status": {
+      "allOf": [
+       {
+        "description": "* `NOT_STARTED` - Not Started\n* `IN_PROGRESS` - In Progress\n* `COMPLETE` - Complete\n* `INCOMPLETE` - Incomplete (identity overrides skipped)",
+        "enum": [
+         "NOT_STARTED",
+         "IN_PROGRESS",
+         "COMPLETE",
+         "INCOMPLETE"
+        ],
+        "type": "string"
+       }
+      ],
+      "description": "[Edge V2 migration] Project migration status. Set to `IN_PROGRESS` to trigger migration start.\n\n* `NOT_STARTED` - Not Started\n* `IN_PROGRESS` - In Progress\n* `COMPLETE` - Complete\n* `INCOMPLETE` - Incomplete (identity overrides skipped)"
+     },
+     "enable_dynamo_db": {
+      "description": "If true will sync environment data with dynamodb and allow access to dynamodb identities",
+      "type": "boolean"
+     },
+     "enable_realtime_updates": {
+      "description": "Enable this to trigger a realtime(sse) event whenever the value of a flag changes",
+      "type": "boolean"
+     },
+     "enforce_feature_owners": {
+      "description": "Require at least one user or group owner when creating a feature.",
+      "type": "boolean"
+     },
+     "feature_name_regex": {
+      "description": "Used for validating feature names",
+      "maxLength": 255,
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "hide_disabled_flags": {
+      "description": "If true will exclude flags from SDK which are disabled",
+      "type": "boolean"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "A unique integer value identifying this project. (Path parameter)",
+      "type": "integer"
+     },
+     "migration_status": {
+      "description": "Edge migration status of the project; can be one of: MIGRATION_SCHEDULED, MIGRATION_COMPLETED, MIGRATION_IN_PROGRESS, MIGRATION_NOT_STARTED, NOT_APPLICABLE",
+      "type": "string"
+     },
+     "minimum_change_request_approvals": {
+      "maximum": 2147483647.0,
+      "minimum": -2147483648.0,
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "name": {
+      "maxLength": 2000,
+      "type": "string"
+     },
+     "only_allow_lower_case_feature_names": {
+      "description": "Used by UI to validate feature names",
+      "type": "boolean"
+     },
+     "organisation": {
+      "type": "integer"
+     },
+     "prevent_flag_defaults": {
+      "description": "Prevent defaults from being set in all environments when creating a feature.",
+      "type": "boolean"
+     },
+     "show_edge_identity_overrides_for_feature": {
+      "type": "boolean"
+     },
+     "stale_flags_limit_days": {
+      "description": "Number of days without modification in any environment before a flag is considered stale.",
+      "maximum": 2147483647.0,
+      "minimum": -2147483648.0,
+      "type": "integer"
+     },
+     "use_edge_identities": {
+      "type": "boolean"
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id__path",
+     "name"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_project",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  },
+  {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Updates an existing user segment's properties and rules.",
+   "inputSchema": {
+    "properties": {
+     "cohort": {
+      "anyOf": [
+       {
+        "properties": {
+         "deletion_requested_at": {
+          "format": "date-time",
+          "type": [
+           "string",
+           "null"
+          ]
+         },
+         "environment": {
+          "type": "integer"
+         },
+         "environment_api_key": {
+          "type": "string"
+         },
+         "environment_name": {
+          "type": "string"
+         },
+         "id": {
+          "type": "integer"
+         },
+         "source_type": {
+          "description": "* `csv` - CSV\n* `amplitude` - Amplitude\n* `mixpanel` - Mixpanel",
+          "enum": [
+           "csv",
+           "amplitude",
+           "mixpanel"
+          ],
+          "type": "string"
+         },
+         "version": {
+          "maximum": 2147483647.0,
+          "minimum": 0.0,
+          "type": "integer"
+         }
+        },
+        "required": [
+         "environment"
+        ],
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "created_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "feature": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "has_overrides": {
+      "description": "Whether any feature override points at this segment, counting overrides that are live now or scheduled to go live.",
+      "type": "boolean"
+     },
+     "id": {
+      "type": "integer"
+     },
+     "id__path": {
+      "description": "A unique integer value identifying this segment. (Path parameter)",
+      "type": "integer"
+     },
+     "managed_by": {
+      "anyOf": [
+       {
+        "description": "* `` - Unmanaged\n* `cohort` - Cohort\n* `dependency` - Flag dependency\n* `experiment` - Experiment\n* `release_pipeline` - Gradual rollout",
+        "enum": [
+         "cohort",
+         "dependency",
+         "experiment",
+         "release_pipeline"
+        ],
+        "type": "string"
+       },
+       {
+        "enum": [
+         ""
+        ]
+       }
+      ]
+     },
+     "membership_counts": {
+      "items": {
+       "properties": {
+        "count": {
+         "type": "integer"
+        },
+        "environment": {
+         "type": "integer"
+        },
+        "last_synced_at": {
+         "format": "date-time",
+         "type": "string"
+        }
+       },
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "metadata": {
+      "items": {
+       "properties": {
+        "field_value": {
+         "maxLength": 2000,
+         "type": "string"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "model_field": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "field_value",
+        "model_field"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "name": {
+      "maxLength": 2000,
+      "type": "string"
+     },
+     "project": {
+      "type": "integer"
+     },
+     "project_pk": {
+      "type": "integer"
+     },
+     "rules": {
+      "items": {
+       "description": "Adds nested create feature",
+       "properties": {
+        "conditions": {
+         "items": {
+          "properties": {
+           "delete": {
+            "type": "boolean"
+           },
+           "description": {
+            "type": [
+             "string",
+             "null"
+            ]
+           },
+           "id": {
+            "type": "integer"
+           },
+           "operator": {
+            "description": "* `EQUAL` - Exactly Matches\n* `GREATER_THAN` - Greater than\n* `LESS_THAN` - Less than\n* `CONTAINS` - Contains\n* `GREATER_THAN_INCLUSIVE` - Greater than or equal to\n* `LESS_THAN_INCLUSIVE` - Less than or equal to\n* `NOT_CONTAINS` - Does not contain\n* `NOT_EQUAL` - Does not match\n* `REGEX` - Matches regex\n* `PERCENTAGE_SPLIT` - Percentage split\n* `MODULO` - Modulo Operation\n* `IS_SET` - Is set\n* `IS_NOT_SET` - Is not set\n* `IN` - In",
+            "enum": [
+             "EQUAL",
+             "GREATER_THAN",
+             "LESS_THAN",
+             "CONTAINS",
+             "GREATER_THAN_INCLUSIVE",
+             "LESS_THAN_INCLUSIVE",
+             "NOT_CONTAINS",
+             "NOT_EQUAL",
+             "REGEX",
+             "PERCENTAGE_SPLIT",
+             "MODULO",
+             "IS_SET",
+             "IS_NOT_SET",
+             "IN"
+            ],
+            "type": "string"
+           },
+           "property": {
+            "maxLength": 1000,
+            "type": [
+             "string",
+             "null"
+            ]
+           },
+           "value": {
+            "maxLength": 1000,
+            "type": [
+             "string",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "operator"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "delete": {
+         "type": "boolean"
+        },
+        "id": {
+         "type": "integer"
+        },
+        "rules": {
+         "items": {
+          "description": "Adds nested create feature",
+          "properties": {
+           "conditions": {
+            "items": {
+             "properties": {
+              "delete": {
+               "type": "boolean"
+              },
+              "description": {
+               "type": [
+                "string",
+                "null"
+               ]
+              },
+              "id": {
+               "type": "integer"
+              },
+              "operator": {
+               "description": "* `EQUAL` - Exactly Matches\n* `GREATER_THAN` - Greater than\n* `LESS_THAN` - Less than\n* `CONTAINS` - Contains\n* `GREATER_THAN_INCLUSIVE` - Greater than or equal to\n* `LESS_THAN_INCLUSIVE` - Less than or equal to\n* `NOT_CONTAINS` - Does not contain\n* `NOT_EQUAL` - Does not match\n* `REGEX` - Matches regex\n* `PERCENTAGE_SPLIT` - Percentage split\n* `MODULO` - Modulo Operation\n* `IS_SET` - Is set\n* `IS_NOT_SET` - Is not set\n* `IN` - In",
+               "enum": [
+                "EQUAL",
+                "GREATER_THAN",
+                "LESS_THAN",
+                "CONTAINS",
+                "GREATER_THAN_INCLUSIVE",
+                "LESS_THAN_INCLUSIVE",
+                "NOT_CONTAINS",
+                "NOT_EQUAL",
+                "REGEX",
+                "PERCENTAGE_SPLIT",
+                "MODULO",
+                "IS_SET",
+                "IS_NOT_SET",
+                "IN"
+               ],
+               "type": "string"
+              },
+              "property": {
+               "maxLength": 1000,
+               "type": [
+                "string",
+                "null"
+               ]
+              },
+              "value": {
+               "maxLength": 1000,
+               "type": [
+                "string",
+                "null"
+               ]
+              }
+             },
+             "required": [
+              "operator"
+             ],
+             "type": "object"
+            },
+            "type": "array"
+           },
+           "delete": {
+            "type": "boolean"
+           },
+           "id": {
+            "type": "integer"
+           },
+           "type": {
+            "description": "* `ALL` - all\n* `ANY` - any\n* `NONE` - none",
+            "enum": [
+             "ALL",
+             "ANY",
+             "NONE"
+            ],
+            "type": "string"
+           }
+          },
+          "required": [
+           "type"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "type": {
+         "description": "* `ALL` - all\n* `ANY` - any\n* `NONE` - none",
+         "enum": [
+          "ALL",
+          "ANY",
+          "NONE"
+         ],
+         "type": "string"
+        }
+       },
+       "required": [
+        "type"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "uuid": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "version_of": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "id__path",
+     "project_pk",
+     "name",
+     "rules"
+    ],
+    "type": "object"
+   },
+   "name": "flagsmith___update_project_segment",
+   "outputSchema": {
+    "additionalProperties": true,
+    "type": "object"
+   }
+  }
+ ]
+}
