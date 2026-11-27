@@ -1,4 +1,4 @@
-"""Bedrock request fields from names.py's dotted names (task 3.1).
+"""Bedrock request fields from names.py's dotted names (tasks 3.1 and 3.3).
 
 names.py spells the request fields task 1.2 proved as dotted paths inside Converse's
 additionalModelRequestFields: THINKING_EFFORT_FIELD is "output_config.effort", and
@@ -6,7 +6,9 @@ THINKING_DISABLED_FIELD is "thinking.type". nested_field() turns one into the ne
 Bedrock takes. sampling_parameters() finds any sampling parameter in a request, which no
 model in this project is ever sent (design.md section 3).
 
-Standard library only, so the answer function's package needs nothing more for it.
+The answer functions (app/answer) and the judge (app/judge) both import it. It lives
+outside either package so that neither function's package needs the other's (3.1's
+review). Standard library only, so it adds nothing to either package.
 """
 
 from __future__ import annotations
