@@ -443,7 +443,7 @@ their tasks name, not against each other.
     The contracts test fails on 2.6's branch until then.
   - Pass: unit tests with a fake runtime client green.
 
-- [ ] 2.7 **Deploy the agent**
+- [x] 2.7 **Deploy the agent** (PR #30 merged: build and live halves; runtime role applied before merge)
   - Needs: 2.5, 2.6; 3.5 applied (for `rm-runs`).
   - Files: what the AgentCore CLI generates under `agent/`,
     `infra/modules/agent/runtime_role.tf`, `agent/scripts/setup_gateway.py`
@@ -610,7 +610,7 @@ their tasks name, not against each other.
     read-only goldfish check finds the API, the four functions, `rm-runs`
     and the reports bucket.
 
-- [ ] 3.6 **Deployed smoke**
+- [x] 3.6 **Deployed smoke** (PR #33 merged; the Human end delegated, evidence/gate-2-review.md)
   - Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied
     with it. Files: `evidence/3.6-app-smoke.md`.
   - Do: `bootstrap_flagsmith.py`, `seed_experiment.py rsmoke<HHMM>`,
@@ -646,7 +646,7 @@ their tasks name, not against each other.
 
 ## 4. Workstream C: signals and fault
 
-- [ ] 4.1 **Signals infrastructure**
+- [x] 4.1 **Signals infrastructure** (PR #13 merged; after-apply in PR #18; alarm test and after-3.6 line in PR #34)
   - Needs: 4.2 merged (for the invoker's code). Files:
     `infra/modules/signals/*.tf`.
   - Produces: `rm-invoker` (env `STUB=1`), alarm `rm-cheaper-latency-p95`,
@@ -695,7 +695,7 @@ their tasks name, not against each other.
     set-alarm-state` to ALARM logs one valid payload, saved to
     `evidence/4.2-invoker.md`.
 
-- [ ] 4.3 **Fault injection**
+- [x] 4.3 **Fault injection** (build half PR #23; fault run PR #34)
   - Needs: for the build half (the FIS module and `scripts/inject_fault.sh`),
     3.5; for the fault run, 3.6 and 4.1 applied with the recalibrated
     threshold. Timebox: 2 hours. Files: `infra/modules/fis/*.tf`,

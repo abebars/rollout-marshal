@@ -2974,6 +2974,21 @@ def test_contract_c7_alarm_recalibration():
     assert alarm_margin > 0 and headroom > 0
 
 
+def test_runtime_tools_policy_sentence():
+    """Task 2.7's review: section 7 states the runtime policy as narrowly as the tools use it."""
+    sec7 = flat_section(7)
+    assert (
+        f"inline policy `{names.AGENT_RUNTIME_TOOLS_POLICY}`, each statement on its exact resource "
+        "and only what the tools call (task 2.7): get, put, update and delete on "
+        f"`{names.RUNS_TABLE}`, which also authorise its transactions; publish to "
+        f"`{names.INCIDENTS_TOPIC}`; put under the reports bucket's runs/ prefix; describe the "
+        f"alarm `{names.ALARM_NAME}`; invoke `{names.ANSWER_CHEAPER_FUNCTION}` for the probe; and "
+        f"get and update `{names.TICK_SCHEDULE}`, with pass-role on `{names.SCHEDULER_ROLE}` to "
+        f"`{names.SCHEDULER_SERVICE_PRINCIPAL}` only." in sec7
+    )
+    assert names.REPORT_KEY_TEMPLATE.startswith("runs/")
+
+
 def test_contract_c8_after_the_runs():
     """Contract change c8: what 3.6, 4.1 and 4.3 settled, and the 5.2 cut (Gate 2, G9 and G10)."""
     worst, threshold = names.ALARM_WORST_MINUTE_P95_MS, names.ALARM_THRESHOLD_MS
