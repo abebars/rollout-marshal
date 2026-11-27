@@ -142,7 +142,7 @@ their tasks name, not against each other.
     what did arrive, and the
     join moves to 3.6 only with the human's written acceptance at Gate 1.
 
-- [ ] 1.3 **Spike: agent to Flagsmith**
+- [x] 1.3 **Spike: agent to Flagsmith**
   - Owner: A. Needs: 1.1. A's first deploy or Flagsmith call waits for the
     1.1 gate's contract change to merge. Timebox: 2 hours.
   - Files: `agent/spike/agent.py`, `agent/scripts/setup_gateway.py`, the
