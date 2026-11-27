@@ -174,7 +174,7 @@ their tasks name, not against each other.
   - Past 90 minutes without working Gateway auth: switch to the direct
     MCP fallback (design.md section 7) and record it.
 
-- [ ] 1.4 **Reconcile contracts with the spikes**
+- [x] 1.4 **Reconcile contracts with the spikes**
   - Owner: Lead. Needs: 1.2, 1.3.
   - Do: a contract-change pull request updating design.md and
     `contracts/` wherever a spike contradicted them; every section 13 row
