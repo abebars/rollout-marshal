@@ -18,7 +18,8 @@ state, publish it), which Development requires (task 1.3). A found feature's sta
 value are never reset (Gate 1, rule 5): a reset of assistant_default_model would undo a
 promotion.
 
-This module imports only contracts and the standard library. The MCP client (Strands'
+This module imports only contracts, the standard library, and opentelemetry's
+suppress_instrumentation where it is installed (untraced.py). The MCP client (Strands'
 MCPClient, call_tool_sync) and the Lambda client are passed in.
 """
 
@@ -31,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from contracts import names
+from rm_agent.tools.untraced import suppress_instrumentation
 
 MCP_TOOL_PREFIX = names.GATEWAY_TARGET_FLAGSMITH + "___"
 ADMIN_TOOL_PREFIX = names.GATEWAY_TARGET_FLAGSMITH_ADMIN + "___"
@@ -222,10 +224,13 @@ class LambdaAdmin:
 
     def call(self, tool: str, arguments: dict) -> Any:
         _admin_tool(tool)
-        response = self.client.invoke(
-            FunctionName=names.FLAGSMITH_ADMIN_FUNCTION,
-            Payload=json.dumps({"tool": tool, "arguments": arguments}),
-        )
+        # Suppressed, or botocore instrumentation, where it runs, adds a "headers" key to this
+        # payload (untraced.py; run r202611271927).
+        with suppress_instrumentation():
+            response = self.client.invoke(
+                FunctionName=names.FLAGSMITH_ADMIN_FUNCTION,
+                Payload=json.dumps({"tool": tool, "arguments": arguments}),
+            )
         raw = response["Payload"].read()
         answer = json.loads(raw) if raw else None
         if response.get("FunctionError"):

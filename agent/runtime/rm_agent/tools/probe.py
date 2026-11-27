@@ -5,7 +5,8 @@ answer_request with PROBE_QUESTION as PROBE_IDENTITY (a fixed identity that reac
 Flagsmith call). The probe passes when every invoke answers with a valid answer_response
 under the alarm's threshold. An invoke at or above it, an error, a function error, a timeout,
 or a reply that fails answer_response fails it. Imports only contracts, the standard
-library, boto3 and botocore.
+library, boto3, botocore, and opentelemetry's suppress_instrumentation where it is installed
+(untraced.py).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import boto3
 from botocore.config import Config
 
 from contracts import names
+from rm_agent.tools.untraced import suppress_instrumentation
 
 _REQUEST = {"question": names.PROBE_QUESTION, "identity": names.PROBE_IDENTITY}
 # answer_response.json's model_id enum: the two models an answer function serves.
@@ -68,11 +70,14 @@ def _invoke(client) -> tuple[float, str | None]:
     """One invoke: its milliseconds, and what was wrong with it, if anything."""
     began = time.monotonic()
     try:
-        response = client.invoke(
-            FunctionName=names.ANSWER_CHEAPER_FUNCTION,
-            InvocationType="RequestResponse",
-            Payload=json.dumps(_REQUEST),
-        )
+        # Suppressed, or the runtime's botocore instrumentation adds a "headers" key to this
+        # payload, which answer_request refuses (untraced.py; run r202611271927).
+        with suppress_instrumentation():
+            response = client.invoke(
+                FunctionName=names.ANSWER_CHEAPER_FUNCTION,
+                InvocationType="RequestResponse",
+                Payload=json.dumps(_REQUEST),
+            )
         raw = response["Payload"].read()
     except Exception as error:  # noqa: BLE001 - any failure of the invoke fails the probe
         return (time.monotonic() - began) * 1000, f"an invoke raised {type(error).__name__}"
