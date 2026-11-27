@@ -1,24 +1,31 @@
 # The FIS module with a mocked AWS provider: no AWS call. Run from infra/modules/fis:
 #   terraform init -backend=false && terraform test
-# The layer ARN is the value 4.3 read from the SSM parameter (evidence/4.3-fis.md).
+# The default mock gives SSM the pinned layer, which is 4.3's read (evidence/4.3-fis.md).
+# terraform test fails a run on any check failure it does not expect, so every run with this
+# mock also shows the layer check stays quiet at the pin. The newer_layer mock gives SSM a
+# later release, as if AWS had moved on.
 
 mock_provider "aws" {
-  override_data {
-    target = data.aws_ssm_parameter.fis_extension
-    values = {
+  mock_data "aws_ssm_parameter" {
+    defaults = {
       insecure_value = "arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441"
     }
   }
 }
 
+mock_provider "aws" {
+  alias = "newer_layer"
+
+  mock_data "aws_ssm_parameter" {
+    defaults = {
+      insecure_value = "arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:442"
+    }
+  }
+}
+
 variables {
-  cheaper_function_name   = "rm-answer-cheaper"
-  cheaper_role_name       = "rm-answer-cheaper-role"
-  config_bucket_name      = "rm-fis-config-818928662830"
-  config_prefix           = "FisConfigs"
-  experiment_role_name    = "rm-fis-role"
-  experiment_policy_name  = "rm-fis-actions"
-  config_read_policy_name = "rm-fis-config-read"
+  cheaper_function_name = "rm-answer-cheaper"
+  cheaper_role_name     = "rm-answer-cheaper-role"
 }
 
 run "the_outputs_the_app_module_takes" {
@@ -26,7 +33,7 @@ run "the_outputs_the_app_module_takes" {
 
   assert {
     condition     = output.cheaper_extra_layers == ["arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441"]
-    error_message = "cheaper_extra_layers must be exactly the arm64 extension layer read from SSM."
+    error_message = "cheaper_extra_layers must be exactly the pinned layer, FIS_EXTENSION_LAYER_ARN."
   }
 
   assert {
@@ -39,12 +46,24 @@ run "the_outputs_the_app_module_takes" {
   }
 }
 
-run "the_layer_parameter_is_the_arm64_one" {
+run "the_layer_check_reads_the_arm64_parameter" {
   command = plan
 
   assert {
     condition     = data.aws_ssm_parameter.fis_extension.name == "/aws/service/fis/lambda-extension/AWS-FIS-extension-arm64/1.x.x"
-    error_message = "The layer must come from the arm64 extension's public SSM parameter."
+    error_message = "The check reads the arm64 extension's public SSM parameter."
+  }
+}
+
+run "a_newer_layer_in_ssm_warns_and_changes_nothing" {
+  command   = plan
+  providers = { aws = aws.newer_layer }
+
+  expect_failures = [check.fis_extension_layer]
+
+  assert {
+    condition     = output.cheaper_extra_layers == ["arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441"]
+    error_message = "A newer layer in SSM must not change the pinned layer."
   }
 }
 

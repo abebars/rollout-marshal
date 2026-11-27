@@ -3,7 +3,7 @@
 # Only FIS experiments in this account may assume the role (the FIS guide's confused-deputy
 # conditions, docs.aws.amazon.com/fis/latest/userguide/getting-started-iam-service-role.html).
 resource "aws_iam_role" "experiment" {
-  name        = var.experiment_role_name
+  name        = local.names.FIS_ROLE
   description = "The role AWS FIS assumes to run rm-delay-cheaper."
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -25,7 +25,7 @@ resource "aws_iam_role" "experiment" {
 # permissions (s3:PutObject, s3:DeleteObject, lambda:GetFunction, tag:GetResources). The writes
 # are limited to the configuration folder.
 resource "aws_iam_role_policy" "experiment" {
-  name = var.experiment_policy_name
+  name = local.names.FIS_ROLE_POLICY
   role = aws_iam_role.experiment.id
   policy = jsonencode({
     Version = "2012-10-17"
