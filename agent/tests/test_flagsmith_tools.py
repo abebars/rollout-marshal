@@ -1008,9 +1008,11 @@ def test_lambda_admin_invokes_the_function_with_the_direct_event():
 
 
 def test_an_error_copied_from_upstream_never_carries_the_environment_key():
-    """Whatever the Gateway, the function or Flagsmith echoes back, the transports put
-    <redacted> where the key was (PR #15's review)."""
+    """Whatever the Gateway, the function or Flagsmith echoes back, Mcp and the admin
+    transports put <redacted> where the key was (PR #15's reviews). MCP's list_experiments and
+    create_experiment carry the key too."""
     args = {"environment_api_key": ENV_KEY, "experiment_id": 819}
+    listed = {"environment_api_key": ENV_KEY, "q": "x"}
     echoed = f"Flagsmith refused the key {ENV_KEY}"
 
     class Gateway:
@@ -1029,19 +1031,24 @@ def test_an_error_copied_from_upstream_never_carries_the_environment_key():
             return {**reply, "FunctionError": self.error} if self.error else reply
 
     refused = {"ok": False, "error": {"type": "failed", "message": echoed}}
-    transports = [
-        flagsmith.GatewayAdmin(Gateway("error", echoed)),  # the Gateway's own failure
-        flagsmith.GatewayAdmin(Gateway("success", refused)),  # the function's error answer
-        flagsmith.GatewayAdmin(Gateway("success", [echoed])),  # not an answer at all
-        flagsmith.LambdaAdmin(Lambda({"errorMessage": echoed}, "Unhandled")),
-        flagsmith.LambdaAdmin(Lambda(refused)),
-        flagsmith.LambdaAdmin(Lambda({"unexpected": echoed})),
+    calls = [
+        (flagsmith.Mcp(Gateway("error", echoed)), "list_experiments", listed),  # an MCP failure
+        (flagsmith.GatewayAdmin(Gateway("error", echoed)), "get_experiment", args),  # Gateway's
+        (flagsmith.GatewayAdmin(Gateway("success", refused)), "get_experiment", args),
+        (flagsmith.GatewayAdmin(Gateway("success", [echoed])), "get_experiment", args),
+        (
+            flagsmith.LambdaAdmin(Lambda({"errorMessage": echoed}, "Unhandled")),
+            "get_experiment",
+            args,
+        ),
+        (flagsmith.LambdaAdmin(Lambda(refused)), "get_experiment", args),
+        (flagsmith.LambdaAdmin(Lambda({"unexpected": echoed})), "get_experiment", args),
     ]
-    for transport in transports:
+    for transport, tool, arguments in calls:
         with pytest.raises(flagsmith.FlagsmithError) as raised:
-            transport.call("get_experiment", args)
-        assert ENV_KEY not in str(raised.value)
-        assert flagsmith.REDACTED in str(raised.value)
+            transport.call(tool, arguments)
+        assert ENV_KEY not in str(raised.value), (type(transport).__name__, tool)
+        assert flagsmith.REDACTED in str(raised.value), (type(transport).__name__, tool)
     # The key at the 300-character cut: replaced first, so no part of it is left.
     long_echo = "x" * 290 + ENV_KEY
     with pytest.raises(flagsmith.FlagsmithError) as raised:
@@ -1403,7 +1410,7 @@ def test_results_not_computed_yet_are_not_current_and_not_ready_never_a_failure(
     assert results["ready"] is False and results["helpful_lift_ci_lower"] is None
     for variation in results["variations"].values():
         assert variation == {"identities": 0, **dict.fromkeys(names.METRICS)}
-    for body in ({}, {"results": []}, {"results": "pending"}, None):
+    for body in ({}, {"results": []}, {"results": "pending"}, {"results": None, "x": 1}, None):
         http = FakeHttp({("GET", path): (200, body)})
         answer = handler.handle(direct("get_results", experiment_id=819), None, http=http)
         assert answer["ok"] is False and answer["error"]["type"] == "failed", body

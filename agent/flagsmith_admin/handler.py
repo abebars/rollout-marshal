@@ -282,10 +282,11 @@ def refresh_results(api: Api, experiment_id: Any) -> dict:
 def get_results(api: Api, experiment_id: Any) -> dict:
     """The results envelope. Before Flagsmith first computes the results it answers
     {"results": null} (task 1.3 read that through MCP on 819, before its first refresh).
-    That is {} here: the agent finds it not current, or not ready, never a failure."""
+    Exactly that shape is {} here: the agent finds it not current, or not ready, never a
+    failure."""
     status, body = api.send("GET", PATH_RESULTS, experiment_id=experiment_id)
     _expected(status, 200, f"reading results of experiment {experiment_id}")
-    if isinstance(body, dict) and "results" in body and body["results"] is None:
+    if body == {"results": None}:
         return {}
     envelope = body.get("results") if isinstance(body, dict) else None
     if not isinstance(envelope, dict):

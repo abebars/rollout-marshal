@@ -72,7 +72,9 @@ API_ROLLOUT_VALUE_TYPE = "string"  # the experiment rollout's value: {"type": "s
 API_VERSION_VALUE_TYPE = "unicode"  # a v2 version state's value: {"type": "unicode", ...}
 API_PATH_ID = "id__path"  # MCP's name for a path ID that clashes with a body field
 
-# The two of names.FLAGSMITH_EXPERIMENT_STATUSES the start compares against by name.
+# Two of names.FLAGSMITH_EXPERIMENT_STATUSES by name, for the tests' fake Flagsmith. This
+# module compares only names.EXPERIMENT_STATUS_ENDED, and rm-flagsmith-admin's start keeps
+# its own pair.
 STATUS_CREATED = "created"
 STATUS_RUNNING = "running"
 
@@ -151,6 +153,18 @@ def check_experiment_arguments(tool: str, arguments: dict) -> None:
             raise ToolRefused(f"{tool} may not send {found}: it could change the status")
 
 
+REDACTED = "<redacted>"
+
+
+def _redacted(text: Any, arguments: dict) -> str:
+    """Upstream text, with the environment key replaced. Every admin call carries it, and so do
+    MCP's list_experiments and create_experiment. Whatever the Gateway, the function or
+    Flagsmith echoes back, no error raised here carries the key. It is replaced before any
+    cut, so no part of it survives one."""
+    text, key = str(text), arguments.get("environment_api_key")
+    return text.replace(key, REDACTED) if isinstance(key, str) and key else text
+
+
 class Mcp:
     """The Flagsmith MCP tools through the Gateway, called by name, never by the model."""
 
@@ -165,24 +179,13 @@ class Mcp:
         reply = self.client.call_tool_sync(f"rm-{uuid.uuid4().hex}", self.prefix + tool, arguments)
         result = _parse(reply)
         if reply.get("status") != "success":
-            raise FlagsmithError(f"{tool} failed: {str(result)[:300]}")
+            raise FlagsmithError(f"{tool} failed: {_redacted(result, arguments)[:300]}")
         return result
 
 
 def _admin_tool(tool: str) -> None:
     if tool not in ADMIN_TOOLS:
         raise ToolRefused(f"{tool} is not one of rm-flagsmith-admin's tools")
-
-
-REDACTED = "<redacted>"
-
-
-def _redacted(text: Any, arguments: dict) -> str:
-    """Upstream text, with the environment key every admin call carries replaced. Whatever
-    the Gateway, the function or Flagsmith echoes back, no error raised here carries the key.
-    It is replaced before any cut, so no part of it survives one."""
-    text, key = str(text), arguments.get("environment_api_key")
-    return text.replace(key, REDACTED) if isinstance(key, str) and key else text
 
 
 def _admin_result(tool: str, answer: Any, arguments: dict) -> Any:
