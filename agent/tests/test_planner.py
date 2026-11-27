@@ -178,12 +178,12 @@ def test_a_prompt_naming_no_move_or_another_move_is_bad_request(bedrock, move):
 def test_the_model_is_told_the_models_and_their_display_names(bedrock):
     request = planner.plan_request(SAMPLE_PROMPT)
     system = request["system"][0]["text"]
-    assert planner.MODEL_DISPLAY_NAMES == {
+    assert names.MODEL_DISPLAY_NAMES == {
         names.MODEL_CURRENT: "Claude Fable 5.1",
         names.MODEL_CHEAPER: "Claude Sonnet 5",
         names.MODEL_JUDGE: "Claude Haiku 5.5",
     }
-    for model_id, display in planner.MODEL_DISPLAY_NAMES.items():
+    for model_id, display in names.MODEL_DISPLAY_NAMES.items():
         assert f"{model_id}: {display}" in system
         assert display in _KICKOFF or model_id == names.MODEL_JUDGE
     assert "Claude Fable 5.1" in SAMPLE_PROMPT and "Claude Sonnet 5" in SAMPLE_PROMPT

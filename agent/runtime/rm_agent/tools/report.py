@@ -20,11 +20,11 @@ import boto3
 
 from contracts import names
 
-# Flagsmith's credible interval for the lift is 95 percent (design.md section 6). Its lower
-# bound at or above the floor leaves at most one tail, 2.5 percent, below the floor: at least
-# a 97.5 percent probability that the lift is at least the floor.
-CREDIBLE_INTERVAL_PERCENT = 95  # names.<this> after c3
-PROMOTE_PROBABILITY_PERCENT = 100 - (100 - CREDIBLE_INTERVAL_PERCENT) / 2  # 97.5
+# Flagsmith's credible interval for the lift is names.CREDIBLE_INTERVAL_PERCENT, 95 percent
+# (design.md section 6). Its lower bound at or above the floor leaves at most one tail, 2.5
+# percent, below the floor: at least a 97.5 percent probability that the lift is at least
+# the floor.
+PROMOTE_PROBABILITY_PERCENT = 100 - (100 - names.CREDIBLE_INTERVAL_PERCENT) / 2  # 97.5
 _CONTENT_TYPE = "text/markdown; charset=utf-8"
 # An ATX (`#`) heading: up to three spaces, then #. The model's text is escaped there,
 # so a heading in it can never add a section.
@@ -143,7 +143,8 @@ def _results(item: dict, results: dict, now: datetime) -> list[str]:
         )
     rows.append("")
     rows.append(
-        f"Lower bound of the {CREDIBLE_INTERVAL_PERCENT} percent credible interval for the "
+        f"Lower bound of the {names.CREDIBLE_INTERVAL_PERCENT} percent credible interval for "
+        "the "
         f"relative lift on `{names.PRIMARY_METRIC}`: "
         f"{_number(results.get('helpful_lift_ci_lower'))}."
     )
@@ -199,7 +200,8 @@ def _recommendation(item: dict, results: dict, now: datetime) -> list[str]:
         f"The rule, applied in code: any incident means {names.RECOMMEND_HOLD_RERUN}. Otherwise "
         f"{names.RECOMMEND_PROMOTE} only if there is at least a {PROMOTE_PROBABILITY_PERCENT:g} "
         f"percent probability that the lift on `{names.PRIMARY_METRIC}` is at least {floor} "
-        f"percent (the lower bound of the {CREDIBLE_INTERVAL_PERCENT} percent credible interval "
+        f"percent (the lower bound of the {names.CREDIBLE_INTERVAL_PERCENT} percent credible "
+        "interval "
         f"at or above {floor} percent) and both guardrails pass; otherwise "
         f"{names.RECOMMEND_HOLD}. Promotion still waits for the engineer to end the experiment in "
         "Flagsmith and approve.",
