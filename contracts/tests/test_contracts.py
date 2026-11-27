@@ -892,6 +892,7 @@ def test_contract_c3_tasks_point_at_the_new_text():
         "Files: `agent/runtime/rm_agent/handlers.py`, `agent/runtime/main.py`, "
         "`agent/tests/test_handlers.py`, and the one `agent/runtime/rm_agent/state.py` helper "
         "below, with its tests in `agent/tests/test_state.py`.",
+        "- Pass: `pytest agent/tests/test_handlers.py agent/tests/test_state.py` green.",
     ):
         assert line in tasks, line
     spec = re.sub(
