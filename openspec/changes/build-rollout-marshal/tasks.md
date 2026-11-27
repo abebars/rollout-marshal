@@ -195,7 +195,7 @@ their tasks name, not against each other.
 
 ## 2. Workstream A: experiment agent
 
-- [ ] 2.1 **State store and state machine**
+- [x] 2.1 **State store and state machine**
   - Needs: 1.1. Files: `agent/runtime/rm_agent/__init__.py`,
     `agent/runtime/rm_agent/state.py`, `agent/tests/test_state.py`.
   - Produces, with every pointer change inside the run-item write's
@@ -301,7 +301,7 @@ their tasks name, not against each other.
     against `rm-flagsmith-admin`'s 30-second timeout, and reads it back; **Human** ends
     it; the ID is in the pull request.
 
-- [ ] 2.3 **Planner**
+- [x] 2.3 **Planner**
   - Needs: 1.1. Files: `agent/runtime/rm_agent/planner.py`,
     `agent/tests/test_planner.py`.
   - Produces: `make_plan(prompt) -> Plan`, valid against `plan.json`. The
@@ -522,7 +522,7 @@ their tasks name, not against each other.
     a bool. 1.2 showed `True` travels as the string `"True"`.
   - Pass: unit tests green.
 
-- [ ] 3.4 **Load script**
+- [x] 3.4 **Load script**
   - Needs: 1.1. Files: `scripts/load.py`, `app/questions.json`, tests.
   - Produces: `scripts/load.py --run-id <run_id> --users N --questions M
     --url <api>`, sending identity `run_identity(run_id, n)` for user n, each
