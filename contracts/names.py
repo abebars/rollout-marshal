@@ -267,6 +267,15 @@ CW_METRIC_EMITTER = {
     CW_METRIC_ANSWER_HELPFUL: JUDGE_FUNCTION,
 }
 
+# Task 3.3's judge and its prices file (contract change c4, design.md section 5).
+JUDGE_REPLY_FIELD = "helpful"  # the judge model's reply: {"helpful": true} or false
+JUDGE_ERROR_THROTTLED = "JudgeThrottled"  # Bedrock's ThrottlingException, by its error code
+JUDGE_ERROR_FAILED = "JudgeFailed"  # any other failure before the CloudWatch write
+JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS = 5
+JUDGE_BEDROCK_READ_TIMEOUT_SECONDS = 10
+JUDGE_FLUSH_RESERVE_SECONDS = 13  # one SDK send and 1 s more, left before the CloudWatch write
+PRICES_FIELDS = ("source_url", "retrieved_on", "currency", "per_million_tokens")
+PRICE_FIELDS = ("input", "output")  # US dollars per million tokens
 PRICES_FILE = "app/prices.json"  # copied from the AWS Bedrock pricing page, with URL and date
 
 # The answer functions' interface (schemas answer_request and answer_response).
@@ -700,6 +709,22 @@ FIS_DURATION_MINUTES = 6
 FIS_SLOW_POLL_ENV = "AWS_FIS_SLOW_POLL_INTERVAL_SECONDS"
 FIS_SLOW_POLL_SECONDS = 10
 FIS_TIMEBOX_MINUTES = 120
+# Section 9's names (task 4.3, contract change c4). The configuration sits in the
+# bucket's FIS_CONFIG_PREFIX folder; the read policy goes on the cheaper function's role.
+# The extension layer is pinned (task 4.3's SSM read, PR #23's review); the module warns when
+# SSM's /aws/service/fis/lambda-extension/AWS-FIS-extension-arm64/1.x.x moves on.
+FIS_EXTENSION_LAYER_ARN = "arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441"
+FIS_CONFIG_BUCKET = "rm-fis-config-818928662830"
+FIS_CONFIG_PREFIX = "FisConfigs"  # the AWS FIS Lambda actions guide's example folder
+FIS_ROLE = "rm-fis-role"
+FIS_ROLE_POLICY = "rm-fis-actions"
+FIS_CONFIG_READ_POLICY = "rm-fis-config-read"
+# The app module and the FIS module meet through these (tasks 3.5 and 4.3): the FIS module
+# takes the first two of the app module's outputs and gives back the app module's two inputs.
+APP_CHEAPER_FUNCTION_NAME_OUTPUT = "cheaper_function_name"
+APP_CHEAPER_ROLE_NAME_OUTPUT = "cheaper_role_name"
+APP_CHEAPER_EXTRA_LAYERS_INPUT = "cheaper_extra_layers"
+APP_CHEAPER_EXTRA_ENV_INPUT = "cheaper_extra_env"
 
 # ---------------------------------------------------------------------------
 # Section 10. Report

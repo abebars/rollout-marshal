@@ -537,6 +537,9 @@ their tasks name, not against each other.
     `Variant` dimension set; `prices.json` carries a source URL and date.
   - A test asserts each `answer_helpful` value is an `int` in {0, 1}, never
     a bool. 1.2 showed `True` travels as the string `"True"`.
+  - design.md section 5 holds the judge's write order, its typed errors, its
+    Bedrock timeouts, the 13 second reserve and the prices file's shape;
+    section 13 records the price check.
   - Pass: unit tests green.
 
 - [x] 3.4 **Load script**
@@ -592,6 +595,10 @@ their tasks name, not against each other.
     in the evidence, and pins it in a test.
   - Payload format 2.0, the handler paths and what the answer and router zips
     hold are in design.md section 5.
+  - design.md section 5 sets `rm-router`'s and `rm-judge`'s log level, INFO
+    or above, and section 9 names the module interface the FIS module
+    meets: outputs `cheaper_function_name` and `cheaper_role_name`, inputs
+    `cheaper_extra_layers` and `cheaper_extra_env`.
   - Pass: `terraform validate` clean, and the plan from `infra/` lists this
     task's resources to add and destroys nothing outside them. After 3.5 is
     merged and applied: the lead attaches the plan and apply output, and a
@@ -599,7 +606,8 @@ their tasks name, not against each other.
     and the reports bucket.
 
 - [ ] 3.6 **Deployed smoke**
-  - Needs: 3.5 applied, 3.4. Files: `evidence/3.6-app-smoke.md`.
+  - Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied
+    with it. Files: `evidence/3.6-app-smoke.md`.
   - Do: `bootstrap_flagsmith.py`, `seed_experiment.py rsmoke<HHMM>`,
     `load.py --run-id <run_id> --users 150 --questions 2`; after the human ends the
     experiment, `reset.py`.
@@ -610,6 +618,9 @@ their tasks name, not against each other.
   - `evidence/3.6-results.json` holds the experiment read's
     `experiment_metrics` list (`metric_name`, `metric`) next to the raw
     `results`; 2.2's waiting test reads it.
+  - The baseline runs with the FIS extension on `rm-answer-cheaper`, as the
+    fault run has it: the lead applies the FIS module with the app module
+    first (design.md section 9).
   - Pass, read through the API found in 1.3 (or **Human** on the
     dashboard if none exists): both variations show at least 50
     identities; CloudWatch has `AnswerLatencyMs` datapoints for both
@@ -680,17 +691,25 @@ their tasks name, not against each other.
     `evidence/4.2-invoker.md`.
 
 - [ ] 4.3 **Fault injection**
-  - Needs: 3.6; 4.1 applied with the recalibrated threshold. Timebox: 2 hours. Files: `infra/modules/fis/*.tf`,
+  - Needs: for the build half (the FIS module and `scripts/inject_fault.sh`),
+    3.5; for the fault run, 3.6 and 4.1 applied with the recalibrated
+    threshold. Timebox: 2 hours. Files: `infra/modules/fis/*.tf`,
     `scripts/inject_fault.sh`, `evidence/4.3-fis.md`.
   - Do: seed a run (`seed_experiment.py rfault<HHMM>`), start
-    `load.py --run-id <run_id> --users 150 --questions 2`, then start the fault. The lead
-    applies `infra/modules/fis` first.
-  - Pass: the alarm reaches ALARM within 5 minutes of the fault starting
-    and leaves ALARM after it ends; times recorded. **Human** ends the
-    experiment, then `reset.py` runs. A pre-merge apply of
-    `infra/modules/fis` is allowed (design.md section 2), and the plan from
-    `infra/` lists this task's resources to add and destroys nothing outside
-    them. Past the timebox: ask the lead to have B add the
+    `load.py --run-id <run_id> --users 150 --questions 2`, then start the fault. 4.3's
+    build half merges, and the lead applies `infra/modules/fis` with the app
+    module, before 3.6 (design.md section 9).
+  - design.md section 9 holds the module's names and interface. An
+    organisation SCP denies FIS to `rm-review-readonly`, so the lead reads
+    FIS state with the SSO profile and records it, and
+    `scripts/inject_fault.sh` runs with that profile.
+  - Pass: the plan from `infra/` lists this task's resources to add and
+    destroys nothing outside them; a pre-merge apply of `infra/modules/fis`
+    is allowed (design.md section 2). After 3.6 and the FIS module applied:
+    the alarm reaches ALARM within 5 minutes of the fault starting and
+    leaves ALARM after it ends; times recorded. **Human** ends the
+    experiment, then `reset.py` runs. The fault run is 4.3's one follow-up
+    pull request. Past the timebox: ask the lead to have B add the
     `chaos_delay_cheaper` flag read to `app/answer/handler.py`, and record
     why.
 

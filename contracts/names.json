@@ -124,6 +124,10 @@
   "API_SIGV4_SERVICE": "execute-api",
   "API_VERSION_VALUE_TYPE": "unicode",
   "APP_ASK_URL_OUTPUT": "ask_url",
+  "APP_CHEAPER_EXTRA_ENV_INPUT": "cheaper_extra_env",
+  "APP_CHEAPER_EXTRA_LAYERS_INPUT": "cheaper_extra_layers",
+  "APP_CHEAPER_FUNCTION_NAME_OUTPUT": "cheaper_function_name",
+  "APP_CHEAPER_ROLE_NAME_OUTPUT": "cheaper_role_name",
   "AWAITING_BY_STATE": {
     "AWAITING_RESUME": "resume",
     "PLANNED": "launch",
@@ -248,9 +252,15 @@
     "chaos_delay_cheaper"
   ],
   "FIS_ACTION": "aws:lambda:invocation-add-delay",
+  "FIS_CONFIG_BUCKET": "rm-fis-config-818928662830",
+  "FIS_CONFIG_PREFIX": "FisConfigs",
+  "FIS_CONFIG_READ_POLICY": "rm-fis-config-read",
   "FIS_DELAY_MS": 10000,
   "FIS_DURATION_MINUTES": 6,
+  "FIS_EXTENSION_LAYER_ARN": "arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441",
   "FIS_INVOCATION_PERCENTAGE": 100,
+  "FIS_ROLE": "rm-fis-role",
+  "FIS_ROLE_POLICY": "rm-fis-actions",
   "FIS_SLOW_POLL_ENV": "AWS_FIS_SLOW_POLL_INTERVAL_SECONDS",
   "FIS_SLOW_POLL_SECONDS": 10,
   "FIS_TARGET_FUNCTION": "rm-answer-cheaper",
@@ -376,6 +386,11 @@
     "alarm_state",
     "at"
   ],
+  "JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS": 5,
+  "JUDGE_BEDROCK_READ_TIMEOUT_SECONDS": 10,
+  "JUDGE_ERROR_FAILED": "JudgeFailed",
+  "JUDGE_ERROR_THROTTLED": "JudgeThrottled",
+  "JUDGE_FLUSH_RESERVE_SECONDS": 13,
   "JUDGE_FUNCTION": "rm-judge",
   "JUDGE_MAX_TOKENS": 200,
   "JUDGE_PAYLOAD_FIELDS": [
@@ -390,6 +405,7 @@
     "output_tokens",
     "latency_ms"
   ],
+  "JUDGE_REPLY_FIELD": "helpful",
   "JUDGE_TIMEOUT_SECONDS": 30,
   "KILL_SWITCH_DEFAULT_ENABLED": true,
   "KILL_SWITCH_FEATURE": "assistant_cheaper_enabled",
@@ -581,7 +597,17 @@
   ],
   "POINTER_CACHE_SECONDS": 30,
   "POINTER_CREATE_CONDITION": "attribute_not_exists(pk)",
+  "PRICES_FIELDS": [
+    "source_url",
+    "retrieved_on",
+    "currency",
+    "per_million_tokens"
+  ],
   "PRICES_FILE": "app/prices.json",
+  "PRICE_FIELDS": [
+    "input",
+    "output"
+  ],
   "PRIMARY_METRIC": "helpful_rate",
   "PROBE_IDENTITY": "rprobe0000-user-001",
   "PROBE_INVOKES": 5,
