@@ -651,7 +651,7 @@ their tasks name, not against each other.
 
 ## 4. Workstream C: signals and fault
 
-- [ ] 4.1 **Signals infrastructure**
+- [x] 4.1 **Signals infrastructure** (PR #13 merged; after-apply in PR #18; alarm test and after-3.6 line in PR #34)
   - Needs: 4.2 merged (for the invoker's code). Files:
     `infra/modules/signals/*.tf`.
   - Produces: `rm-invoker` (env `STUB=1`), alarm `rm-cheaper-latency-p95`,
@@ -700,7 +700,7 @@ their tasks name, not against each other.
     set-alarm-state` to ALARM logs one valid payload, saved to
     `evidence/4.2-invoker.md`.
 
-- [ ] 4.3 **Fault injection**
+- [x] 4.3 **Fault injection** (build half PR #23; fault run PR #34)
   - Needs: for the build half (the FIS module and `scripts/inject_fault.sh`),
     3.5; for the fault run, 3.6 and 4.1 applied with the recalibrated
     threshold. Timebox: 2 hours. Files: `infra/modules/fis/*.tf`,
