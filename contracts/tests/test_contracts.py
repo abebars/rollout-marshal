@@ -8,6 +8,7 @@ does not give.
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 import sys
@@ -238,6 +239,8 @@ NOT_A_NAME = {
     "make build": "a Makefile target the lead owns",
     "cli": "the repo's cli package (design.md section 12)",
     "uv run marshal": "the command the packaged console script gives",
+    "flagsmith___delete_*": "every MCP delete tool, left out of 2.2's allow-list",
+    "archive_file": "Terraform's archive data source, which a module may package with",
     "load.py": "the load script, named in section 11's request contract",
     "<project>_<target>_<runtime>": (
         "the AgentCore CLI's naming pattern; see AGENT_RUNTIME_DEPLOYED_NAME"
@@ -367,6 +370,39 @@ def test_run_identities():
         f"role `{names.SCHEDULER_ROLE}`" in tasks
     )
     assert "`lifecycle { ignore_changes = [state] }`" in tasks
+    assert "`rm-tick` (created disabled, with `lifecycle { ignore_changes = [state] }`" in tasks
+    assert (
+        "It adds `runtime/contracts` to `agent/conftest.py`'s `collect_ignore`, or pytest "
+        "collects the contracts suite twice through the symlink." in tasks
+    )
+    assert (
+        f"The runtime's role gets `iam:PassRole` on `{names.SCHEDULER_ROLE}`, with "
+        f"`iam:PassedToService` `{names.SCHEDULER_SERVICE_PRINCIPAL}`" in tasks
+    )
+    assert "`<run_id>1-user-001` and a trailing newline" in tasks
+    design = (ROOT / "openspec/changes/build-rollout-marshal/design.md").read_text()
+    assert "app.py" not in tasks and "app.py" not in design
+    sec4 = re.sub(r"\s+", " ", section(4))
+    assert (
+        "1. Read the active run pointer (section 6). With an active run, an `identity` that is "
+        "not one of that run's (`is_run_identity()`, with the pointer's `run_id` before "
+        "`-user-`) gets a 400 before any Flagsmith call, so a wrong `--run-id` cannot reuse an "
+        "old run's identities (Gate 1)." in sec4
+    )
+    sec7 = re.sub(r"\s+", " ", section(7))
+    assert (
+        "reads it with GetSchedule and writes back every field it returned that UpdateSchedule "
+        "takes (all but Arn, CreationDate and LastModificationDate), changing only its state. "
+        f"That passes `{names.SCHEDULER_ROLE}` to `{names.SCHEDULER_SERVICE_PRINCIPAL}`, so the "
+        "runtime's role needs pass-role on it (task 2.7)" in sec7
+    )
+    sec11 = re.sub(r"\s+", " ", section(11))
+    assert (
+        f"Each request is one JSON `answer_request` (`question`, `identity`) posted to `--url`, "
+        f"the full URL of the HTTP API's only route, `{names.API_ROUTE_KEY}`" in sec11
+    )
+    assert "from the shell's AWS credentials" in sec11
+    assert "A load never prints the URL. The shell's credentials need `execute-api:Invoke`" in sec11
     assert tasks.count("`load.py --run-id <run_id> --users 150") == 3
     assert "load.py --users" not in tasks
     load = re.sub(r"\s+", " ", section(11))
@@ -378,7 +414,7 @@ def test_run_identities():
         f"`{names.API_SIGV4_SERVICE}`)" in load
     )
     spec = (ROOT / "openspec/changes/build-rollout-marshal/specs/assistant-api/spec.md").read_text()
-    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10`" in spec
+    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10 --url <api>`" in spec
     assert "load.py --users" not in spec
     assert (
         "load.py --users"
@@ -394,8 +430,11 @@ def test_contract_c2():
         f"an experiment create or update carrying {fields} or "
         f"`{names.MCP_EXPERIMENT_FORBIDDEN_FIELDS[-1]}`" in prose
     )
-    paths = " and ".join(f"`{p}`" for p in names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS)
-    assert f"{paths} can never be built" in prose
+    forbidden = names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS
+    paths = ", ".join(f"`{p}`" for p in forbidden[:-1]) + f" and `{forbidden[-1]}`"
+    assert f"never DELETE, PUT or PATCH, and {paths} can never be built" in prose
+    assert set(names.FLAGSMITH_ADMIN_METHODS) == {"GET", "POST"}
+    assert f"The MCP allow-list leaves out `{names.MCP_EXCLUDED_TOOL}`" in prose
     state = re.sub(r"\s+", " ", section(6))
     assert (
         f"Ended in Flagsmith means the experiment's status is `{names.EXPERIMENT_STATUS_ENDED}`; "
@@ -403,9 +442,39 @@ def test_contract_c2():
     )
     assert names.EXPERIMENT_STATUS_ENDED in names.FLAGSMITH_EXPERIMENT_STATUSES
     assert names.EXPERIMENT_STATUS_PAUSED in names.FLAGSMITH_EXPERIMENT_STATUSES
-    statuses = json.loads((ROOT / "evidence/1.3-mcp-tools.json").read_text())
-    text = json.dumps(statuses)
-    assert all(f'"{s}"' in text for s in names.FLAGSMITH_EXPERIMENT_STATUSES)
+    tools = json.loads((ROOT / "evidence/1.3-mcp-tools.json").read_text())
+
+    def status_enums(node):
+        if isinstance(node, dict):
+            status = node.get("status")
+            if isinstance(status, dict):
+                for part in [status, *status.get("allOf", [])]:
+                    if "enum" in part:
+                        yield tuple(part["enum"])
+            for value in node.values():
+                yield from status_enums(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from status_enums(value)
+
+    enums = set(status_enums(tools))
+    assert enums == {names.FLAGSMITH_EXPERIMENT_STATUSES}, enums
+    # The interval is the lift plus or minus 1.96 sd, and chance_to_win uses the same normal,
+    # so ci_low >= -0.05 means at least a 97.5 percent probability (design.md section 6).
+    from statistics import NormalDist
+
+    sample = json.loads((ROOT / "evidence/1.4-results-sample.json").read_text())
+    found = [
+        m["inference"][names.VARIANT_CHEAPER]
+        for m in sample["results"]["payload"]["metrics"]
+        if names.VARIANT_CHEAPER in m.get("inference", {})
+    ]
+    assert found
+    for inf in found:
+        lift, low, high = inf["lift"], inf["ci_low"], inf["ci_high"]
+        assert math.isclose((low + high) / 2, lift, abs_tol=1e-12)
+        sd = (high - low) / 2 / NormalDist().inv_cdf(0.975)
+        assert math.isclose(sd, lift / NormalDist().inv_cdf(inf["chance_to_win"]), rel_tol=1e-9)
     assert "promote_min_prob_not_worse" not in names.PLAN_RECOMMENDATION_RULE_FIELDS
     assert "prob_cheaper_not_worse" not in names.RESULTS_FIELDS
     assert "topK" in names.FORBIDDEN_SAMPLING_PARAMETERS
@@ -416,7 +485,7 @@ def test_contract_c2():
     )
     sec7 = re.sub(r"\s+", " ", section(7))
     assert f"`{names.AGENT_STACK}` creates it with the Bedrock, logging and Gateway grants" in sec7
-    assert f"key starts `{names.AGENT_RUNTIME_ROLE_OUTPUT_PREFIX}`" in sec7
+    assert f"export `{names.AGENT_RUNTIME_ROLE_EXPORT}`" in sec7
     assert f"attaches inline policy `{names.AGENT_RUNTIME_TOOLS_POLICY}`" in sec7
     assert (
         f"exits {names.CLI_EXIT_OK} when its error is null, {names.CLI_EXIT_ERROR} when it "
@@ -554,7 +623,7 @@ def test_run_item_survives_a_dynamodb_round_trip():
 
     item = run_item(experiment_id=4321, metric_ids={"helpful_rate": 7})
     serialize, deserialize = TypeSerializer().serialize, TypeDeserializer().deserialize
-    with pytest.raises(TypeError):  # boto3 refuses raw floats: the plan has 1.1 and 0.95
+    with pytest.raises(TypeError):  # boto3 refuses raw floats: the plan has 1.1 and -0.05
         serialize(item)
     stored = {k: serialize(v) for k, v in dynamo.to_dynamo(item).items()}
     raw = {k: deserialize(v) for k, v in stored.items()}
@@ -2177,6 +2246,7 @@ def test_spike_findings_match_design():
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
     "FLAGSMITH_ADMIN_FORBIDDEN_PATHS": test_contract_c2,
+    "FLAGSMITH_ADMIN_METHODS": test_contract_c2,
     "FLAGSMITH_EXPERIMENT_STATUSES": test_contract_c2,
     "MCP_EXPERIMENT_FORBIDDEN_FIELDS": test_contract_c2,
     "FORBIDDEN_SAMPLING_PARAMETERS": test_list_constants_match_their_design_lists,

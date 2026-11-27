@@ -25,7 +25,7 @@ changes, and clear output.
 | Language | Python 3.13, `arm64` Lambdas |
 | Agent framework | Strands Agents on Amazon Bedrock AgentCore Runtime, created with the AgentCore CLI |
 | AgentCore CLI | npm package `@aws/agentcore`, command `agentcore`, version 1.3.0 or later within 1.x. Its project lives under `agent/`; it deploys the runtime through its own CDK stack and bootstraps CDK on the first deploy |
-| Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy. Every plan and apply from `infra/` runs `make build` first, which runs each function's `build.sh` (Gate 1) |
+| Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy. Every plan and apply from `infra/` runs `make build` first, which runs each function's `build.sh` where it has one; a module may package with `archive_file` instead (Gate 1) |
 | Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below. For a task whose Pass needs its own Terraform applied (2.7, 4.3), the lead may apply that branch merged locally with `dev` before it merges, attaches the plan, and re-applies `dev` if it does not merge. While a branch is applied unmerged, every later apply includes it; branches are applied together only from one local merge, and only if they touch different modules |
 | Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review`, always as `--profile rm-review`: exported environment credentials override `AWS_PROFILE`, but not `--profile` |
 | Timebox | 90 minutes per task unless the task says otherwise. Past it, stop and tell the lead |
@@ -89,7 +89,7 @@ seconds.
 | Identity format | the run ID, a hyphen, then `user-001` to `user-150` (`run_identity()` in names.py), so each run's identities are new to Flagsmith: nothing shows that an experiment's results count only events sent after its own exposures (Gate 1). The probe's identity reaches no Flagsmith call |
 | SDK | `flagsmith` Python package 6.6.0 or later, remote evaluation, `enable_events=True` |
 | Flags call | `get_identity_flags`, once per answer |
-| Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when `flag.experiment.in_experiment` and `flag.variant` is set |
+| Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when the flag is enabled, `flag.experiment.in_experiment` and `flag.variant` is set |
 | Outcome call | `track_event`, with the identity and a numeric `value`. The SDK sends the value as a string, and Flagsmith aggregates it as a number (task 1.2) |
 | Flush | `flush_events()` before every handler returns. Buffer settings alone do not survive a Lambda freeze, and a buffer of one item drops events tracked in a row (task 1.2) |
 
@@ -129,8 +129,10 @@ Rules:
   schemas list both (task 1.3). Task 2.2 enforces it before any call: an MCP
   tool outside its allow-list, an experiment create or update carrying
   `status`, `rollout_decision`, `rollout_variant`, `started_at` or
-  `ended_at`, and any Admin API path but the ones it needs are refused, and
-  `complete/` and `pause/` can never be built.
+  `ended_at`, and any Admin API method and path but the GET and POST pairs
+  it needs are refused: never DELETE, PUT or PATCH, and `complete/`,
+  `pause/` and `rollout/` can never be built. The MCP allow-list leaves out
+  `flagsmith___update_experiment` and every `flagsmith___delete_*` tool.
 - One Flagsmith identity request per answer. Flag, identity, trait and
   environment-document requests count toward the 50,000 cap.
 - Get-or-create checks what it finds. A found metric must match its
@@ -570,14 +572,14 @@ Three things invoke it:
 | --- | --- | --- |
 | `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials, through the console script `cli.marshal:main` |
 | `rm-invoker` Lambda | `alarm` | EventBridge rule `rm-alarm-to-invoker` on the alarm entering ALARM. Role `rm-invoker-role`. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
-| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it with GetSchedule and writes back every field it returned, changing only its state. That passes `rm-scheduler-role` to `scheduler.amazonaws.com`, so the runtime's role needs pass-role on it (task 2.7) |
+| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it with GetSchedule and writes back every field it returned that UpdateSchedule takes (all but Arn, CreationDate and LastModificationDate), changing only its state. That passes `rm-scheduler-role` to `scheduler.amazonaws.com`, so the runtime's role needs pass-role on it (task 2.7) |
 
 The CLI reads the runtime's ARN from `/rm/agent-runtime-arn` with the
 engineer's credentials, prints the response, and exits 0 when its error is
 null, 1 when it carries an error code, and 2 for a usage error. The root
 project is packaged from task 2.6 on, with a hatchling build of `cli` and
 `contracts`, so the console script installs and `uv run marshal` works;
-the lead switches it on when 2.6 merges (Gate 1: unpackaged, uv installs no
+the lead switches it on in 2.6's branch before its review (Gate 1: unpackaged, uv installs no
 console script).
 
 The CLI and `rm-invoker` share one `InvokeAgentRuntime` client setting: read
@@ -624,9 +626,9 @@ with API-key auth:
 | Lambda target | `flagsmith-admin` | Lambda `rm-flagsmith-admin`, added once task 2.2 has deployed it; `agent/scripts/setup_gateway.py` is finished in task 2.7 |
 
 The runtime's role is the CLI stack's own: `AgentCore-rm-default` creates
-it with the Bedrock, logging and Gateway grants. Task 2.7's Terraform finds
-it through the stack output whose key starts
-`ApplicationRuntimeRmAgentRoleArnOutput` (CDK appends a hash) and attaches
+it with the Bedrock, logging and Gateway grants. Task 2.7's Terraform reads
+its ARN from the stack's export `AgentCore-rm-default-rm-agent-RoleArn` and
+attaches
 inline policy `rm-agent-runtime-tools`: read and write on `rm-runs`,
 publish to `rm-incidents`, get and put on the reports bucket, read alarms
 and metrics, invoke `rm-answer-cheaper` for the probe, and get and update
@@ -647,7 +649,7 @@ with the API key header and record the decision in `evidence/`.
 | Name | Holds | Read by |
 | --- | --- | --- |
 | Secrets Manager `rm/flagsmith/api-key` | Flagsmith organisation API key (MCP and Admin API) | Gateway credential provider, `rm-flagsmith-admin`, and every local script or test that calls Flagsmith's MCP server or Admin API directly: task 1.3's probes, `agent/scripts/setup_gateway.py`, live tests, `scripts/bootstrap_flagsmith.py`, `scripts/seed_experiment.py`, `scripts/reset.py`, and `scripts/inject_fault.sh` in its flag fallback |
-| Secrets Manager `rm/flagsmith/server-key` | The SDK key `rm-router` and `rm-judge` initialise with. Remote evaluation normally uses the Development environment's client-side key (on its SDK Keys page; not a secret, already exists, but kept out of this public repo so nobody else spends the request cap). Task 1.2 confirmed that events accept this client-side key, so no server-side key is needed | `rm-router`, `rm-judge`, task 1.2's spike function, and `rm-answer-cheaper` under the section 9 fallback only |
+| Secrets Manager `rm/flagsmith/server-key` | The SDK key `rm-router` and `rm-judge` initialise with. Remote evaluation normally uses the Development environment's client-side key (on its SDK Keys page; not a secret, already exists, but kept out of this public repo so nobody else spends the request cap). Task 1.2 confirmed that events accept this client-side key, so no server-side key is needed | `rm-router`, `rm-judge`, task 1.2's spike function, and `rm-answer-cheaper` under the section 9 fallback only; task 2.2's live test reads it for its identity-flags read and never prints it |
 
 Each reader fetches the value at run time: scripts with the human's
 credentials, functions with their own role. It keeps the value in memory and
@@ -721,7 +723,8 @@ app module's output `ask_url` gives it. The route uses `AWS_IAM`
 authorization, so `load.py` signs every request with SigV4 (service
 `execute-api`) from the shell's AWS credentials: the repo is public, and an
 unsigned URL that leaked into evidence could spend Bedrock money. A load
-never prints the URL.
+never prints the URL. The shell's credentials need `execute-api:Invoke` on
+the route.
 
 ## 12. Repo layout
 

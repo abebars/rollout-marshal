@@ -32,7 +32,7 @@ Read in this order before doing anything:
   `rsmoke<HHMM>` (3.6) and `rfault<HHMM>` (4.3). Any other start needs the
   human's yes. The human ends every experiment; no agent ends one or calls
   an end-experiment endpoint.
-- Do not send `temperature`, `top_p` (Converse: `topP`) or `top_k` to any
+- Do not send `temperature`, `top_p` (Converse: `topP`) or `top_k` (`topK`) to any
   Bedrock model.
 - Stay in your workstream's directories (design.md section 12).
 - Technical claims come from official documentation (docs.aws.amazon.com,

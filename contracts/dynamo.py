@@ -1,7 +1,7 @@
 """How a run item's numbers survive DynamoDB (standard library only).
 
 boto3 refuses Python floats on write and returns every number as Decimal on
-read. The plan holds fractions (1.1, 0.95, -0.05), so the rule is:
+read. The plan holds fractions (1.1, -0.05), so the rule is:
 
 - write: to_dynamo(item) turns every float into Decimal(str(x));
 - read: from_dynamo(item) turns every Decimal into int when it is whole and

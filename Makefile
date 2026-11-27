@@ -32,7 +32,8 @@ preflight:
 # Each function's zip is built by a build.sh in its owner's directory, so no task
 # edits this file (design.md section 2). The spikes' own scripts are left out.
 build:
-	@set -e; for f in $$(git ls-files '*build.sh' | grep -v '/spike/'); do echo "== $$f"; bash "$$f"; done
+	@git rev-parse --is-inside-work-tree >/dev/null
+	@set -e; for f in $$(git ls-files --cached --others --exclude-standard '*build.sh' | grep -v '/spike/'); do echo "== $$f"; bash "$$f"; done
 
 names-json:
 	uv run python -c 'from contracts import names; print(names.as_json(), end="")' > contracts/names.json

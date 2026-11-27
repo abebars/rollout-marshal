@@ -261,11 +261,13 @@ their tasks name, not against each other.
     call the API.
   - Gate 1 rules, each pinned by a test:
     - **The no-end rule, at the tool boundary.** An MCP tool outside the
-      module's allow-list raises before the call. So does an experiment
-      create or update carrying `status`, `rollout_decision`,
-      `rollout_variant`, `started_at` or `ended_at`. `rm-flagsmith-admin`
-      builds its paths with one function that cannot produce `complete/` or
-      `pause/`.
+      module's allow-list raises before the call. The allow-list leaves out
+      `flagsmith___update_experiment` and every `flagsmith___delete_*` tool.
+      An experiment create carrying `status`, `rollout_decision`,
+      `rollout_variant`, `started_at` or `ended_at` also raises.
+      `rm-flagsmith-admin` sends only the GET and POST pairs it needs, never
+      DELETE, PUT or PATCH. Its one path builder cannot produce `complete/`,
+      `pause/` or `rollout/`.
     - **Status.** `is_ended(status)` is true only for `completed`.
     - **The split.** The rollout block carries the `cheaper` option at 50;
       the option's own default decides nothing.
@@ -277,10 +279,17 @@ their tasks name, not against each other.
     - **Permanent features.** `ensure_permanent_features()` never resets a
       found feature's state or value.
     - **Freshness and the admin interface.** 2.2 states and tests when a
-      results read is current after a refresh. It proposes
+      results read is current after a refresh. `is_final` true counts as
+      current. Both cases recorded in `evidence/1.4-logs/` must pass:
+      `ended_refresh_log.json` index 3, 0-based (final, with `as_of` before
+      `refresh_requested_at`), is current, and `end_status_log.json` index 3,
+      0-based (the pre-end snapshot), is not. 2.2 also proposes
       `rm-flagsmith-admin`'s tool names, input schemas, direct-invoke
       shape and Gateway call shape, and the lead records them in design.md
       section 7 before 2.2 merges.
+    - **Metric IDs.** The metric ID is an int from the Admin API, a string
+      in MCP create's `metrics[].metric`, and an int in the results'
+      `metric_id`. A test pins all three.
     - **The live test** also changes a scratch `spike_` string feature
       `current → cheaper → current` and toggles a scratch kill switch, each
       through a v2 version. It reads each change back through the SDK's
@@ -334,10 +343,12 @@ their tasks name, not against each other.
     `notify` with a repeated `dedupe_key` publishes once and returns the
     same message ID, and a failed publish records nothing;
     `set_tick(False)` when already disabled is a no-op.
-  - `set_tick` reads `rm-tick` (GetSchedule) and writes back the same
-    target, input and role, changing only its state. A test checks that the
+  - `set_tick` reads `rm-tick` (GetSchedule) and writes back every field it
+    returned that UpdateSchedule takes, changing only its state. A test checks that the
     target's input is still the tick payload after every call. The
     report's Known bias names both biases in design.md section 10.
+  - A test checks that the Recommendation states the promote rule as at
+    least a 97.5 percent probability (design.md section 6).
   - Pass: unit tests green with moto.
 
 - [ ] 2.5 **Action handlers**
@@ -387,7 +398,7 @@ their tasks name, not against each other.
     Flagsmith; `approve` in
     `AWAITING_RESUME` with a failing probe goes back to `ROLLED_BACK` and
     adds no `incidents` entry, and a resumed rollback adds no second entry;
-    `approve` in `RESULTS_READY` with a running experiment returns
+    `approve` in `RESULTS_READY` with a running or paused experiment returns
     `EXPERIMENT_NOT_ENDED`; an effect that throws returns `EFFECT_FAILED`, leaves `pending` set,
     and a later `tick` resumes and completes it; every terminal state clears
     the pointer and disables the tick; every payload and response
@@ -402,14 +413,17 @@ their tasks name, not against each other.
     client setting shared with `rm-invoker` (read timeout 290 seconds, one
     attempt); prints state, message, what it waits for, any `pending`
     target and any error code. `main()` in `cli/marshal.py` returns an exit
-    code; when this task merges, the lead adds the console script
-    `marshal = cli.marshal:main` to `pyproject.toml`.
+    code; on this task's branch, before its review, the lead adds the
+    console script `marshal = cli.marshal:main` to `pyproject.toml`.
   - It reads the runtime's ARN from `/rm/agent-runtime-arn`. It exits 0
     when the response's error is null, 1 when it carries an error code,
     and 2 on a usage error.
-  - When 2.6 merges, the lead makes the root project packaged (hatchling,
-    `cli` and `contracts`), so `uv run marshal --help` exits 0. The
-    contracts test runs exactly that.
+  - Packaging, which the lead does on 2.6's branch before its review, so
+    `uv run marshal --help` exits 0 (the contracts test runs exactly that):
+    remove `[tool.uv] package = false`; add `[build-system]` with
+    hatchling, `[tool.hatch.build.targets.wheel] packages = ["cli",
+    "contracts"]`, and `[project.scripts] marshal = "cli.marshal:main"`.
+    The contracts test fails on 2.6's branch until then.
   - Pass: unit tests with a fake runtime client green.
 
 - [ ] 2.7 **Deploy the agent**
@@ -424,7 +438,9 @@ their tasks name, not against each other.
     `uv.lock` and the `contracts` symlink, then checks that the zip holds
     `main.py`, `rm_agent/` and `contracts/`. It adds `runtime/contracts` to
     `agent/conftest.py`'s `collect_ignore`, or pytest collects the contracts
-    suite twice through the symlink.
+    suite twice through the symlink. The runtime's role gets `iam:PassRole`
+    on `rm-scheduler-role`, with `iam:PassedToService`
+    `scheduler.amazonaws.com`, for the schedule tool's UpdateSchedule.
   - After each `agentcore deploy`, A writes the runtime ARN to
     `/rm/agent-runtime-arn` (for example `put-parameter --overwrite` in a
     small deploy script). A pre-merge apply of `runtime_role.tf` is allowed
@@ -433,9 +449,12 @@ their tasks name, not against each other.
     and the CDK diff; the CLI rewrites that file to the versions it ships.
   - After each deploy, it records the runtime's version and the commit.
   - `runtime_role.tf` attaches `rm-agent-runtime-tools` to the stack's
-    role (design.md section 7). It finds the role through the output whose
-    key starts `ApplicationRuntimeRmAgentRoleArnOutput`.
+    role (design.md section 7). It reads the role's ARN from the export
+    `AgentCore-rm-default-rm-agent-RoleArn`.
   - `setup_gateway.py`'s docstring gives the prefix as `Api-Key`.
+  - A rewords `evidence/1.3-flagsmith-agent-spike.md` step 12. The lead
+    ended 819 in the dashboard at Ahmed's request; that is a one-off,
+    recorded in `evidence/gate-1-review.md`.
   - Pass: `marshal status` against the deployed runtime prints "no active
     run"; SSM parameter `/rm/agent-runtime-arn` holds the ARN (the
     evidence shows `get-parameter`); the evidence file lists the Gateway
@@ -444,7 +463,7 @@ their tasks name, not against each other.
 
 ## 3. Workstream B: assistant API
 
-- [ ] 3.1 **Answer functions**
+- [x] 3.1 **Answer functions**
   - Needs: 1.4. Files: `app/answer/handler.py`, tests.
   - Produces: one handler deployed twice, `rm-answer-current` and
     `rm-answer-cheaper`, model from env `MODEL_ID`. Input `{question,
@@ -468,12 +487,13 @@ their tasks name, not against each other.
     `feature_key`, serves `assistant_default_model` and records nothing;
     exactly one identity request per call with an active run, and
     `get_experiment_flag` is never called; the exposure is tracked only
-    when the flag reports the identity in the experiment; `flush_events()`
+    when the flag reports the identity in the experiment, the flag is
+    enabled and `flag.variant` is set, and a disabled flag records none; `flush_events()`
     runs before return; the pointer is cached 30 seconds; an answer-function error returns 502 and still
     emits latency; with no active run, `rm-judge` is not invoked; the judge
     payload's `assigned` is the flag's value, while the exposure sends
     `flag.variant` (`control` or `cheaper`), and only when the identity is
-    in the experiment and `flag.variant` is set; every metric carries
+    in the experiment, the flag is enabled and `flag.variant` is set; every metric carries
     exactly the `Variant` dimension set. A test runs the real SDK against
     a slow local events endpoint, as 1.2's
     `app/spike/tests/test_sdk_events.py` does against its fake on
@@ -482,7 +502,8 @@ their tasks name, not against each other.
     the 10-second fault can pass 29 seconds, tell the lead, and a contract
     change sets the rule.
   - With an active run, an identity that is not that run's gets a 400 and
-    no Flagsmith call; a test covers it (design.md section 4, step 1).
+    no Flagsmith call; tests cover another run's identity, `<run_id>1-user-001`
+    and a trailing newline (design.md section 4, step 1).
   - Pass: unit tests green.
 
 - [ ] 3.3 **Judge**
@@ -504,7 +525,9 @@ their tasks name, not against each other.
 - [ ] 3.4 **Load script**
   - Needs: 1.1. Files: `scripts/load.py`, `app/questions.json`, tests.
   - Produces: `scripts/load.py --run-id <run_id> --users N --questions M
-    --url <api>`, sending identity `run_identity(run_id, n)` for user n; at
+    --url <api>`, sending identity `run_identity(run_id, n)` for user n, each
+    request a SigV4-signed (`execute-api`) POST of an `answer_request` to
+    `--url` (the app module's `ask_url`); at
     most 10 concurrent; prints sent, ok, failed; lock file refuses a
     second start.
   - Tests: sends exactly N x M; never exceeds the concurrency; refuses
@@ -561,6 +584,10 @@ their tasks name, not against each other.
   - Do: `bootstrap_flagsmith.py`, `seed_experiment.py rsmoke<HHMM>`,
     `load.py --run-id <run_id> --users 150 --questions 2`; after the human ends the
     experiment, `reset.py`.
+  - It checks Flagsmith's per-identity aggregation, which the docs'
+    statistics page describes. It records each arm's `n` against its
+    identities in `evidence/3.6-app-smoke.md`, settling whether `n` counts
+    identities or events (design.md section 7).
   - Pass, read through the API found in 1.3 (or **Human** on the
     dashboard if none exists): both variations show at least 50
     identities; CloudWatch has `AnswerLatencyMs` datapoints for both
@@ -715,6 +742,9 @@ their tasks name, not against each other.
   - Pass: repo public, README final on `main`, video uploaded, entry
     submitted on WeMakeDevs. Target `2026-11-29T02:00:00Z`; hard cutoff
     `2026-11-29T14:30:00Z`.
+  - After judging ends, with Ahmed's yes for each removal, the lead removes
+    everything on the cleanup list in `evidence/gate-1-review.md`, or
+    records why an item stays.
 
 ## Spec scenario coverage
 
@@ -731,8 +761,6 @@ their tasks name, not against each other.
 
 ## Definition of done
 
-  - Before submitting, the lead removes everything on the cleanup list in
-    `evidence/gate-1-review.md`, or records why an item stays.
 - [ ] One prompt produces a plan and waits for approval.
 - [ ] The agent creates the flag and experiment through the Flagsmith MCP
   server, and the metrics and the start through the Admin API.
