@@ -464,6 +464,8 @@ class Loads:
         for proc in self.started:
             if proc.poll() is None:
                 proc.kill()
+            if proc.stderr is not None and proc.stderr.closed:
+                proc.stderr = None  # a test closed it on purpose
             proc.communicate()
 
 
@@ -597,8 +599,16 @@ PASTED_URL = "https://abc1234567.execute-api.us-east-1.amazonaws.com/ask"
         ["--run-id", RUN_ID, "--users", "1", "--questions", PASTED_URL, "--url", PASTED_URL],
         ["--run-id", RUN_ID, "--users", "1", "--questions", "1", "--url", PASTED_URL, PASTED_URL],
         ["--run-id", RUN_ID, "--users", "1", "--questions", "1", f"--u={PASTED_URL}"],
+        [f"--help={PASTED_URL}"],  # argparse's own "ignored explicit argument" message
     ],
-    ids=["as --run-id", "as --users", "as --questions", "a stray argument", "an abbreviation"],
+    ids=[
+        "as --run-id",
+        "as --users",
+        "as --questions",
+        "a stray argument",
+        "an abbreviation",
+        "as --help's value",
+    ],
 )
 def test_a_url_in_the_wrong_place_is_refused_and_never_printed(argv, capsys):
     with pytest.raises(SystemExit) as exited:
@@ -953,6 +963,58 @@ def test_a_stop_signal_drains_the_load_holds_the_lock_and_prints_what_was_sent(
     assert _summary(out) == f"sent={sent} ok={sent} failed=0"
     assert f"interrupted: sent {sent} of 20" in out
     assert len(fake_api.received) == sent  # the refused start sent nothing
+
+
+def test_only_the_first_stop_signal_raises():
+    """Two different stop signals back to back (SIGTERM, then Ctrl-C before the first is
+    handled) must stop the load once. A second KeyboardInterrupt would escape the drain and
+    free the lock with requests in flight. A process test catches that race only now and
+    then, so this checks the handler itself."""
+    load._STOPPING.clear()
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            load._stop(signal.SIGTERM, None)
+        for later in (signal.SIGINT, signal.SIGHUP):
+            try:
+                assert load._stop(later, None) is None
+            except KeyboardInterrupt:  # a test failure, not an interrupted test run
+                pytest.fail(f"{signal.Signals(later).name} after SIGTERM raised again")
+    finally:
+        load._STOPPING.clear()
+
+
+def test_the_stop_handler_is_what_catches_every_stop_signal():
+    before = {stop: signal.getsignal(stop) for stop in load.STOP_SIGNALS}
+    try:
+        load.install_stop_handlers()
+        assert {stop: signal.getsignal(stop) for stop in load.STOP_SIGNALS} == dict.fromkeys(
+            (signal.SIGINT, signal.SIGTERM, signal.SIGHUP), load._stop
+        )
+    finally:
+        for stop, handler in before.items():
+            signal.signal(stop, handler)
+
+
+def test_with_stderr_gone_a_stop_signal_still_holds_the_lock_through_the_drain(
+    temp_repo, fake_api, loads
+):
+    """A closed terminal (SIGHUP's own case) or a closed stderr makes the drain's notice
+    fail to print. The load must still wait for the requests in flight before it lets the
+    lock go."""
+    fake_api.gate = threading.Event()
+    proc = loads.start(temp_repo.main, users=20, questions=1)
+    assert fake_api.wait_for(names.LOAD_MAX_CONCURRENCY)
+
+    proc.stderr.close()  # nothing reads stderr now, so writing to it fails
+    proc.send_signal(signal.SIGHUP)
+    time.sleep(1)
+    assert proc.poll() is None  # still draining
+    refused = loads.refused(temp_repo.second, users=1, questions=1)
+    assert refused.code == load.EXIT_REFUSED, refused  # the lock is still held
+
+    fake_api.gate.set()
+    proc.wait(WAIT_SECONDS)
+    assert len(fake_api.received) == names.LOAD_MAX_CONCURRENCY  # nothing more was sent
 
 
 def test_outside_a_git_repository_it_refuses_to_start(tmp_path, fake_api, loads):

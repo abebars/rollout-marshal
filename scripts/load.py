@@ -64,6 +64,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NoReturn
 
 import botocore.session
 from botocore.auth import SigV4Auth
@@ -103,9 +104,28 @@ EXIT_FAILED = 1
 EXIT_USAGE = 2  # argparse's own status for bad arguments
 EXIT_REFUSED = 3
 EXIT_INTERRUPTED = 130  # 128 + SIGINT, the shell's convention; for SIGTERM and SIGHUP too
-# Each stops a load the same way (run_load); the handler main installs turns each into
-# KeyboardInterrupt.
+# Each stops a load the same way (run_load): main installs _stop for each.
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+_STOPPING = threading.Event()
+
+
+def _stop(signum: int, frame: object) -> None:
+    """The first stop signal stops the load (run_load); every later one does nothing.
+
+    Two different signals back to back, a SIGTERM and then a Ctrl-C before the first is
+    handled, would otherwise raise KeyboardInterrupt twice. The second would escape the
+    drain and free the lock with requests in flight.
+    """
+    if not _STOPPING.is_set():
+        _STOPPING.set()
+        raise KeyboardInterrupt
+
+
+def install_stop_handlers() -> None:
+    """Ctrl-C, SIGTERM and SIGHUP each stop a load (run_load), even when whatever started it
+    was ignoring one of them."""
+    for stop in STOP_SIGNALS:
+        signal.signal(stop, _stop)
 
 
 class LoadRefused(RuntimeError):
@@ -392,7 +412,10 @@ def run_load(
             file=sys.stderr,
             flush=True,
         )
-    pool.shutdown(wait=True)
+    finally:
+        # Whatever was raised above, even a notice that could not be printed to a closed
+        # terminal, nothing leaves here (and frees the lock) while a request is in flight.
+        pool.shutdown(wait=True, cancel_futures=True)
     return tally
 
 
@@ -447,8 +470,22 @@ def _run_id(value: str) -> str:
     return value
 
 
+# Anything that looks like a URL or an AWS host, wherever argparse might quote it.
+_URLISH = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\",;]+|[^\s'\",;]*amazonaws\.com[^\s'\",;]*")
+
+
+class _QuietParser(argparse.ArgumentParser):
+    """An ArgumentParser whose errors never print a URL. Some of argparse's own messages
+    quote what was typed, an explicit value given to --help for one, so every error has
+    anything URL-shaped taken out before it is printed."""
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(EXIT_USAGE, f"{self.prog}: error: {_URLISH.sub('<not shown>', message)}\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _QuietParser(
         prog="load.py",
         description="Send users x questions requests to the assistant API, then stop.",
         allow_abbrev=False,  # argparse quotes an ambiguous abbreviation, value and all
@@ -518,10 +555,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"load.py: refused to start: {err}", file=sys.stderr)
         return EXIT_REFUSED
 
-    # Ctrl-C, SIGTERM and SIGHUP each stop a load (run_load), even when whatever started it
-    # was ignoring one of them.
-    for stop in STOP_SIGNALS:
-        signal.signal(stop, signal.default_int_handler)
+    install_stop_handlers()
     with lock:
         print(
             f"load: {len(bodies)} requests, {args.users} users x {args.questions} questions"
