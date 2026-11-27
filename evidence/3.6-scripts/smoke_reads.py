@@ -3,12 +3,18 @@
     unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
     export AWS_PROFILE=<the human's profile in 818928662830>
     uv run python evidence/3.6-scripts/smoke_reads.py usage
+    uv run python evidence/3.6-scripts/smoke_reads.py seen --since <ISO>
     uv run python evidence/3.6-scripts/smoke_reads.py latency --start <ISO> --end <ISO>
-    uv run python evidence/3.6-scripts/smoke_reads.py cost --answers-sent N [--expected-failures F]
+    uv run python evidence/3.6-scripts/smoke_reads.py cost --answers-sent N --remaining-planned R
     uv run python evidence/3.6-scripts/smoke_reads.py results <experiment_id> [--refresh]
 
+Every CloudWatch window ends on the first whole minute at or after its end (now, for seen
+and cost): in the live run an EndTime inside a minute dropped that whole minute.
+
 - usage: Flagsmith's request count for the organisation (the API 1.3 found), against
-  CLAUDE.md's stop line of 35,000.
+  CLAUDE.md's stop line of 35,000. A reply without a count is unknown (exit 1).
+- seen: each variant's AnswerLatencyMs sample count since --since, and whether any was
+  seen (exit 1 if none): the probe's check before the 150 x 2 load.
 - latency: AnswerLatencyMs p95 for exactly Variant=cheaper over the load window, as one
   period, which is the baseline 4.1 recalibrates the alarm from. Also each variant's
   sample count, since the Pass needs datapoints for both, and both variants' p95 and count
@@ -16,9 +22,10 @@
   or after the end: in the live run an end of 08:14:20 dropped the whole 08:14 minute.
 - cost: CLAUDE.md's cost check. For each variant, the Sum and SampleCount of
   AnswerCostMicroUsd since 2026-11-26T02:30:00Z, statistic Sum, period 3600, with every
-  datapoint added. An empty result is unknown, not zero. Then tasks.md 3.6's projection:
-  spent so far, plus the remaining answers (with one 150 x 2 rehearsal per expected
-  failure) times the higher mean cost per answer.
+  datapoint added. An empty result is unknown, not zero. Then tasks.md 3.6's projection,
+  at 0 to 3 expected failures: spent so far, plus the remaining planned answers (R, the
+  caller's figure) and one 150 x 2 rehearsal per expected failure, times the higher mean
+  cost per answer.
 - results: the experiment read and the raw results response, written to
   evidence/3.6-results.json: the raw reply with the experiment read's metrics list beside
   it, under "experiment_metrics", as 2.2's waiting test reads it.
@@ -61,6 +68,7 @@ COST_PERIOD_SECONDS = 3600
 RESULTS_FILE = ROOT / "evidence" / "3.6-results.json"
 POLL_SECONDS = 30
 ATTEMPTS = 20  # 10 minutes of polling for a current read
+EXPECTED_FAILURES = (0, 1, 2, 3)  # the cost command's projections: the plan, then 1 to 3
 LABELS = {names.CONTROL_LABEL: names.VARIANT_CURRENT, names.TREATMENT_OPTION_KEY: names.VARIANT_CHEAPER}
 
 
@@ -75,9 +83,17 @@ def _dimension(variant: str) -> list[dict]:
     return [{"Name": names.CW_DIMENSION_VARIANT, "Value": variant}]
 
 
+def _next_minute(at: datetime) -> datetime:
+    """The first whole minute at or after `at`. In 3.6's live run an EndTime inside a minute
+    dropped that whole minute, so every window here ends on a whole minute."""
+    whole = at.replace(second=0, microsecond=0)
+    return whole if whole == at else whole + timedelta(minutes=1)
+
+
 def answer_costs(cloudwatch, *, since: datetime = COST_SINCE, until: datetime | None = None) -> dict:
-    """Each variant's Sum, SampleCount and mean of AnswerCostMicroUsd since `since`."""
-    until = until or datetime.now(UTC)
+    """Each variant's Sum, SampleCount and mean of AnswerCostMicroUsd since `since`, to the
+    first whole minute at or after `until` (now by default), so the last minute counts."""
+    end = _next_minute(until or datetime.now(UTC))
     costs = {}
     for variant in names.VARIANTS:
         reply = cloudwatch.get_metric_statistics(
@@ -85,7 +101,7 @@ def answer_costs(cloudwatch, *, since: datetime = COST_SINCE, until: datetime | 
             MetricName=names.CW_METRIC_ANSWER_COST_MICRO_USD,
             Dimensions=_dimension(variant),
             StartTime=since,
-            EndTime=until,
+            EndTime=end,
             Period=COST_PERIOD_SECONDS,
             Statistics=["Sum", "SampleCount"],
         )
@@ -102,12 +118,17 @@ def answer_costs(cloudwatch, *, since: datetime = COST_SINCE, until: datetime | 
     return costs
 
 
-def projection(costs: dict, *, answers_sent: int, expected_failures: int) -> dict:
-    """tasks.md 3.6's projection, and whether the lead must ask the human first."""
+def projection(
+    costs: dict, *, answers_sent: int, remaining_planned: int, expected_failures: int
+) -> dict:
+    """tasks.md 3.6's projection, and whether the lead must ask the human first: spent so
+    far, plus the remaining planned answers and one 150 x 2 rehearsal per expected failure,
+    at the higher mean cost per answer. The planned answers are the caller's to give
+    (PR #33's review), not the budget less the answers sent."""
     spent = sum(c["sum"] for c in costs.values())
     higher_mean = max(c["mean"] for c in costs.values())
     rehearsal = names.LOAD_SMOKE.users * names.LOAD_SMOKE.questions  # one 150 x 2
-    remaining = max(names.ANSWER_BUDGET - answers_sent, 0) + expected_failures * rehearsal
+    remaining = remaining_planned + expected_failures * rehearsal
     projected = round(spent + remaining * higher_mean)
     reasons = []
     if projected > names.ANSWER_COST_STOP_MICRO_USD:
@@ -115,6 +136,7 @@ def projection(costs: dict, *, answers_sent: int, expected_failures: int) -> dic
     if answers_sent + remaining > names.ANSWER_HARD_STOP:
         reasons.append(f"the answers pass {names.ANSWER_HARD_STOP:,}")
     return {
+        "expected_failures": expected_failures,
         "spent_micro_usd": round(spent),
         "higher_mean_micro_usd": higher_mean,
         "remaining_answers": remaining,
@@ -134,8 +156,10 @@ def recalibrated_threshold(p95_ms: float) -> tuple[int, bool]:
 
 
 def latency_datapoints(cloudwatch, since: datetime, until: datetime) -> dict:
-    """Each variant's AnswerLatencyMs sample count from since to until, per minute, and
-    whether any was seen: the probe's check before the 150 x 2 load (PR #27's review)."""
+    """Each variant's AnswerLatencyMs sample count from since to the first whole minute at
+    or after until, per minute, and whether any was seen: the probe's check before the
+    150 x 2 load (PR #27's review)."""
+    end = _next_minute(until)
     samples = {}
     for variant in names.VARIANTS:
         reply = cloudwatch.get_metric_statistics(
@@ -143,7 +167,7 @@ def latency_datapoints(cloudwatch, since: datetime, until: datetime) -> dict:
             MetricName=names.CW_METRIC_ANSWER_LATENCY_MS,
             Dimensions=_dimension(variant),
             StartTime=since,
-            EndTime=until,
+            EndTime=end,
             Period=60,
             Statistics=["SampleCount"],
         )
@@ -161,9 +185,7 @@ def latency_baseline(cloudwatch, start: datetime, end: datetime) -> dict:
     EndTime of 08:15:00 kept them, so the end rounds up.
     """
     window_start = start.replace(second=0, microsecond=0)
-    window_end = end.replace(second=0, microsecond=0)
-    if window_end < end:
-        window_end += timedelta(minutes=1)
+    window_end = _next_minute(end)
     period = max(int((window_end - window_start).total_seconds()), 60)
     common = {
         "Namespace": names.CW_NAMESPACE,
@@ -222,9 +244,20 @@ def _latency_minutes(cloudwatch, common: dict, variant: str) -> list[dict]:
 # Flagsmith
 # ---------------------------------------------------------------------------
 def usage(admin: Admin) -> dict:
+    """The organisation's request count against CLAUDE.md's stop line. A reply without a
+    count is unknown, never under the line (PR #33's review)."""
     path = f"/api/v1/organisations/{names.FLAGSMITH_ORGANISATION_ID}/usage-data/total-count/"
-    count = (admin.request("GET", path) or {}).get("count")
-    return {"count": count, "stop_at": names.FLAGSMITH_USAGE_STOP, "past_stop": (count or 0) > names.FLAGSMITH_USAGE_STOP}
+    reply = admin.request("GET", path)
+    count = reply.get("count") if isinstance(reply, dict) else None
+    if not isinstance(count, int) or isinstance(count, bool):
+        raise Unknown(
+            f"no count in the usage reply: unknown, not under {names.FLAGSMITH_USAGE_STOP:,}"
+        )
+    return {
+        "count": count,
+        "stop_at": names.FLAGSMITH_USAGE_STOP,
+        "past_stop": count > names.FLAGSMITH_USAGE_STOP,
+    }
 
 
 def _time(value: object) -> datetime | None:
@@ -342,7 +375,7 @@ def main(argv: list[str] | None = None, *, admin: Admin | None = None, cloudwatc
     latency.add_argument("--end", required=True, type=_iso)
     cost = commands.add_parser("cost")
     cost.add_argument("--answers-sent", required=True, type=int)
-    cost.add_argument("--expected-failures", type=int, default=0)
+    cost.add_argument("--remaining-planned", required=True, type=int)
     results = commands.add_parser("results")
     results.add_argument("experiment_id", type=int)
     results.add_argument("--refresh", action="store_true")
@@ -362,10 +395,16 @@ def main(argv: list[str] | None = None, *, admin: Admin | None = None, cloudwatc
                 out(json.dumps(latency_baseline(cloudwatch, args.start, args.end), indent=2))
             else:
                 costs = answer_costs(cloudwatch)
-                plan = projection(
-                    costs, answers_sent=args.answers_sent, expected_failures=args.expected_failures
-                )
-                out(json.dumps({"costs": costs, "projection": plan}, indent=2))
+                plans = [
+                    projection(
+                        costs,
+                        answers_sent=args.answers_sent,
+                        remaining_planned=args.remaining_planned,
+                        expected_failures=failures,
+                    )
+                    for failures in EXPECTED_FAILURES
+                ]
+                out(json.dumps({"costs": costs, "projections": plans}, indent=2))
             return 0
         if admin is None:
             check_account()

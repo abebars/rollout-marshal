@@ -63,7 +63,7 @@ def _point(at: datetime, **stats) -> dict:
     return {"Timestamp": at, "Unit": "Count", **stats}
 
 
-def _expect_cost(cloudwatch, variant: str, datapoints: list[dict]) -> None:
+def _expect_cost(cloudwatch, variant: str, datapoints: list[dict], until=ANY) -> None:
     cloudwatch.stubber.add_response(
         "get_metric_statistics",
         {"Label": names.CW_METRIC_ANSWER_COST_MICRO_USD, "Datapoints": datapoints},
@@ -72,7 +72,7 @@ def _expect_cost(cloudwatch, variant: str, datapoints: list[dict]) -> None:
             "MetricName": names.CW_METRIC_ANSWER_COST_MICRO_USD,
             "Dimensions": [{"Name": names.CW_DIMENSION_VARIANT, "Value": variant}],
             "StartTime": SINCE,
-            "EndTime": ANY,
+            "EndTime": until,
             "Period": 3600,
             "Statistics": ["Sum", "SampleCount"],
         },
@@ -110,23 +110,61 @@ def test_an_empty_cost_read_is_unknown_never_zero(cloudwatch):
         reads.answer_costs(cloudwatch)
 
 
-def test_the_projection_is_spent_plus_the_remaining_answers_at_the_higher_mean():
-    costs = {
-        CURRENT: {"sum": 3_300_000.0, "count": 150.0, "mean": 22_000.0},
-        CHEAPER: {"sum": 660_000.0, "count": 150.0, "mean": 4_400.0},
-    }
+def test_an_empty_current_cost_read_is_unknown_too(cloudwatch):
+    _expect_cost(cloudwatch, CURRENT, [])
+    with pytest.raises(reads.Unknown, match=f"{names.CW_DIMENSION_VARIANT}={CURRENT} "):
+        reads.answer_costs(cloudwatch)
 
-    projected = reads.projection(costs, answers_sent=300, expected_failures=1)
+
+@pytest.mark.parametrize(
+    ("now", "end"),
+    [
+        (datetime(2026, 11, 27, 8, 16, 48, tzinfo=UTC), datetime(2026, 11, 27, 8, 17, tzinfo=UTC)),
+        (datetime(2026, 11, 27, 8, 17, 0, tzinfo=UTC), datetime(2026, 11, 27, 8, 17, tzinfo=UTC)),
+    ],
+)
+def test_the_cost_window_ends_on_the_first_whole_minute_at_or_after_now(cloudwatch, now, end):
+    """An EndTime inside a minute drops that whole minute (3.6's latency read), so a
+    stop-line check ending at now would undercount (PR #33's review, P33-6)."""
+    for variant in names.VARIANTS:
+        _expect_cost(cloudwatch, variant, [_point(SINCE, Sum=1.0, SampleCount=1.0)], until=end)
+    reads.answer_costs(cloudwatch, until=now)
+
+
+COSTS = {
+    CURRENT: {"sum": 3_300_000.0, "count": 150.0, "mean": 22_000.0},
+    CHEAPER: {"sum": 660_000.0, "count": 150.0, "mean": 4_400.0},
+}
+
+
+def test_the_projection_is_spent_plus_the_planned_answers_at_the_higher_mean():
+    projected = reads.projection(
+        COSTS, answers_sent=300, remaining_planned=3_000, expected_failures=1
+    )
 
     rehearsal = names.LOAD_SMOKE.users * names.LOAD_SMOKE.questions
-    remaining = names.ANSWER_BUDGET - 300 + rehearsal  # 4,800 planned + one 150 x 2
+    remaining = 3_000 + rehearsal  # the planned answers, plus one 150 x 2 per failure
+    assert projected["expected_failures"] == 1
     assert projected["spent_micro_usd"] == 3_960_000
     assert projected["higher_mean_micro_usd"] == 22_000.0
-    assert projected["remaining_answers"] == remaining == 5_100
+    assert projected["remaining_answers"] == remaining == 3_300
     assert projected["projected_micro_usd"] == 3_960_000 + remaining * 22_000
     assert projected["answers_in_all"] == 300 + remaining
-    assert projected["ask_the_human"] is True  # 116,160,000 passes 60,000,000
+    assert projected["ask_the_human"] is True  # 76,560,000 passes 60,000,000
     assert projected["reasons"] == [f"the projection passes {names.ANSWER_COST_STOP_MICRO_USD:,}"]
+
+
+def test_a_projection_of_exactly_60000000_needs_no_question():
+    """The stop is passing 60,000,000: exactly 60,000,000 does not pass it."""
+    costs = {
+        CURRENT: {"sum": 2_000_000.0, "count": 100.0, "mean": 20_000.0},
+        CHEAPER: {"sum": 0.0, "count": 1.0, "mean": 0.0},
+    }
+    exact = reads.projection(costs, answers_sent=101, remaining_planned=2_900, expected_failures=0)
+    assert exact["projected_micro_usd"] == names.ANSWER_COST_STOP_MICRO_USD == 60_000_000
+    assert exact["ask_the_human"] is False and exact["reasons"] == []
+    over = reads.projection(costs, answers_sent=101, remaining_planned=2_901, expected_failures=0)
+    assert over["projected_micro_usd"] == 60_020_000 and over["ask_the_human"] is True
 
 
 def test_the_projection_asks_when_the_answers_would_pass_7500():
@@ -134,22 +172,47 @@ def test_the_projection_asks_when_the_answers_would_pass_7500():
         CURRENT: {"sum": 0.0, "count": 1.0, "mean": 1.0},
         CHEAPER: {"sum": 0.0, "count": 1.0, "mean": 1.0},
     }
-    projected = reads.projection(costs, answers_sent=5_000, expected_failures=8)
+    projected = reads.projection(
+        costs, answers_sent=5_000, remaining_planned=100, expected_failures=8
+    )
     assert projected["answers_in_all"] == 5_000 + 100 + 8 * 300 == 7_500
     assert projected["ask_the_human"] is False  # 7,500 does not pass 7,500
-    projected = reads.projection(costs, answers_sent=5_000, expected_failures=9)
+    projected = reads.projection(
+        costs, answers_sent=5_000, remaining_planned=100, expected_failures=9
+    )
     assert projected["ask_the_human"] is True
     assert projected["reasons"] == [f"the answers pass {names.ANSWER_HARD_STOP:,}"]
 
 
-def test_a_smoke_well_under_the_limits_needs_no_question():
-    costs = {
-        CURRENT: {"sum": 3_400_000.0, "count": 300.0, "mean": 11_333.3},
-        CHEAPER: {"sum": 1.0, "count": 1.0, "mean": 1.0},
-    }
-    projected = reads.projection(costs, answers_sent=300, expected_failures=0)
-    assert projected["projected_micro_usd"] == round(3_400_001 + 4_800 * 11_333.3)
-    assert projected["ask_the_human"] is False and projected["reasons"] == []
+def test_the_cost_command_takes_the_planned_answers_and_prints_0_to_3_failures(cloudwatch):
+    """PR #33's review, P33-9: the remaining planned answers are an argument (5.1's 1,500
+    and one 5.2 run's 1,500 now), not the budget less the answers sent."""
+    _expect_cost(cloudwatch, CURRENT, [_point(SINCE, Sum=1_748_021.0, SampleCount=130.0)])
+    _expect_cost(cloudwatch, CHEAPER, [_point(SINCE, Sum=459_816.0, SampleCount=170.0)])
+    lines = []
+
+    code = reads.main(
+        ["cost", "--answers-sent", "301", "--remaining-planned", "3000"],
+        cloudwatch=cloudwatch,
+        out=lines.append,
+    )
+
+    assert code == 0
+    printed = json.loads(lines[0])
+    assert [p["expected_failures"] for p in printed["projections"]] == [0, 1, 2, 3]
+    mean = 1_748_021 / 130
+    for plan in printed["projections"]:
+        remaining = 3_000 + plan["expected_failures"] * 300
+        assert plan["remaining_answers"] == remaining
+        assert plan["projected_micro_usd"] == round(2_207_837 + remaining * mean)
+    assert printed["projections"][0]["projected_micro_usd"] == 42_546_783
+
+
+def test_the_cost_command_no_longer_takes_a_single_failure_count(cloudwatch):
+    with pytest.raises(SystemExit):
+        reads.main(
+            ["cost", "--answers-sent", "301", "--expected-failures", "1"], cloudwatch=cloudwatch
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +384,18 @@ def test_no_probe_datapoint_is_reported_unseen(cloudwatch):
     assert reads.latency_datapoints(cloudwatch, since, until)["seen"] is False
 
 
+def test_the_probe_read_ends_on_the_first_whole_minute_at_or_after_now(cloudwatch):
+    """3.6's probe read ran at 08:11:15Z; ending there would drop the 08:11 minute."""
+    since = datetime(2026, 11, 27, 8, 10, tzinfo=UTC)
+    now = datetime(2026, 11, 27, 8, 11, 15, tzinfo=UTC)
+    end = datetime(2026, 11, 27, 8, 12, tzinfo=UTC)
+    _expect_latency_count(
+        cloudwatch, CURRENT, since, end, [{"Timestamp": since, "SampleCount": 1.0}]
+    )
+    _expect_latency_count(cloudwatch, CHEAPER, since, end, [])
+    assert reads.latency_datapoints(cloudwatch, since, now)["seen"] is True
+
+
 # ---------------------------------------------------------------------------
 # Flagsmith
 # ---------------------------------------------------------------------------
@@ -343,6 +418,16 @@ def test_usage_reads_the_total_count_and_its_stop_line(admin, flagsmith):
     flagsmith.usage_count = names.FLAGSMITH_USAGE_STOP + 1
     assert reads.usage(admin)["past_stop"] is True
     assert [m for m, _, _ in flagsmith.requests] == ["GET", "GET"]
+
+
+def test_a_usage_read_without_a_count_is_unknown_never_under_the_stop(admin, flagsmith):
+    """PR #33's review, P33-7: no count is unknown, not past_stop false."""
+    flagsmith.usage_count = None
+    with pytest.raises(reads.Unknown, match="no count"):
+        reads.usage(admin)
+    lines = []
+    assert reads.main(["usage"], admin=admin, out=lines.append) == 1
+    assert lines[0].startswith("failed: ") and "past_stop" not in lines[0]
 
 
 REQUESTED = "2026-11-28T05:20:00.000000Z"
@@ -436,6 +521,8 @@ def _experiment(flagsmith, experiment_id=840):
         ),  # 60 s allowance
         (_envelope(error="2026-11-28T05:20:10.000000Z"), False),  # failed after the request
         (_envelope(error="2026-11-28T05:10:00.000000Z"), True),  # an older failure
+        (_envelope(as_of=REQUESTED), True),  # computed at the request itself
+        (_envelope(error=REQUESTED), False),  # failed at the request itself
         ({"results": None}, False),  # not computed yet
     ],
 )
@@ -484,6 +571,16 @@ def test_results_without_refresh_reads_once_and_sends_no_post(admin, flagsmith, 
     )
     assert flagsmith.refreshes == []
     assert "POST" not in [m for m, _, _ in flagsmith.requests]
+
+
+def test_results_without_refresh_against_a_null_reply_are_unknown(admin, flagsmith, tmp_path):
+    experiment_id = _experiment(flagsmith)
+    flagsmith.results[experiment_id] = [{"results": None}]
+    out = tmp_path / "r.json"
+    with pytest.raises(reads.Unknown, match="not computed"):
+        reads.read_results(admin, experiment_id, out, refresh=False, sleep=lambda s: None)
+    assert not out.exists()
+    assert flagsmith.refreshes == []
 
 
 def test_results_that_never_become_current_write_nothing(admin, flagsmith, tmp_path):
