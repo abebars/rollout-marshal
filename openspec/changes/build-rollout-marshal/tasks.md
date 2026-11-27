@@ -606,7 +606,8 @@ their tasks name, not against each other.
     and the reports bucket.
 
 - [ ] 3.6 **Deployed smoke**
-  - Needs: 3.5 applied, 3.4. Files: `evidence/3.6-app-smoke.md`.
+  - Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied
+    with it. Files: `evidence/3.6-app-smoke.md`.
   - Do: `bootstrap_flagsmith.py`, `seed_experiment.py rsmoke<HHMM>`,
     `load.py --run-id <run_id> --users 150 --questions 2`; after the human ends the
     experiment, `reset.py`.
@@ -693,8 +694,9 @@ their tasks name, not against each other.
   - Needs: 3.6; 4.1 applied with the recalibrated threshold. Timebox: 2 hours. Files: `infra/modules/fis/*.tf`,
     `scripts/inject_fault.sh`, `evidence/4.3-fis.md`.
   - Do: seed a run (`seed_experiment.py rfault<HHMM>`), start
-    `load.py --run-id <run_id> --users 150 --questions 2`, then start the fault. The lead
-    applies `infra/modules/fis` first.
+    `load.py --run-id <run_id> --users 150 --questions 2`, then start the fault. 4.3's
+    build half merges, and the lead applies `infra/modules/fis` with the app
+    module, before 3.6 (design.md section 9).
   - design.md section 9 holds the module's names and interface. An
     organisation SCP denies FIS to `rm-review-readonly`, so the lead reads
     FIS state with the SSO profile and records it, and

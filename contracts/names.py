@@ -270,7 +270,7 @@ CW_METRIC_EMITTER = {
 # Task 3.3's judge and its prices file (contract change c4, design.md section 5).
 JUDGE_REPLY_FIELD = "helpful"  # the judge model's reply: {"helpful": true} or false
 JUDGE_ERROR_THROTTLED = "JudgeThrottled"  # Bedrock's ThrottlingException, by its error code
-JUDGE_ERROR_FAILED = "JudgeFailed"  # any other failure before the first event is tracked
+JUDGE_ERROR_FAILED = "JudgeFailed"  # any other failure before the CloudWatch write
 JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS = 5
 JUDGE_BEDROCK_READ_TIMEOUT_SECONDS = 10
 JUDGE_FLUSH_RESERVE_SECONDS = 13  # one SDK send and 1 s more, left before the CloudWatch write
