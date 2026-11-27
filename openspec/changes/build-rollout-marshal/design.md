@@ -774,7 +774,7 @@ Agent tools:
 | Flagsmith MCP tools | features, multivariate options, experiments | AgentCore Gateway MCP target, API key from AgentCore Identity |
 | `flagsmith_admin` | get-or-create metrics, start experiment, refresh and read results, read experiment status | Lambda `rm-flagsmith-admin` as a Gateway target |
 | `state` | `rm-runs` | boto3 in the agent |
-| `signals` | alarm state, CloudWatch metric statistics | boto3 in the agent |
+| `signals` | the latency alarm's state and threshold (DescribeAlarms) | boto3 in the agent |
 | `probe` | 5 direct invokes of `rm-answer-cheaper` | boto3 in the agent |
 | `schedule` | enable or disable the `rm-tick` schedule | boto3 in the agent |
 | `notify` | SNS topic `rm-incidents` | boto3 in the agent |
