@@ -42,7 +42,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.answer.request_fields import nested_field, sampling_parameters
+from app.bedrock_fields import nested_field, sampling_parameters
 from contracts import names
 
 MODEL_ID_ENV = "MODEL_ID"  # tasks.md 3.1
