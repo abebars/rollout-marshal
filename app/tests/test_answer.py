@@ -26,7 +26,8 @@ from botocore.exceptions import EndpointConnectionError, ReadTimeoutError
 from botocore.stub import Stubber
 from jsonschema import ValidationError
 
-from app.answer import handler, request_fields
+from app import bedrock_fields
+from app.answer import handler
 from contracts import names, validate
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -196,8 +197,8 @@ def test_a_sampling_parameter_is_refused_before_bedrock(monkeypatch, model_id):
 
 
 def test_the_dotted_field_helper_builds_exactly_the_fields_1_2_recorded():
-    effort = request_fields.nested_field(names.THINKING_EFFORT_FIELD, names.ANSWER_THINKING_EFFORT)
-    disabled = request_fields.nested_field(
+    effort = bedrock_fields.nested_field(names.THINKING_EFFORT_FIELD, names.ANSWER_THINKING_EFFORT)
+    disabled = bedrock_fields.nested_field(
         names.THINKING_DISABLED_FIELD, names.THINKING_DISABLED_VALUE
     )
 
@@ -214,19 +215,19 @@ def test_the_dotted_field_helper_builds_exactly_the_fields_1_2_recorded():
     [("a", 1, {"a": 1}), ("a.b.c", "v", {"a": {"b": {"c": "v"}}})],
 )
 def test_the_dotted_field_helper_nests_any_depth(dotted, value, expected):
-    assert request_fields.nested_field(dotted, value) == expected
+    assert bedrock_fields.nested_field(dotted, value) == expected
 
 
 @pytest.mark.parametrize("dotted", ["", ".", "a.", ".b", "a..b"])
 def test_the_dotted_field_helper_refuses_an_empty_part(dotted):
     with pytest.raises(ValueError):
-        request_fields.nested_field(dotted, 1)
+        bedrock_fields.nested_field(dotted, 1)
 
 
 def test_the_sampling_walk_finds_keys_at_any_depth():
     request = {"inferenceConfig": {"maxTokens": 1, "topP": 0.9}, "x": [{"y": {"top_k": 3}}]}
-    assert request_fields.sampling_parameters(request) == ["topP", "top_k"]
-    assert request_fields.sampling_parameters({"inferenceConfig": {"maxTokens": 1}}) == []
+    assert bedrock_fields.sampling_parameters(request) == ["topP", "top_k"]
+    assert bedrock_fields.sampling_parameters({"inferenceConfig": {"maxTokens": 1}}) == []
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +290,22 @@ def test_a_request_that_is_not_an_answer_request_is_refused_before_bedrock(
     fake = _use(monkeypatch, FakeBedrock(_reply()))
     with pytest.raises(handler.AnswerFailed, match="answer_request") as raised:
         handler.handler(event, None)
+    _clean_message(raised.value)
+    assert fake.calls == []
+
+
+def test_a_callers_key_is_counted_and_never_quoted(monkeypatch, model_id):
+    """Lambda logs the message as errorMessage, and a key can carry an identity or a
+    question."""
+    leaked_identity, leaked_question = names.run_identity("ranswertest1200", 99), "Who else?"
+    fake = _use(monkeypatch, FakeBedrock(_reply()))
+    with pytest.raises(handler.AnswerFailed) as raised:
+        handler.handler({**_event(), leaked_identity: leaked_question}, None)
+
+    message = str(raised.value)
+    assert "1 unexpected field(s)" in message
+    for text in (leaked_identity, leaked_question, IDENTITY):
+        assert text not in message
     _clean_message(raised.value)
     assert fake.calls == []
 

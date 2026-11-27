@@ -214,6 +214,8 @@ NOT_A_NAME = {
     "TransactWriteItems": "DynamoDB API operation that carries every pointer change",
     "2#ROLLED_BACK": "example of dedupe_key(); test_dedupe_key_matches_design checks it",
     "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
+    "marshal approve <run_id> <awaiting>": "command line: CLI_NAME plus ACTION_APPROVE and an "
+    "AWAITING_VALUES entry (contract change c5)",
     "flag.variant": "SDK attribute the exposure call sends",
     "flag.value": "SDK attribute: the variant's value, which names the model served",
     "api_key_authorization()": "helper in contracts.names; test_spike_findings_match_design",
@@ -1398,6 +1400,9 @@ def design_payloads() -> list[dict]:
         "<text>": "Test moving the support assistant from Claude Fable 5.1 to Claude Sonnet 5.",
         "<id>": "r202611271530",
         "<ISO 8601>": "2026-11-27T15:42:00Z",
+        f"<{names.AWAITS_LAUNCH}, {names.AWAITS_RESUME} or {names.AWAITS_PROMOTION}>": (
+            names.AWAITS_PROMOTION
+        ),
     }
     out = []
     for line in section(7, keep_fences=True).splitlines():
@@ -1430,6 +1435,14 @@ def test_design_payload_examples_validate():
         {"action": "start", "prompt": "x"},
         {"action": "approve", "run_id": "r202611271530", "actor": "agent"},
         {"action": "approve", "run_id": "rspike", "actor": "engineer"},
+        {"action": "approve", "run_id": "r202611271530", "actor": "engineer"},
+        {
+            "action": "approve",
+            "run_id": "r202611271530",
+            "awaiting": "promote",
+            "actor": "engineer",
+        },
+        {"action": "decline", "run_id": "r202611271530", "awaiting": "launch", "actor": "engineer"},
         {"action": "decline", "actor": "engineer"},
         {"action": "check", "run_id": "r202611271530"},
         {"action": "status", "actor": "engineer"},
@@ -2728,7 +2741,95 @@ def test_spike_findings_match_design():
 
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
+def test_contract_c4_judge():
+    """Contract change c4: task 3.3's judge (section 5) and its prices file."""
+    sec5 = flat_section(5)
+    sources, prices = names.PRICES_FIELDS, names.PRICE_FIELDS
+    assert (
+        f"The file holds `{sources[0]}`, `{sources[1]}`, `{sources[2]}` and `{sources[3]}`, a map "
+        f"from each model ID to its `{prices[0]}` and `{prices[1]}` prices in US dollars per "
+        f"million tokens, so tokens times price is micro-USD; `{names.JUDGE_FUNCTION}` rounds the "
+        "sum to an integer." in sec5
+    )
+    connect = names.JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS
+    read = names.JUDGE_BEDROCK_READ_TIMEOUT_SECONDS
+    reserve = names.JUDGE_FLUSH_RESERVE_SECONDS
+    assert (
+        f"`{names.JUDGE_FUNCTION}` judges and parses the reply (field `{names.JUDGE_REPLY_FIELD}`) "
+        "before any write, then writes CloudWatch, then tracks the three events and flushes. A "
+        f"failure before the first event is tracked raises `{names.JUDGE_ERROR_THROTTLED}` "
+        f"(Bedrock's `ThrottlingException`) or `{names.JUDGE_ERROR_FAILED}`, so Lambda's async "
+        "retries, its default 2, run it again; a retry may count the cost twice in CloudWatch, "
+        "the safe side for the budget check. Once an event is tracked, nothing raises, so no retry "
+        "the judge causes sends the events twice. Its Bedrock client makes one attempt and waits "
+        f"at most {connect} seconds to connect and {read} to read, and before the CloudWatch write "
+        f"it needs {reserve} seconds of Lambda's time left, one SDK send and 1 second more, or it "
+        f"raises `{names.JUDGE_ERROR_FAILED}` with nothing written. Lambda may still deliver an "
+        f"event twice, and a flush slower than {reserve} seconds may meet the timeout; both are "
+        "rare and accepted (task 3.3's review)." in sec5
+    )
+    send = int(re.search(r"so one send can take about (\d+) seconds", sec5).group(1))
+    assert reserve == send + 1
+    assert connect + read + reserve < names.JUDGE_TIMEOUT_SECONDS
+    assert names.JUDGE_ERROR_THROTTLED != names.ANSWER_ERROR_THROTTLED
+    prices_file = ROOT / names.PRICES_FILE
+    if prices_file.exists():  # task 3.3 adds it
+        data = json.loads(prices_file.read_text())
+        assert tuple(data) == sources
+        for model in (names.MODEL_CURRENT, names.MODEL_CHEAPER, names.MODEL_JUDGE):
+            assert tuple(data[sources[3]][model]) == prices, model
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    assert (
+        "- design.md section 5 holds the judge's write order, its typed errors, its Bedrock "
+        f"timeouts, the {reserve} second reserve and the prices file's shape; section 13 records "
+        "the price check." in tasks
+    )
+
+
+def test_contract_c5_approve_names_what_it_approves():
+    """Contract change c5: approve carries awaiting, and a mismatch is illegal (design.md 7)."""
+    sec7 = flat_section(7)
+    launch, resume, promotion = names.AWAITING_VALUES
+    assert (
+        f"`{names.ACTION_APPROVE}` names what it approves: `awaiting` is the value the run's last "
+        f"response gave, `{launch}`, `{resume}` or `{promotion}`. Legality includes it: an "
+        f"`{names.ACTION_APPROVE}` whose `awaiting` is not the one the run's state gives returns "
+        f"`{names.ERROR_ILLEGAL_IN_STATE}`, naming what the run awaits, and changes nothing. So an "
+        "alarm between the engineer's read and the approve cannot turn one approval into another "
+        "(task 2.5's review). The CLI takes it as the second argument, `marshal approve <run_id> "
+        "<awaiting>`, and every message that asks for an approval names the command with its "
+        "value." in sec7
+    )
+    assert set(names.AWAITING_BY_STATE.values()) == set(names.AWAITING_VALUES)
+    spec = re.sub(
+        r"\s+",
+        " ",
+        (
+            ROOT / "openspec/changes/build-rollout-marshal/specs/experiment-agent/spec.md"
+        ).read_text(),
+    )
+    assert (
+        f"- **WHEN** the engineer approves with an `awaiting` the run does not await, such as "
+        f"`{promotion}` for a run an alarm has since moved to `{names.STATE_AWAITING_RESUME}` - "
+        f"**THEN** the response carries error `{names.ERROR_ILLEGAL_IN_STATE}` naming what the run "
+        "awaits, and nothing changes" in spec
+    )
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    assert (
+        "- `approve` carries `awaiting` (design.md section 7, contract change c5): the handler "
+        f"refuses a mismatch with `{names.ERROR_ILLEGAL_IN_STATE}`, its messages name `marshal "
+        "approve <run_id> <awaiting>`, and the CLI sends the value as its second argument (a 2.6 "
+        "follow-up in this task's pull request)." in tasks
+    )
+
+
 TIED_BY = {
+    "PRICES_FIELDS": test_contract_c4_judge,
+    "PRICE_FIELDS": test_contract_c4_judge,
     "MODEL_DISPLAY_NAMES": test_contract_c3_models_and_the_router,
     "FLAGSMITH_ADMIN_TOOLS": test_contract_c3_agent_tools,
     "FLAGSMITH_ADMIN_FORBIDDEN_PATHS": test_contract_c2,
@@ -2891,16 +2992,22 @@ def test_every_schema_copy_of_a_name_matches_names():
         tuple(b["properties"]["action"].get("enum", [b["properties"]["action"].get("const")])): b
         for b in invoke["oneOf"]
     }
-    engineer_actions = (names.ACTION_APPROVE, names.ACTION_DECLINE, names.ACTION_CHECK)
+    approve = (names.ACTION_APPROVE,)
+    engineer_actions = (names.ACTION_DECLINE, names.ACTION_CHECK)
     assert set(branches) == {
         (names.ACTION_START,),
+        approve,
         engineer_actions,
         (names.ACTION_STATUS,),
         (names.ACTION_ALARM,),
         (names.ACTION_TICK,),
     }
-    for key in [(names.ACTION_START,), engineer_actions]:
+    for key in [(names.ACTION_START,), approve, engineer_actions]:
         assert branches[key]["properties"]["actor"] == {"const": names.ACTOR_ENGINEER}
+    # Contract change c5: approve names what it approves.
+    assert branches[approve]["properties"]["awaiting"] == {"enum": list(names.AWAITING_VALUES)}
+    assert branches[approve]["required"] == ["action", "run_id", "awaiting", "actor"]
+    assert "awaiting" not in branches[engineer_actions]["properties"]
     alarm = branches[(names.ACTION_ALARM,)]["properties"]
     assert alarm["alarm_name"] == {"const": names.ALARM_NAME}
     assert alarm["alarm_state"] == {"const": names.ALARM_STATE_ALARM}
@@ -3213,3 +3320,103 @@ GOOD_VARIATION = {
 )
 def test_schema_bounds_and_types_are_pinned(schema, instance):
     invalid(schema, instance())
+
+
+def test_contract_c4_fis_names_and_logging():
+    """Contract change c4: section 9's names and module interface, the review role's FIS gap,
+    and the two Flagsmith-calling functions' log level."""
+    sec2, sec5, sec9 = flat_section(2), flat_section(5), flat_section(9)
+    assert (
+        f"Names (task 4.3): the configuration bucket `{names.FIS_CONFIG_BUCKET}`, with the "
+        f"configuration in its `{names.FIS_CONFIG_PREFIX}` folder; the experiment role "
+        f"`{names.FIS_ROLE}`, with inline policy `{names.FIS_ROLE_POLICY}`; and inline policy "
+        f"`{names.FIS_CONFIG_READ_POLICY}` on `{names.FIS_TARGET_FUNCTION}`'s role, which reads "
+        "only that folder." in sec9
+    )
+    assert (
+        f"The FIS module takes the app module's `{names.APP_CHEAPER_FUNCTION_NAME_OUTPUT}` and "
+        f"`{names.APP_CHEAPER_ROLE_NAME_OUTPUT}` outputs and gives back "
+        f"`{names.APP_CHEAPER_EXTRA_LAYERS_INPUT}` and `{names.APP_CHEAPER_EXTRA_ENV_INPUT}`, "
+        "which "
+        f"the app module applies to `{names.FIS_TARGET_FUNCTION}` alone. Neither depends on the "
+        "app module, so the two modules form no cycle." in sec9
+    )
+    assert (
+        "The lead applies both together, before task 3.6, so 3.6's baseline is measured with the "
+        "extension on the function, as the fault run has it." in sec9
+    )
+    assert (
+        f"`{names.INJECT_FAULT_SCRIPT}` starts one experiment from the template, prints its ID and "
+        "its UTC start and end, and never stops it: the fault ends by its duration." in sec9
+    )
+    assert (
+        "An organisation SCP denies it FIS, so the lead reads FIS state with the SSO profile and "
+        f"records the reads, and `{names.INJECT_FAULT_SCRIPT}` runs with that profile" in sec2
+    )
+    assert (
+        f"`{names.ROUTER_FUNCTION}` and `{names.JUDGE_FUNCTION}` log at INFO or above, "
+        "never DEBUG, because at DEBUG the Flagsmith SDK logs identifiers and botocore logs "
+        "response bodies, the server key among them (tasks 3.2 and 3.3's reviews)." in sec5
+    )
+    assert (
+        "the FIS extension layer (its arm64 ARN is published in SSM; the module pins "
+        f"`{names.FIS_EXTENSION_LAYER_ARN}`, task 4.3's read, and warns when SSM moves on, so no "
+        "new release changes the cheaper function alone mid-project)" in sec9
+    )
+    layer = names.FIS_EXTENSION_LAYER_ARN.split(":")
+    assert layer[3] == names.REGION and layer[6] == f"aws-fis-extension-{names.LAMBDA_ARCHITECTURE}"
+    assert names.FIS_CONFIG_BUCKET.endswith(
+        f"-{names.ACCOUNT_ID}"
+    )  # as the account's other buckets
+    interface = (
+        names.APP_CHEAPER_FUNCTION_NAME_OUTPUT,
+        names.APP_CHEAPER_ROLE_NAME_OUTPUT,
+        names.APP_CHEAPER_EXTRA_LAYERS_INPUT,
+        names.APP_CHEAPER_EXTRA_ENV_INPUT,
+        names.APP_ASK_URL_OUTPUT,
+    )
+    assert len(set(interface)) == len(interface)
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    for line in (
+        f"- design.md section 5 sets `{names.ROUTER_FUNCTION}`'s and "
+        f"`{names.JUDGE_FUNCTION}`'s log "
+        "level, INFO or above, and section 9 names the module interface the FIS module meets: "
+        f"outputs `{names.APP_CHEAPER_FUNCTION_NAME_OUTPUT}` and "
+        f"`{names.APP_CHEAPER_ROLE_NAME_OUTPUT}`, inputs `{names.APP_CHEAPER_EXTRA_LAYERS_INPUT}` "
+        f"and `{names.APP_CHEAPER_EXTRA_ENV_INPUT}`.",
+        f"- The baseline runs with the FIS extension on `{names.FIS_TARGET_FUNCTION}`, "
+        "as the fault "
+        "run has it: the lead applies the FIS module with the app module first (design.md section "
+        "9).",
+        "- design.md section 9 holds the module's names and interface. An organisation SCP denies "
+        f"FIS to `{names.REVIEW_ROLE}`, so the lead reads FIS state with the SSO profile "
+        "and records "
+        f"it, and `{names.INJECT_FAULT_SCRIPT}` runs with that profile.",
+    ):
+        assert line in tasks, line
+
+
+def test_fis_and_app_module_interfaces():
+    """Each module, once it exists, declares its side of section 9's interface."""
+
+    def declared(module: str) -> str:
+        directory = ROOT / "infra/modules" / module
+        if not directory.is_dir():
+            return ""
+        return "".join(p.read_text() for p in sorted(directory.glob("*.tf")))
+
+    fis, app = declared("fis"), declared("app")
+    takes = (names.APP_CHEAPER_FUNCTION_NAME_OUTPUT, names.APP_CHEAPER_ROLE_NAME_OUTPUT)
+    gives = (names.APP_CHEAPER_EXTRA_LAYERS_INPUT, names.APP_CHEAPER_EXTRA_ENV_INPUT)
+    if fis:
+        for name in takes:
+            assert f'variable "{name}"' in fis, name
+        for name in gives:
+            assert f'output "{name}"' in fis, name
+    if app:
+        for name in (*takes, names.APP_ASK_URL_OUTPUT):
+            assert f'output "{name}"' in app, name
+        for name in gives:
+            assert f'variable "{name}"' in app, name
