@@ -523,7 +523,7 @@ their tasks name, not against each other.
     settings are in design.md sections 4 and 5.
   - Pass: unit tests green.
 
-- [ ] 3.3 **Judge**
+- [x] 3.3 **Judge**
   - Needs: 1.4. Files: `app/judge/handler.py`, `app/prices.json`, tests.
   - Produces: one judge call returning `{"helpful": true|false}`; events
     `answer_helpful` (value 1 or 0), `answer_latency_ms`,
