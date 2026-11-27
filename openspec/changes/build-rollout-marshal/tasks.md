@@ -826,5 +826,5 @@ their tasks name, not against each other.
   email.
 - [ ] Resume and promotion each wait for a human decision.
 - [ ] A decision report with Flagsmith results exists in S3.
-- [ ] Two clean runs (5.1 plus one in 5.2; 5.2 cut to one run on 2026-11-27).
+- [x] Two full runs ending HELD (5.1 plus one in 5.2; 5.2 cut to one run on 2026-11-27). 5.1's needed the PR #38 probe fix mid-run, and Ahmed's Gate 4 approval accepted it; 5.2's ran clean.
 - [ ] README and video done, `dev` merged to `main`, entry submitted.

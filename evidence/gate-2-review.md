@@ -49,6 +49,7 @@ What the lead takes them to cover:
   - it ends those runs' experiments in the dashboard.
 
   Each step goes into that task's evidence with its UTC time, the exact command or click, the option chosen and a pointer to this file.
+  **Correction, 2026-11-27 (Gate 4).** That is not what happened. In 5.1 and 5.2 the lead ran no `marshal approve` or `marshal decline`: Claude Code's auto mode refused its one attempt (10:18:37Z), and Ahmed typed every approve and decline himself (`evidence/5.1-e2e.md`, finding 5). The delegation still covers only the dashboard ends, and those stay open until Ahmed confirms them (`docs/submission.md`, items 1 and 2). An agent taking over from the repo has no standing authority to approve or decline.
 - **What stays open.** These words are in the lead's session log, not in the repo in Ahmed's hand. The lead's final handoff asks him to confirm or correct them with one comment on the pull request that merges this file. If he corrects them, the Human lines they cover go back to open.
 
 tasks.md now says, in 2.2, 3.6 and 4.3, who ended each experiment and when. The "one-off" lines in tasks.md 2.7 and `evidence/gate-1-review.md` carry a dated correction.
