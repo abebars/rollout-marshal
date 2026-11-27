@@ -50,7 +50,7 @@ The load generator MUST stop at its configured count and MUST NOT run two
 loads at once.
 
 #### Scenario: Stops at count
-- **WHEN** `scripts/load.py --run-id <run_id> --users 150 --questions 10` finishes
+- **WHEN** `scripts/load.py --run-id <run_id> --users 150 --questions 10 --url <api>` finishes
 - **THEN** exactly 1,500 requests were sent
 
 #### Scenario: Second start

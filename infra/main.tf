@@ -17,6 +17,10 @@ terraform {
 locals {
   account_id = "818928662830"
   region     = "us-east-1"
+
+  # Every shared name and value (design.md section 1); a recalibrated
+  # threshold arrives here as a contract change.
+  names = jsondecode(file("${path.module}/../contracts/names.json"))
 }
 
 provider "aws" {

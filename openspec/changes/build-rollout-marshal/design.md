@@ -25,7 +25,7 @@ changes, and clear output.
 | Language | Python 3.13, `arm64` Lambdas |
 | Agent framework | Strands Agents on Amazon Bedrock AgentCore Runtime, created with the AgentCore CLI |
 | AgentCore CLI | npm package `@aws/agentcore`, command `agentcore`, version 1.3.0 or later within 1.x. Its project lives under `agent/`; it deploys the runtime through its own CDK stack and bootstraps CDK on the first deploy |
-| Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy |
+| Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy. Every plan and apply from `infra/` runs `make build` first, which runs each function's `build.sh` where it has one; a module may package with `archive_file` instead (Gate 1) |
 | Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below. For a task whose Pass needs its own Terraform applied (2.7, 4.3), the lead may apply that branch merged locally with `dev` before it merges, attaches the plan, and re-applies `dev` if it does not merge. While a branch is applied unmerged, every later apply includes it; branches are applied together only from one local merge, and only if they touch different modules |
 | Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review`, always as `--profile rm-review`: exported environment credentials override `AWS_PROFILE`, but not `--profile` |
 | Timebox | 90 minutes per task unless the task says otherwise. Past it, stop and tell the lead |
@@ -45,7 +45,7 @@ file, and the destroy runs before the pull request is reviewed.
 
 | Role | Model ID | Notes |
 | --- | --- | --- |
-| Current arm (control) | `us.anthropic.claude-fable-5-1` | Needs account data retention mode `aws_review` in us-east-1. Send no `temperature`, `top_p`, `topP` or `top_k`. Thinking is always on. |
+| Current arm (control) | `us.anthropic.claude-fable-5-1` | Needs account data retention mode `aws_review` in us-east-1. Send no `temperature`, `top_p`, `topP`, `top_k` or `topK`. Thinking is always on. |
 | Cheaper arm (treatment) | `us.anthropic.claude-sonnet-5` | |
 | Judge | `us.anthropic.claude-haiku-5-5` | Scores helpfulness so neither arm grades itself. |
 | The agent's own reasoning | `us.anthropic.claude-sonnet-5` | Plan, incident note, report prose. |
@@ -79,7 +79,7 @@ seconds.
 | Run ID | `r` + UTC `YYYYMMDDHHMM`, e.g. `r202611271530`. Scratch runs made by spikes and tests use `r` + a word + UTC `HHMM`, e.g. `rsmoke0412`. Pattern for both: `^r[a-z]*[0-9]{4,12}$` |
 | Experiment feature (multivariate) | `assistant_model_<run_id>` |
 | Control | the feature's own value, `current`. Flagsmith reserves the control; it is not a keyed option. Remote evaluation, exposures and results label it `control` (task 1.2), so `flag.variant` reads `control` while `flag.value` reads `current` |
-| Treatment | one multivariate option with key `cheaper` and value `cheaper`, at 50 percent. An option without a key records no exposures |
+| Treatment | one multivariate option with key `cheaper` and value `cheaper`, at 50 percent. The experiment's rollout block holds that 50 percent, and it decides the split whatever the option's own default allocation (task 1.4: 807's option defaulted to 0 and split 78 to 72). An option without a key records no exposures |
 | Experiment rollout | 100 percent of identities, set when the experiment is created; a wrong one is fixed by hand on the experiment page |
 | Kill-switch feature (boolean) | `assistant_cheaper_enabled`, default enabled |
 | Events, one of each per answer | `answer_helpful` (value 1 or 0, integer), `answer_latency_ms` (value), `answer_cost_micro_usd` (value) |
@@ -89,7 +89,7 @@ seconds.
 | Identity format | the run ID, a hyphen, then `user-001` to `user-150` (`run_identity()` in names.py), so each run's identities are new to Flagsmith: nothing shows that an experiment's results count only events sent after its own exposures (Gate 1). The probe's identity reaches no Flagsmith call |
 | SDK | `flagsmith` Python package 6.6.0 or later, remote evaluation, `enable_events=True` |
 | Flags call | `get_identity_flags`, once per answer |
-| Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when `flag.experiment.in_experiment` and `flag.variant` is set |
+| Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when the flag is enabled, `flag.experiment.in_experiment` and `flag.variant` is set |
 | Outcome call | `track_event`, with the identity and a numeric `value`. The SDK sends the value as a string, and Flagsmith aggregates it as a number (task 1.2) |
 | Flush | `flush_events()` before every handler returns. Buffer settings alone do not survive a Lambda freeze, and a buffer of one item drops events tracked in a row (task 1.2) |
 
@@ -110,8 +110,10 @@ Rules:
   `Authorization: Api-Key <key>`, with exactly one space; `api_key_authorization()`
   in names.py builds it). The experiment's create carries its whole
   rollout block (rollout, the control's value, the option's allocation);
-  Flagsmith refuses it without one (task 1.3). Flagsmith has no
-  primary-metric flag, so the agent attaches `helpful_rate` first.
+  Flagsmith refuses it without one (task 1.3). The API has no
+  primary-metric field, and whether the dashboard takes the first attached
+  metric as primary is untested, so the agent attaches `helpful_rate` first
+  and task 5.1 records which metric the dashboard shows as primary.
 - The MCP server cannot create a metric (its create_metric tool drops the
   required definition, task 1.3), start an experiment or refresh results.
   Those go through the Flagsmith Admin API from a small Lambda tool.
@@ -119,12 +121,18 @@ Rules:
   environment state changes through a new version (create it, update its
   default state, publish it), never in place (task 1.3).
 - Ending an experiment is done by the engineer in the Flagsmith dashboard.
-  The dashboard locks the flag until then, but the API does not: task 1.3
-  changed a running experiment's feature through MCP. So no agent changes
+  The dashboard locks the flag until then, but the API accepted all three
+  writes task 1.3 tried on a running experiment's feature, through MCP. So no agent changes
   an experiment's feature while it runs, and no agent ends an experiment or
   calls an end-experiment endpoint, or sends an experiment's status or
   rollout decision through MCP's experiment create or update tools, whose
-  schemas list both (task 1.3).
+  schemas list both (task 1.3). Task 2.2 enforces it before any call: an MCP
+  tool outside its allow-list, an experiment create or update carrying
+  `status`, `rollout_decision`, `rollout_variant`, `started_at` or
+  `ended_at`, and any Admin API method and path but the GET and POST pairs
+  it needs are refused: never DELETE, PUT or PATCH, and `complete/`,
+  `pause/` and `rollout/` can never be built. The MCP allow-list leaves out
+  `flagsmith___update_experiment` and every `flagsmith___delete_*` tool.
 - One Flagsmith identity request per answer. Flag, identity, trait and
   environment-document requests count toward the 50,000 cap.
 - Get-or-create checks what it finds. A found metric must match its
@@ -150,7 +158,11 @@ idempotently, by the agent at launch:
 
 Router evaluation order, per request:
 
-1. Read the active run pointer (section 6). No active run: read
+1. Read the active run pointer (section 6). With an active run, an
+   `identity` that is not one of that run's (`is_run_identity()`, with the
+   pointer's `run_id` before `-user-`) gets a 400 before any Flagsmith
+   call, so a wrong `--run-id` cannot reuse an old run's identities (Gate
+   1). No active run: read
    `assistant_default_model` from the environment flags (cached 30
    seconds), serve that model, record no exposure and no event, and do not
    invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is
@@ -158,9 +170,10 @@ Router evaluation order, per request:
 2. Call `get_identity_flags` once. Both the experiment feature and the
    kill switch are read from that one result. Do not call
    `get_experiment_flag`; it makes its own identity request.
-3. If the experiment feature reports the identity is in the experiment
-   and `flag.variant` is set, record the exposure with
-   `track_exposure_event`.
+3. If the experiment feature reports the identity is in the experiment,
+   the flag is enabled and `flag.variant` is set, record the exposure with
+   `track_exposure_event`, as the SDK's own `get_experiment_flag` would
+   (task 1.2's finding 7).
 4. If `assistant_cheaper_enabled` is disabled, serve `current` whatever the
    variation says, and set `served=current`. `assigned` is always the
    experiment feature's value for the identity (`current` or `cheaper`),
@@ -296,7 +309,7 @@ prompt fails validation:
 | `min_identities_per_variation` | 50 |
 | `stop_rules` | `rollback_alarm` `rm-cheaper-latency-p95`; `results_embargo_seconds` 600; `promote_requires_experiment_ended` true |
 | `guardrails` | `max_latency_ratio` 1.1; `max_cost_ratio` 1.0 |
-| `recommendation_rule` | `after_incident` `hold, re-run`; `promote_min_prob_not_worse` 0.95; `promote_min_helpful_lift_ci_lower` -0.05 |
+| `recommendation_rule` | `after_incident` `hold, re-run`; `promote_min_helpful_lift_ci_lower` -0.05 |
 
 `start` returns `BAD_REQUEST` before any write when the prompt names no
 model move, or any move other than Fable 5.1 to Sonnet 5.
@@ -460,18 +473,24 @@ Recommendation rule (in code, not in the prompt):
 - An incident happened during the run (`incidents` is not empty): recommend
   `hold, re-run`, and state that rolled-back users still count in the
   cheaper arm.
-- Otherwise recommend `promote` only if the probability that `cheaper` is
-  not worse on `helpful_rate` is at least 0.95 and both guardrails pass.
+- Otherwise recommend `promote` only if the lower bound of the 95 percent
+  credible interval that Flagsmith gives for the lift on `helpful_rate` is
+  at or above minus 5 percent (-0.05, a fraction of relative lift) and both
+  guardrails pass. That interval is the lift plus or minus 1.96 standard
+  deviations (task 1.4's sample), so the rule asks for at least a 97.5
+  percent probability that the lift is at least -0.05; the report states
+  it that way.
 - Otherwise recommend `hold`.
 
-Flagsmith's docs show a win probability against control and a credible
-interval for lift; a "not worse" probability may not exist. Task 1.4
-records a sample from 1.2's spike experiment, and task 3.6 records a real
-results response. If there is no such field, `prob_cheaper_not_worse` is
-null and the promote test becomes: the lower bound of the credible
-interval for the lift on `helpful_rate` is at or above minus 5 percent
-(-0.05, a fraction of relative lift), and both guardrails pass. Task 2.2's
-results mapping is finished against the response 3.6 records.
+Flagsmith's results carry no "not worse" probability (task 1.4), so the
+rule uses the interval alone. Task 2.2's results mapping is finished against the
+response task 3.6 records. Every planned end-to-end run injects the fault,
+so each one recommends `hold, re-run`: the promote branch is covered by
+unit tests, and no report, README or video says a run recommended
+`promote` unless one did.
+
+Ended in Flagsmith means the experiment's status is `completed`; `paused`
+is not ended.
 
 ## 7. Invoking the agent
 
@@ -521,7 +540,6 @@ pending: an action the table does not allow from the run's state returns
 
 Results shape used by the tools (`contracts/schemas/results.json`):
 `{"ready": bool, "variations": {"current": V, "cheaper": V},
-"prob_cheaper_not_worse": float | null,
 "helpful_lift_ci_lower": float | null}` where
 `V = {"identities": int, "helpful_rate": float | null,
 "mean_latency_ms": float | null, "mean_cost_micro_usd": float | null}`.
@@ -530,15 +548,14 @@ identities and non-null `helpful_rate`, `mean_latency_ms` and
 `mean_cost_micro_usd`. `helpful_lift_ci_lower` is the lower bound of
 Flagsmith's 95 percent credible interval for the relative lift
 (cheaper - current) / current on `helpful_rate`, as a fraction (-0.05 is
-minus 5 percent). `prob_cheaper_not_worse` is the probability that this
-lift is at least -0.05, as a fraction; it is null unless Flagsmith returns
-exactly that, and the win probability never goes in it. Flagsmith's
+minus 5 percent); it can fall below -1, because the interval is the lift
+plus or minus 1.96 standard deviations. Flagsmith's
 results give, per metric, each variant's `n`, `sum` and `sum_squares` (the
 mean is sum / n) and, for `cheaper`, its `lift` (relative, a fraction),
 `ci_low`, `ci_high` and `chance_to_win`; the control arm is `control`
 (task 1.4's sample). So `helpful_lift_ci_lower` is the `helpful_rate`
-metric's `ci_low`, and `prob_cheaper_not_worse` stays null: Flagsmith has
-no such field. A variation's `identities` is the sum of its
+metric's `ci_low`. Flagsmith has no "not worse" probability, so the
+shape carries none. A variation's `identities` is the sum of its
 `new_identities` in the same response's exposures timeseries, not `n`:
 in the sample each identity sent one event, so whether `n` counts
 identities or events stays open until task 3.6. Results are read through
@@ -555,7 +572,15 @@ Three things invoke it:
 | --- | --- | --- |
 | `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials, through the console script `cli.marshal:main` |
 | `rm-invoker` Lambda | `alarm` | EventBridge rule `rm-alarm-to-invoker` on the alarm entering ALARM. Role `rm-invoker-role`. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
-| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it and writes back the same target, input and role, changing only its state |
+| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it with GetSchedule and writes back every field it returned that UpdateSchedule takes (all but Arn, CreationDate and LastModificationDate), changing only its state. That passes `rm-scheduler-role` to `scheduler.amazonaws.com`, so the runtime's role needs pass-role on it (task 2.7) |
+
+The CLI reads the runtime's ARN from `/rm/agent-runtime-arn` with the
+engineer's credentials, prints the response, and exits 0 when its error is
+null, 1 when it carries an error code, and 2 for a usage error. The root
+project is packaged from task 2.6 on, with a hatchling build of `cli` and
+`contracts`, so the console script installs and `uv run marshal` works;
+the lead switches it on in 2.6's branch before its review (Gate 1: unpackaged, uv installs no
+console script).
 
 The CLI and `rm-invoker` share one `InvokeAgentRuntime` client setting: read
 timeout 290 seconds and one attempt (`total_max_attempts` 1). It sits just
@@ -574,7 +599,7 @@ Agent tools:
 
 | Tool | Reaches | Through |
 | --- | --- | --- |
-| Flagsmith MCP tools | features, multivariate options, metrics, experiments, results | AgentCore Gateway MCP target, API key from AgentCore Identity |
+| Flagsmith MCP tools | features, multivariate options, experiments | AgentCore Gateway MCP target, API key from AgentCore Identity |
 | `flagsmith_admin` | get-or-create metrics, start experiment, refresh and read results, read experiment status | Lambda `rm-flagsmith-admin` as a Gateway target |
 | `state` | `rm-runs` | boto3 in the agent |
 | `signals` | alarm state, CloudWatch metric statistics | boto3 in the agent |
@@ -593,12 +618,21 @@ with API-key auth:
 
 | Piece | Name | Notes |
 | --- | --- | --- |
-| Runtime | `rm_agent` | One AgentCore CLI project under `agent/`, deployed from task 1.3 on. The CLI packages only its code folder, which becomes the zip root, so the code lives in `agent/runtime/` (the CLI's `codeLocation` `runtime`, entrypoint `app.py`) as the package `rm_agent`; tests in `agent/tests/` import it through the root pytest `pythonpath`, and task 2.7 gives the folder its own `pyproject.toml`, `uv.lock` and a `contracts` symlink. Task 2.7 redeploys the same runtime, so its ARN and `/rm/agent-runtime-arn` never change |
+| Runtime | `rm_agent` | One AgentCore CLI project under `agent/`, deployed from task 1.3 on. The CLI packages only its code folder, which becomes the zip root, so the code lives in `agent/runtime/` (the CLI's `codeLocation` `runtime`, entrypoint `main.py`, so no test's `import app` finds B's `app/`) as the package `rm_agent`; tests in `agent/tests/` import it through the root pytest `pythonpath`, and task 2.7 gives the folder its own `pyproject.toml`, `uv.lock` and a `contracts` symlink. Task 2.7 redeploys the same runtime, so its ARN and `/rm/agent-runtime-arn` never change |
 | Gateway | `rm-gateway` | Protocol `MCP`, inbound auth `AWS_IAM`, so no Cognito pool. The agent signs with SigV4 through `mcp-proxy-for-aws`, and the runtime's role gets `bedrock-agentcore:InvokeGateway` on the Gateway |
 | Gateway service role | `rm-gateway-role` | Also the outbound auth of the Lambda target, which supports only the service role |
 | Credential provider | `rm-flagsmith-api-key` | Holds the organisation key from `rm/flagsmith/api-key`, passed in the `apiKey` field of `CreateApiKeyCredentialProvider`, never through the CLI's env file |
 | MCP server target | `flagsmith` | `https://mcp.flagsmith.com`, API-key outbound auth, header `Authorization`, prefix `Api-Key`; the service stores the prefix trimmed (task 1.3) |
 | Lambda target | `flagsmith-admin` | Lambda `rm-flagsmith-admin`, added once task 2.2 has deployed it; `agent/scripts/setup_gateway.py` is finished in task 2.7 |
+
+The runtime's role is the CLI stack's own: `AgentCore-rm-default` creates
+it with the Bedrock, logging and Gateway grants. Task 2.7's Terraform reads
+its ARN from the stack's export `AgentCore-rm-default-rm-agent-RoleArn` and
+attaches
+inline policy `rm-agent-runtime-tools`: read and write on `rm-runs`,
+publish to `rm-incidents`, get and put on the reports bucket, read alarms
+and metrics, invoke `rm-answer-cheaper` for the probe, and get and update
+`rm-tick` with pass-role on `rm-scheduler-role`.
 
 A target's name shapes the tool names the Gateway gives its tools, so these
 names never change: the Flagsmith tools appear as `flagsmith___<tool>`, all
@@ -615,7 +649,7 @@ with the API key header and record the decision in `evidence/`.
 | Name | Holds | Read by |
 | --- | --- | --- |
 | Secrets Manager `rm/flagsmith/api-key` | Flagsmith organisation API key (MCP and Admin API) | Gateway credential provider, `rm-flagsmith-admin`, and every local script or test that calls Flagsmith's MCP server or Admin API directly: task 1.3's probes, `agent/scripts/setup_gateway.py`, live tests, `scripts/bootstrap_flagsmith.py`, `scripts/seed_experiment.py`, `scripts/reset.py`, and `scripts/inject_fault.sh` in its flag fallback |
-| Secrets Manager `rm/flagsmith/server-key` | The SDK key `rm-router` and `rm-judge` initialise with. Remote evaluation normally uses the Development environment's client-side key (on its SDK Keys page; not a secret, already exists, but kept out of this public repo so nobody else spends the request cap). Task 1.2 confirmed that events accept this client-side key, so no server-side key is needed | `rm-router`, `rm-judge`, task 1.2's spike function, and `rm-answer-cheaper` under the section 9 fallback only |
+| Secrets Manager `rm/flagsmith/server-key` | The SDK key `rm-router` and `rm-judge` initialise with. Remote evaluation normally uses the Development environment's client-side key (on its SDK Keys page; not a secret, already exists, but kept out of this public repo so nobody else spends the request cap). Task 1.2 confirmed that events accept this client-side key, so no server-side key is needed | `rm-router`, `rm-judge`, task 1.2's spike function, and `rm-answer-cheaper` under the section 9 fallback only; task 2.2's live test reads it for its identity-flags read and never prints it |
 
 Each reader fetches the value at run time: scripts with the human's
 credentials, functions with their own role. It keeps the value in memory and
@@ -656,7 +690,10 @@ also turns it off on exit; `scripts/reset.py` turns it off too.
 
 `s3://rm-reports-818928662830/runs/<run_id>/report.md`, sections in this
 order: Hypothesis, Setup, Timeline, Results, Guardrails, Incident, Known
-bias, Recommendation, Time taken.
+bias, Recommendation, Time taken. Known bias names two (Gate 1): rolled-back
+users still count in the cheaper arm, and an identity first seen while
+`assistant_cheaper_enabled` is off is enrolled in `cheaper` without ever
+being served it.
 
 ## 11. Load
 
@@ -686,7 +723,8 @@ app module's output `ask_url` gives it. The route uses `AWS_IAM`
 authorization, so `load.py` signs every request with SigV4 (service
 `execute-api`) from the shell's AWS credentials: the repo is public, and an
 unsigned URL that leaked into evidence could spend Bedrock money. A load
-never prints the URL.
+never prints the URL. The shell's credentials need `execute-api:Invoke` on
+the route.
 
 ## 12. Repo layout
 
@@ -726,10 +764,10 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | p95 alarms on embedded-metric custom metrics with a dimension behave as designed | 4.1 | open |
 | Admin API paths for starting an experiment and refreshing results | 1.3 | verified: `start/` with name and hypothesis; `results/refresh/` (202, then 429 inside 5 minutes); `results/` |
 | Whether an experiment can be ended through any API | 1.3 | documented, not exercised: Flagsmith's published spec lists `complete/`; no agent calls it |
-| Whether the feature is locked while its experiment runs, and what "locked" blocks | 1.3 | corrected: the API locks nothing; 1.3 changed a running experiment's option, state and description and put them back |
+| Whether the feature is locked while its experiment runs, and what "locked" blocks | 1.3 | corrected: the API accepted all three writes 1.3 tried on a running experiment's feature (its option, state and description) and 1.3 put them back; the experiment's rollout read back unchanged |
 | Gateway API-key credential provider sending `Authorization: Api-Key <key>`, and whether the Gateway adds the space after the prefix itself | 1.3 | corrected: the service stores the prefix trimmed (`Api-Key`) and calls authenticate with either value; that the Gateway adds the space is inferred, not observed |
 | Metric aggregation types available (occurrence, count, sum, mean) | 1.3 | verified |
 | Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the dashboard shows the level, 95 percent), `chance_to_win`; no "not worse" field |
-| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); verified for usage, with a lag: `usage-data/total-count/` read 0 eleven to 25 minutes after 1.2's 150 identity requests (task 1.3) and 150 at 01:10Z the next day (Gate 1), so a read lags by more than 25 minutes |
+| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); verified for usage, with a lag: `usage-data/total-count/` read 0 eleven to 25 minutes after 1.2's 150 identity requests (task 1.3) and 150 at 01:10Z the next day (`evidence/gate-1-review.md`), so a read lags by more than 25 minutes |
 | FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | open |
 | Bedrock prices for the three models | 3.3 | open |
