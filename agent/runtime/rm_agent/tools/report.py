@@ -11,6 +11,7 @@ section. Imports only contracts, the standard library and boto3.
 from __future__ import annotations
 
 import functools
+import re
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -25,6 +26,9 @@ from contracts import names
 CREDIBLE_INTERVAL_PERCENT = 95  # names.<this> after c3
 PROMOTE_PROBABILITY_PERCENT = 100 - (100 - CREDIBLE_INTERVAL_PERCENT) / 2  # 97.5
 _CONTENT_TYPE = "text/markdown; charset=utf-8"
+# A Markdown heading: up to three spaces, then #. The model's text is escaped there, so
+# a heading in it can never add a section.
+_HEADING = re.compile(r"^( {0,3})#", re.M)
 
 
 @functools.cache
@@ -40,6 +44,11 @@ def _now() -> datetime:
 def _item(run: Any) -> dict:
     """The run item, from 2.1's Run (its .item) or the item itself."""
     return getattr(run, "item", run)
+
+
+def _plain(text: str) -> str:
+    """The model's text with every line that would be a heading escaped."""
+    return _HEADING.sub(r"\1\\#", text)
 
 
 def _number(value: Any) -> str:
@@ -85,7 +94,7 @@ def recommend(run: Any, results: dict) -> str:
 
 
 def _hypothesis(item: dict, results: dict, now: datetime) -> list[str]:
-    return [item["plan"]["hypothesis"]]
+    return [_plain(item["plan"]["hypothesis"])]
 
 
 def _setup(item: dict, results: dict, now: datetime) -> list[str]:
@@ -244,7 +253,7 @@ def render_report(
     for name, build in _SECTIONS.items():
         lines += ["", f"## {name}", "", *build(item, results, moment)]
         if prose.get(name):
-            lines += ["", prose[name]]
+            lines += ["", _plain(prose[name])]
     return "\n".join(lines) + "\n"
 
 

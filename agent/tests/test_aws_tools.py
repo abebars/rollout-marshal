@@ -92,6 +92,9 @@ def aws(monkeypatch):
 # ---------------------------------------------------------------------------
 # signals: alarm_state
 # ---------------------------------------------------------------------------
+ALARM_THRESHOLD = 7000  # not names.ALARM_THRESHOLD_MS, so the constant cannot pass
+
+
 def make_alarm(cloudwatch) -> None:
     variant, value = names.ALARM_DIMENSION.split("=")
     cloudwatch.put_metric_alarm(
@@ -103,7 +106,7 @@ def make_alarm(cloudwatch) -> None:
         Period=names.ALARM_PERIOD_SECONDS,
         EvaluationPeriods=names.ALARM_EVALUATION_PERIODS,
         DatapointsToAlarm=names.ALARM_DATAPOINTS_TO_ALARM,
-        Threshold=names.ALARM_THRESHOLD_MS,
+        Threshold=ALARM_THRESHOLD,
         ComparisonOperator="GreaterThanThreshold",
         TreatMissingData=names.ALARM_TREAT_MISSING_DATA,
     )
@@ -115,7 +118,8 @@ def test_alarm_state_and_threshold_come_from_one_describe_alarms_call(aws, state
     aws["cloudwatch"].set_alarm_state(AlarmName=names.ALARM_NAME, StateValue=state, StateReason="t")
     before = aws["cloudwatch"].count("describe_alarms")
     alarm = signals.alarm_state(names.ALARM_NAME)
-    assert alarm == signals.Alarm(state, names.ALARM_THRESHOLD_MS)
+    assert ALARM_THRESHOLD != names.ALARM_THRESHOLD_MS
+    assert alarm == signals.Alarm(state, ALARM_THRESHOLD)
     assert alarm.state in names.ALARM_STATES
     assert aws["cloudwatch"].count("describe_alarms") == before + 1
 
@@ -255,6 +259,39 @@ def test_the_probe_makes_its_client_once_in_the_calling_thread(monkeypatch):
     assert probe.probe_cheaper(THRESHOLD_MS)["passed"] is True
     assert made == [threading.current_thread()]
     assert len(fake.calls) == names.PROBE_INVOKES
+
+
+def test_the_probe_fails_when_the_slowest_is_exactly_at_the_threshold(fake_lambda, monkeypatch):
+    """PR #19's review: the slow case fails through the timeout branch, so this one
+    reaches the comparison. Each invoke reads the clock twice in its own thread."""
+    fake_lambda(ok(0.0))
+    reads = threading.local()
+
+    class Clock:
+        @staticmethod
+        def monotonic():
+            reads.n = getattr(reads, "n", 0) + 1
+            return 0.0 if reads.n % 2 else THRESHOLD_MS / 1000
+
+    monkeypatch.setattr(probe, "time", Clock)
+    result = probe.probe_cheaper(THRESHOLD_MS)
+    assert result["passed"] is False and result["max_ms"] == THRESHOLD_MS
+    assert "at or above" in result["reason"]
+
+
+def test_the_probe_client_makes_one_attempt_and_reads_as_long_as_an_answer(monkeypatch):
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", os.devnull)
+    monkeypatch.setenv("AWS_MAX_ATTEMPTS", "5")  # cannot add retries back
+    probe._client.cache_clear()
+    try:
+        config = probe._client().meta.config
+        assert config.retries["total_max_attempts"] == 1
+        assert config.read_timeout == names.ANSWER_TIMEOUT_SECONDS
+    finally:
+        probe._client.cache_clear()
 
 
 def test_the_probe_reply_check_agrees_with_answer_response():
@@ -412,6 +449,26 @@ def test_a_failed_publish_records_nothing(aws):
     with pytest.raises(Exception):  # noqa: B017 - whatever SNS raises, nothing is recorded
         notify.notify(RUN_ID, "Rolled back", "body", ROLLBACK_KEY)
     assert stored_notified(aws["dynamodb"]) == {}
+
+
+@pytest.mark.parametrize("damage", ["no-notified-map", "no-run-item"])
+def test_notify_on_a_damaged_run_item_raises_before_publishing(aws, damage):
+    """Else it would publish, fail to record, and every later tick would send again."""
+    aws["sns"].create_topic(Name=names.INCIDENTS_TOPIC)
+    make_run_table(aws["dynamodb"])
+    key = {names.PARTITION_KEY: {"S": names.run_pk(RUN_ID)}}
+    if damage == "no-notified-map":
+        aws["dynamodb"].update_item(
+            TableName=names.RUNS_TABLE,
+            Key=key,
+            UpdateExpression="REMOVE #notified",
+            ExpressionAttributeNames={"#notified": "notified"},
+        )
+    else:
+        aws["dynamodb"].delete_item(TableName=names.RUNS_TABLE, Key=key)
+    with pytest.raises(LookupError, match="notified"):
+        notify.notify(RUN_ID, "Rolled back", "body", ROLLBACK_KEY)
+    assert aws["sns"].count("publish") == 0
 
 
 def test_a_key_recorded_by_another_invocation_meanwhile_wins(aws, monkeypatch):
@@ -591,17 +648,19 @@ def test_recommend_takes_a_run_object_with_an_item_too():
 
 
 @pytest.mark.parametrize(
-    "latency, cost, passes",
+    "current, latency, cost, passes",
     [
-        (1100.0, 2000.0, True),  # exactly 110 percent latency, the same cost
-        (1100.0000001, 2000.0, False),  # just above
-        (1000.0, 2000.0000001, False),  # cost just higher
-        (500.0, 100.0, True),
+        (1000.0, 1100.0, 2000.0, True),  # exactly 110 percent latency, the same cost
+        (1000.0, 1100.0000001, 2000.0, False),  # just above
+        (1000.0, 1000.0, 2000.0000001, False),  # cost just higher
+        (1000.0, 500.0, 100.0, True),
+        # Exactly 110 percent again, where float arithmetic gives 1127.0819999999999.
+        (1024.62, 1127.082, 2000.0, True),
     ],
 )
-def test_guardrails_pass_at_exactly_110_percent_and_not_above(latency, cost, passes):
+def test_guardrails_pass_at_exactly_110_percent_and_not_above(current, latency, cost, passes):
     results = make_results(
-        current=variation(latency=1000.0, cost=2000.0),
+        current=variation(latency=current, cost=2000.0),
         cheaper=variation(latency=latency, cost=cost),
     )
     assert report.guardrails_pass(results) is passes
@@ -631,6 +690,15 @@ def test_known_bias_names_both_biases():
         assert "rolled-back users still count in the cheaper arm" in bias.lower()
         assert names.KILL_SWITCH_FEATURE in bias
         assert "enrolled in" in bias and "without ever being served it" in bias
+        assert (
+            f"first seen while `{names.KILL_SWITCH_FEATURE}` is off is enrolled in "
+            f"`{names.VARIANT_CHEAPER}`"
+        ) in bias
+    incident = _section(
+        report.render_report(make_run(incidents=INCIDENT), make_results(), now=START),
+        "Recommendation",
+    )
+    assert "rolled-back users still count in the cheaper arm" in incident.lower()
 
 
 def test_the_recommendation_states_the_promote_rule_as_at_least_a_97_5_percent_probability():
@@ -666,6 +734,17 @@ def test_the_model_prose_goes_under_its_section_after_the_facts():
         assert _section(markdown, name).rstrip().endswith(text)
     with pytest.raises(ValueError):
         report.render_report(make_run(), make_results(), prose={"Appendix": "x"}, now=START)
+
+
+def test_a_heading_in_the_models_text_adds_no_section():
+    """The hypothesis and the prose are the model's words, put in as they came."""
+    run = make_run()
+    run["plan"]["hypothesis"] = "## Appendix\nSonnet 5 is as good.\n   # Also\n#tag"
+    prose = {"Results": "## Not a section\nWhy, in prose.", "Setup": " ### Nor this"}
+    markdown = report.render_report(run, make_results(), prose=prose, now=START)
+    assert _sections(markdown) == list(names.REPORT_SECTIONS)
+    assert "\\## Appendix" in markdown and "\\## Not a section" in markdown
+    assert "Why, in prose." in _section(markdown, "Results")
 
 
 def test_write_report_puts_the_report_at_the_runs_key_with_a_plain_put(aws, monkeypatch):
