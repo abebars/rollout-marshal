@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 
 import boto3
+import botocore
+import botocore.session
 import pytest
 from botocore import UNSIGNED
 from botocore.awsrequest import AWSResponse
@@ -388,6 +390,21 @@ def test_stub_logs_the_payload_and_never_reads_the_parameter(event, stub_on, cap
     [log] = invoker_logs(caplog)
     assert log["payload"] == result["payload"]
     contracts.validate("invoke", log["payload"])
+    # The SDK the function runs with (tasks.md 4.1): Lambda's python3.13 runtime supplies it.
+    assert log["botocore_version"] == botocore.__version__
+    assert log["bedrock_agentcore_available"] is True
+
+
+def test_the_stub_line_says_when_the_sdk_lacks_bedrock_agentcore(stub_on, caplog, monkeypatch):
+    monkeypatch.setattr(botocore.session.Session, "get_available_services", lambda self: ["ssm"])
+    invoker.sdk_info.cache_clear()
+    try:
+        invoker.handler(TICK_EVENT, None)
+    finally:
+        invoker.sdk_info.cache_clear()
+    [log] = invoker_logs(caplog)
+    assert log["bedrock_agentcore_available"] is False
+    assert log["payload"] == {"action": "tick"}
 
 
 def test_stub_ignores_injected_clients_too(stub_on):

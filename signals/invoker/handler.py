@@ -19,8 +19,10 @@ logged at WARNING.
 time (2019-10-02T17:04:40Z), which is rounded to the second. invoke.json accepts both forms.
 Event shape: docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch-and-eventbridge.html
 
-With STUB=1 the function only logs the payload. It never reads /rm/agent-runtime-arn and never
-calls AgentCore. Otherwise it reads the runtime ARN from that SSM parameter each time it sends,
+With STUB=1 the function only logs the payload, with botocore's version and whether it has the
+bedrock-agentcore client: Lambda's python3.13 runtime supplies boto3 and botocore, and nothing
+is bundled (tasks.md 4.1). It never reads /rm/agent-runtime-arn and never calls AgentCore.
+Otherwise it reads the runtime ARN from that SSM parameter each time it sends,
 and calls InvokeAgentRuntime once, with a new session ID and the shared client setting
 (agent_client.py).
 
@@ -46,6 +48,8 @@ import os
 from typing import Any
 
 import boto3
+import botocore
+import botocore.session
 
 from contracts.names import (
     ACTION_ALARM,
@@ -61,7 +65,7 @@ from contracts.names import (
     RESPONSE_FIELDS,
     new_session_id,
 )
-from signals.invoker.agent_client import new_agent_client
+from signals.invoker.agent_client import AGENT_CLIENT_SERVICE, new_agent_client
 
 LOGGER = logging.getLogger(INVOKER_FUNCTION)
 # With Lambda's default plain-text log format only WARN and above reach CloudWatch unless the
@@ -117,6 +121,19 @@ def payload_for(event: Any) -> tuple[dict | None, str]:
         "at": at,
     }
     return payload, f"{ALARM_NAME} entered {ALARM_STATE_ALARM}"
+
+
+@functools.cache
+def sdk_info() -> dict:
+    """botocore's version, and whether it has the bedrock-agentcore client, for the STUB line.
+
+    It reads only the SDK's own model files: it creates no client and calls nothing.
+    """
+    services = botocore.session.get_session().get_available_services()
+    return {
+        "botocore_version": botocore.__version__,
+        "bedrock_agentcore_available": AGENT_CLIENT_SERVICE in services,
+    }
 
 
 def stub_on() -> bool:
@@ -202,7 +219,13 @@ def handler(event: Any, context: Any, *, ssm: Any = None, agent: Any = None) -> 
         _log(logging.WARNING, "nothing sent", reason=reason, event=event)
         return {"outcome": "ignored", "reason": reason}
     if stub_on():
-        _log(logging.INFO, "STUB=1: payload logged, not sent", reason=reason, payload=payload)
+        _log(
+            logging.INFO,
+            "STUB=1: payload logged, not sent",
+            reason=reason,
+            payload=payload,
+            **sdk_info(),
+        )
         return {"outcome": "stub", "payload": payload}
 
     session_id = new_session_id()
