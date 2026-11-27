@@ -84,7 +84,7 @@ def _api(recorder, lines):
     client = httpx.Client(
         base_url=admin_api.API_BASE_URL,
         transport=httpx.MockTransport(recorder),
-        headers={names.GATEWAY_API_KEY_HEADER: names.GATEWAY_API_KEY_PREFIX + ORG_KEY},
+        headers=admin_api.authorization_header(ORG_KEY),
     )
     return admin_api.AdminApi(client, out=lines.append, secrets={ORG_KEY})
 
@@ -100,7 +100,7 @@ def test_start_posts_to_the_documented_path_for_a_spike_experiment():
     assert result["start"]["status"] == 200
     assert result["after"]["status"] == "running"
     header = posts[0].headers[names.GATEWAY_API_KEY_HEADER]
-    assert header == names.GATEWAY_API_KEY_PREFIX + ORG_KEY
+    assert header == "Api-Key " + ORG_KEY
 
 
 @pytest.mark.parametrize(
