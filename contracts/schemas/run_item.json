@@ -188,7 +188,8 @@
           ]
         },
         "reason": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -207,6 +208,9 @@
         },
         "actor": {
           "const": "engineer"
+        },
+        "reason": {
+          "const": "start"
         }
       }
     },
