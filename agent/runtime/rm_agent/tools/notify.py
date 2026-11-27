@@ -57,9 +57,9 @@ def _key(run_id: str) -> dict:
 
 
 def _recorded(run_id: str, dedupe_key: str) -> str | None:
-    """The message ID recorded for dedupe_key, or None. LookupError, before anything
-    is published, when the run item or its notified map is missing: such a publish
-    could never be recorded, so every later call would send it again."""
+    """The message ID recorded for dedupe_key, or None. LookupError when the run item
+    or its notified map is missing. notify reads this before it publishes, since such
+    a publish could never be recorded and every later call would send it again."""
     response = _dynamodb().get_item(
         TableName=names.RUNS_TABLE,
         Key=_key(run_id),
@@ -69,9 +69,7 @@ def _recorded(run_id: str, dedupe_key: str) -> str | None:
     )
     notified = (response.get("Item") or {}).get(_NOTIFIED) or {}
     if "M" not in notified:
-        raise LookupError(
-            f"run {run_id} has no {_NOTIFIED} map to record in; nothing was published"
-        )
+        raise LookupError(f"run {run_id} has no {_NOTIFIED} map to record in")
     return notified["M"].get(dedupe_key, {}).get("S")
 
 

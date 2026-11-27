@@ -26,8 +26,8 @@ from contracts import names
 CREDIBLE_INTERVAL_PERCENT = 95  # names.<this> after c3
 PROMOTE_PROBABILITY_PERCENT = 100 - (100 - CREDIBLE_INTERVAL_PERCENT) / 2  # 97.5
 _CONTENT_TYPE = "text/markdown; charset=utf-8"
-# A Markdown heading: up to three spaces, then #. The model's text is escaped there, so
-# a heading in it can never add a section.
+# An ATX (`#`) heading: up to three spaces, then #. The model's text is escaped there,
+# so a heading in it can never add a section.
 _HEADING = re.compile(r"^( {0,3})#", re.M)
 
 
