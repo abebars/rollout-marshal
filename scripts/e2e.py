@@ -6,20 +6,26 @@
                                  [--url <the route's URL>] [--record <new file>.json]
                                  [--pause-minutes N]
 
---pause-minutes sets how long each of the human's three pauses waits (launch, resume and the
-decision), for a human who will not be at the terminal within the defaults.
+--pause-minutes lengthens the human's three pauses (launch, resume and the decision), for a
+human who will not be at the terminal within the defaults: each waits the longer of its
+default and N minutes, so it never shortens one.
 
-Before anything starts, it checks that the credentials are for account 818928662830, finds
-the route's URL (--url, or rm-api's endpoint from apigatewayv2 GetApis plus /ask, read
-only), checks that no other load holds rm-load.lock, and that the --record file does not
-exist yet. A failed check refuses (exit 3) with nothing started.
+An existing --record file is refused while the arguments are read (exit 2). Then, before
+anything starts, it checks, each by a read only: that the credentials are for account
+818928662830; that the alarm rm-cheaper-latency-p95 exists and is not in ALARM; that
+rm-invoker does not run with STUB=1 (invoker_stub must be false, task 5.1); that exactly
+one FIS experiment template carries the tag scripts/inject_fault.sh selects by; the route's
+URL (--url, or rm-api's endpoint from apigatewayv2 GetApis plus /ask); and that no other load
+holds rm-load.lock. A failed check refuses (exit 3), names what to fix, and starts nothing.
 
-Then it drives one run, with a UTC timestamp on every line it prints:
+Then it drives one run. Each line of its own carries a UTC timestamp; the plan, the pause
+blocks and the summary are printed as they are.
 
 1. marshal start "<prompt>", through the CLI's own main(), in this process. It prints the
    plan, the time it sent start and the time the plan returned.
-2. A pause: it prints the command that approves the launch, then reads marshal status
-   every 10 seconds. It prints when it sees the approve take effect (the launch claimed,
+2. A pause: it prints the command that approves the launch (uv run marshal ..., to run
+   from the repository root with the same AWS_PROFILE), then reads marshal status every
+   10 seconds. It prints when it sees the approve take effect (the launch claimed,
    or the run already RUNNING) and when the run is RUNNING, each to within one poll.
 3. scripts/load.py --run-id <run_id> --users N --questions M --url <url> in the
    background, and straight away scripts/inject_fault.sh, both with this shell's
@@ -51,11 +57,13 @@ Ctrl-C, SIGTERM and SIGHUP stop it. On every stop, and at the end, it sends SIGT
 process group of each child still running, waits for it (load.py finishes the requests in
 flight and prints its counts), then prints the summary. It never stops a FIS experiment
 through the API: inject_fault.sh leaves the fault to end by its 6-minute duration. The run
-itself stays where it is, and the message says how to look at it and end it.
+itself stays where it is, and the message says how to look at it and end it. Output that
+cannot be written, to a closed terminal (EIO) or a pipe with no reader (EPIPE), is dropped,
+so the children still stop and --record is still written.
 
 Exit status: 0 the run ended HELD or PROMOTED and its history reads as task 5.1's Pass;
-1 it failed, timed out or stopped on an unexpected state; 2 bad arguments; 3 refused
-before anything started; 130 stopped by a signal.
+1 it failed, timed out or stopped on an unexpected state; 2 bad arguments, an existing
+--record among them; 3 refused before anything started; 130 stopped by a signal.
 """
 
 from __future__ import annotations
@@ -114,9 +122,14 @@ CHILD_KILL_WAIT_SECONDS = 10  # after a SIGKILL, real seconds
 # inject_fault.sh gives up waiting on its experiment after RM_FIS_MAX_WAIT_SECONDS, 1200 s
 # by default, and exits 3; a margin for its polls on top.
 FAULT_SCRIPT_MAX_SECONDS = 1200 + 120
-# The alarm's ALARM-to-OK lag after the last datapoint (evidence/4.1-alarm.md).
-ALARM_OK_LAG = "6 min 36 s"
+# The alarm's ALARM-to-OK lag, measured from the start of its last breaching minute: 7 min
+# 20 s in task 4.1's test and 7 min 17 s in 4.3's fault run (evidence/4.3-fis.md).
+ALARM_OK_LAG_SECONDS = 7 * 60 + 20
+ALARM_OK_LAG = f"{ALARM_OK_LAG_SECONDS // 60} min {ALARM_OK_LAG_SECONDS % 60} s"
 PAUSE_MINUTES_MAX = 24 * 60  # --pause-minutes: the longest a human pause may be told to wait
+# scripts/inject_fault.sh starts the one template whose tags.Name is TEMPLATE_NAME
+# (names.FIS_TEMPLATE); the preflight finds it the same way.
+FAULT_TEMPLATE_TAG = "Name"
 
 ROUTE_METHOD, ROUTE_PATH = names.API_ROUTE_KEY.split(" ", 1)  # POST, /ask
 # An HTTP API's endpoint is https://{api-id}.execute-api.{region}.amazonaws.com, and its
@@ -161,6 +174,13 @@ class NotSendable(RuntimeError):
     """An action this script must never send: only start and status are sent."""
 
 
+def emit(text: str = "", *, end: str = "\n") -> None:
+    """print(), dropping what cannot be written: a closed terminal (EIO) or a pipe with no
+    reader (EPIPE) must never stop the children's stop or the record's write."""
+    with contextlib.suppress(OSError):
+        print(text, end=end, flush=True)
+
+
 def minutes(seconds: float) -> str:
     return f"{seconds / 60:g} min"
 
@@ -169,9 +189,12 @@ def elapsed(seconds: float) -> str:
     return f"{int(seconds // 60)} min {int(seconds % 60):02d} s"
 
 
+HUMAN_CLI = ("uv", "run", names.CLI_NAME)  # the console script, from the repository root
+
+
 def human_command(action: str, run_id: str, *rest: str) -> str:
     """A marshal command line for the human to type. This script only prints it."""
-    return " ".join((names.CLI_NAME, action, run_id, *rest))
+    return " ".join((*HUMAN_CLI, action, run_id, *rest))
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +284,60 @@ def discover_ask_url(apigateway: Any) -> str:
         return check_ask_url(str(found[0].get("ApiEndpoint", "")).rstrip("/") + ROUTE_PATH)
     except ValueError as error:
         raise Refused(f"{names.API_NAME}'s endpoint plus {ROUTE_PATH} is {error}") from None
+
+
+def check_alarm(cloudwatch: Any) -> str:
+    """The alarm's state, from one DescribeAlarms read. Refused unless exactly one metric
+    alarm has the name, and while it is in ALARM: a run launched then would roll back on
+    its first tick, before the fault."""
+    alarms = cloudwatch.describe_alarms(
+        AlarmNames=[names.ALARM_NAME], AlarmTypes=["MetricAlarm"]
+    ).get("MetricAlarms", [])
+    if len(alarms) != 1:
+        raise Refused(
+            f"expected one alarm named {names.ALARM_NAME}, found {len(alarms)}:"
+            f" apply infra/ (task 4.1)"
+        )
+    state = alarms[0].get("StateValue")
+    if state == names.ALARM_STATE_ALARM:
+        raise Refused(
+            f"the alarm {names.ALARM_NAME} is in ALARM: wait until it is OK again (about"
+            f" {ALARM_OK_LAG} after the start of its last breaching minute), then start again"
+        )
+    return str(state)
+
+
+def check_invoker(functions: Any) -> None:
+    """Refused while rm-invoker runs with STUB=1 (invoker_stub true): it then only logs the
+    alarm and every tick, so nothing would roll the run back. One GetFunctionConfiguration
+    read; only the STUB variable is looked at, and the environment is never shown."""
+    configuration = functions.get_function_configuration(FunctionName=names.INVOKER_FUNCTION)
+    variables = (configuration.get("Environment") or {}).get("Variables") or {}
+    if variables.get(names.INVOKER_STUB_ENV) == names.INVOKER_STUB_ON:
+        raise Refused(
+            f"{names.INVOKER_FUNCTION} runs with {names.INVOKER_STUB_ENV}={names.INVOKER_STUB_ON}:"
+            f" set {names.INVOKER_STUB_VARIABLE} = false in {names.TFVARS_FILE} and apply"
+            " infra/ (task 5.1)"
+        )
+
+
+def check_fault_template(fis: Any) -> str:
+    """The template scripts/inject_fault.sh will start, found as it finds one: every page of
+    ListExperimentTemplates, kept when tags.Name is rm-delay-cheaper. Refused unless exactly
+    one, as the script refuses."""
+    found = [
+        template
+        for page in fis.get_paginator("list_experiment_templates").paginate()
+        for template in page.get("experimentTemplates", [])
+        if (template.get("tags") or {}).get(FAULT_TEMPLATE_TAG) == names.FIS_TEMPLATE
+    ]
+    if len(found) != 1:
+        raise Refused(
+            f"{names.INJECT_FAULT_SCRIPT} needs exactly one FIS experiment template tagged"
+            f" {FAULT_TEMPLATE_TAG}={names.FIS_TEMPLATE}, found {len(found)}:"
+            " apply infra/ (task 4.3)"
+        )
+    return str(found[0].get("id"))
 
 
 def check_load_lock() -> None:
@@ -377,8 +454,8 @@ class Timeouts:
     # then the alarm rule or the next tick rolls the run back.
     rollback: float = 15 * 60
     # From ROLLED_BACK to AWAITING_RESUME: the 6-minute fault ends, the alarm goes back to
-    # OK about 7 minutes after the last cheaper datapoint (ALARM_OK_LAG), then a tick
-    # (every 2 min) probes the cheaper model: about 9 to 15 minutes. 25 leaves room.
+    # OK about ALARM_OK_LAG after the start of its last breaching minute, then a tick (every
+    # 2 min) probes the cheaper model: about 10 to 16 minutes. 25 leaves room.
     resume_request: float = 25 * 60
     # The human approves the resume.
     resume_approval: float = 30 * 60
@@ -399,6 +476,9 @@ class Deps:
     spawn: Callable[[list[str], Path], Any] = spawn_child
     killpg: Callable[[int, int], None] = os.killpg
     sts: Callable[[], Any] = lambda: aws_client("sts")
+    cloudwatch: Callable[[], Any] = lambda: aws_client("cloudwatch")
+    lambda_: Callable[[], Any] = lambda: aws_client("lambda")
+    fis: Callable[[], Any] = lambda: aws_client("fis")  # ListExperimentTemplates only
     apigateway: Callable[[], Any] = lambda: aws_client("apigatewayv2")
     # The summary's read: short timeouts, so a stop is not held up by it.
     dynamodb: Callable[[], Any] = lambda: aws_client(
@@ -417,14 +497,16 @@ class Deps:
 # What the human types, printed at each pause
 # ---------------------------------------------------------------------------
 HUMAN_RULE = "These are the human's steps (CLAUDE.md): e2e.py and the agents take none of them."
+HUMAN_WHERE = "Run it from the repository root, with the same AWS_PROFILE as this shell."
 
 
 def launch_pause(run_id: str) -> list[str]:
     return [
         "PAUSE: review the plan above. To launch it, type in another terminal:",
         f"    {human_command(names.ACTION_APPROVE, run_id, names.AWAITS_LAUNCH)}",
-        f"e2e.py approves nothing itself; it reads `{human_command(names.ACTION_STATUS, run_id)}`"
-        f" every {POLL_SECONDS} s until the run moves.",
+        HUMAN_WHERE,
+        f"e2e.py approves nothing itself; it reads the run's status every {POLL_SECONDS} s"
+        " until the run moves.",
         HUMAN_RULE,
     ]
 
@@ -433,6 +515,7 @@ def resume_pause(run_id: str) -> list[str]:
     return [
         "PAUSE: the cheaper model is healthy again. To resume the experiment, type:",
         f"    {human_command(names.ACTION_APPROVE, run_id, names.AWAITS_RESUME)}",
+        HUMAN_WHERE,
         HUMAN_RULE,
     ]
 
@@ -445,6 +528,7 @@ def decision_pause(run_id: str) -> list[str]:
         "    then end the experiment in the Flagsmith dashboard: a hold leaves it running.",
         "  Or, to promote it, end the experiment in the Flagsmith dashboard, then type:",
         f"    {human_command(names.ACTION_APPROVE, run_id, names.AWAITS_PROMOTION)}",
+        HUMAN_WHERE,
         "  Note which metric the dashboard shows as primary, and the rollout decision you"
         " choose: evidence/5.1-e2e.md records both.",
         HUMAN_RULE,
@@ -473,10 +557,13 @@ class E2E:
     def __init__(self, args: argparse.Namespace, deps: Deps) -> None:
         self.args, self.deps, self.clock = args, deps, deps.clock
         self.timeouts = deps.timeouts
-        if args.pause_minutes is not None:  # the human's three pauses wait this long instead
-            wait = args.pause_minutes * 60
+        if args.pause_minutes is not None:  # it lengthens the human's pauses, never shortens one
+            wait, default = args.pause_minutes * 60, deps.timeouts
             self.timeouts = replace(
-                deps.timeouts, launch_approval=wait, resume_approval=wait, decision=wait
+                default,
+                launch_approval=max(default.launch_approval, wait),
+                resume_approval=max(default.resume_approval, wait),
+                decision=max(default.decision, wait),
             )
         self.url: str | None = None  # never printed
         self.run_id: str | None = None
@@ -495,11 +582,11 @@ class E2E:
     def say(self, text: str, *, at: str | None = None) -> None:
         stamp = at or self.clock.utc()
         for line in text.splitlines() or [""]:
-            print(f"{stamp}  {line}", flush=True)
+            emit(f"{stamp}  {line}")
 
     def pause(self, lines: list[str]) -> None:
         self.say(f"waiting for the human, run {self.run_id}")
-        print("\n" + "\n".join(lines) + "\n", flush=True)
+        emit("\n" + "\n".join(lines) + "\n")
 
     # -- the whole thing ---------------------------------------------------
     def run(self) -> int:
@@ -522,12 +609,15 @@ class E2E:
             else:
                 outcome, reason = "interrupted", "stopped by Ctrl-C or a stop signal"
         except Exception as error:  # a bug: the children still stop and the summary prints
-            traceback.print_exc()
+            with contextlib.suppress(OSError):
+                traceback.print_exc()
             outcome, reason = "failed", f"e2e.py itself failed: {type(error).__name__}: {error}"
         finally:
-            if reason is not None:
-                self.say(f"stopping: {reason}")
+            # The shield first: nothing printed, and no second signal, may come between a
+            # stop and the children's SIGTERM.
             with self.deps.shield():
+                if reason is not None:
+                    self.say(f"stopping: {reason}")
                 self.stop_children()
         return self.finish(outcome, reason)
 
@@ -541,6 +631,14 @@ class E2E:
         if account != names.ACCOUNT_ID:
             raise Refused(f"the credentials are for account {account}, not {names.ACCOUNT_ID}")
         self.say(f"account {account}: ok")
+        state = self.read(f"the alarm {names.ALARM_NAME}", check_alarm, self.deps.cloudwatch)
+        self.say(f"alarm {names.ALARM_NAME}: {state}")
+        self.read(names.INVOKER_FUNCTION, check_invoker, self.deps.lambda_)
+        self.say(
+            f"{names.INVOKER_FUNCTION}: {names.INVOKER_STUB_ENV} is not {names.INVOKER_STUB_ON}"
+        )
+        template = self.read("the FIS experiment templates", check_fault_template, self.deps.fis)
+        self.say(f"fault template: {template}, tagged {FAULT_TEMPLATE_TAG}={names.FIS_TEMPLATE}")
         if self.args.url is not None:
             self.url = self.args.url
             self.say("route: --url as given (never shown)")
@@ -556,6 +654,14 @@ class E2E:
         self.say(f"{names.LOAD_LOCK_NAME}: no other load holds it")
         if self.args.record is not None:
             self.say(f"record: {self.args.record}")
+
+    @staticmethod
+    def read(what: str, check: Callable[[Any], Any], client: Callable[[], Any]) -> Any:
+        """One preflight read: a failed call refuses, naming what could not be read."""
+        try:
+            return check(client())
+        except (BotoCoreError, ClientError) as error:
+            raise Refused(f"could not read {what} ({type(error).__name__}: {error})") from None
 
     def drive(self) -> None:
         t = self.timeouts
@@ -592,8 +698,11 @@ class E2E:
             allowed=(names.STATE_RUNNING,),
             timeout=t.rollback,
             hint=f"The alarm {names.ALARM_NAME} should reach ALARM 3 to 5 minutes into the"
-            f" fault (design.md section 9) and roll the run back; look at the fault's output"
-            f" above, the alarm, and `{human_command(names.ACTION_STATUS, rid)}`.",
+            f" fault (design.md section 9), and {names.INVOKER_FUNCTION} hands it, and every"
+            f" tick, to the agent, unless {names.INVOKER_STUB_VARIABLE} is true"
+            f" ({names.INVOKER_STUB_ENV}={names.INVOKER_STUB_ON}: it only logs them). Look at the"
+            f" fault's output above, the alarm, {names.INVOKER_FUNCTION}'s log, and"
+            f" `{human_command(names.ACTION_STATUS, rid)}`.",
         )
         self.wait(
             goal=names.STATE_AWAITING_RESUME,
@@ -601,8 +710,8 @@ class E2E:
             allowed=(names.STATE_ROLLED_BACK,),
             timeout=t.resume_request,
             hint=f"The resume request needs the {names.FIS_DURATION_MINUTES}-minute fault over,"
-            f" the alarm back to OK (about 7 minutes after the last cheaper datapoint;"
-            f" {ALARM_OK_LAG} in evidence/4.1-alarm.md), then a tick (every"
+            f" the alarm back to OK (about {ALARM_OK_LAG} after the start of its last breaching"
+            f" minute; evidence/4.3-fis.md), then a tick (every"
             f" {names.TICK_INTERVAL_MINUTES} min) whose probe passes."
             f" `{human_command(names.ACTION_STATUS, rid)}` says why not yet.",
         )
@@ -667,7 +776,7 @@ class E2E:
         response = reply.response
         if response is None:
             raise Failed(f"marshal start failed: {reply.stderr.strip() or reply.code}")
-        print(reply.stdout, end="" if reply.stdout.endswith("\n") else "\n", flush=True)
+        emit(reply.stdout, end="" if reply.stdout.endswith("\n") else "\n")
         if response["error"] is not None:
             error = response["error"]
             raise Failed(f"marshal start returned {error['code']}: {error['message']}")
@@ -946,7 +1055,7 @@ class E2E:
             except KeyboardInterrupt:
                 item_error = "the read was interrupted"
         record = build_record(self, outcome, reason, item, item_error)
-        print("\n".join(summary_lines(record)), flush=True)
+        emit("\n".join(summary_lines(record)))
         self.write_record(record)
         if reason is not None:
             self.say(f"stopped: {reason}")
@@ -977,7 +1086,7 @@ class E2E:
                 out.write(text)
         except OSError as error:
             self.say(f"could not write {path} ({error.strerror or error}); the record follows")
-            print(text, flush=True)
+            emit(text)
             return
         self.say(f"record written to {path}")
 
@@ -1200,9 +1309,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--pause-minutes",
         type=_count(1, PAUSE_MINUTES_MAX),
         default=None,
-        help="how long each of the human's three pauses waits, in minutes (default: the launch"
-        f" {Timeouts.launch_approval / 60:g}, the resume {Timeouts.resume_approval / 60:g},"
-        f" the decision {Timeouts.decision / 60:g})",
+        help="lengthens the human's three pauses: each waits the longer of its default and"
+        f" this many minutes (defaults: the launch {Timeouts.launch_approval / 60:g}, the"
+        f" resume {Timeouts.resume_approval / 60:g}, the decision {Timeouts.decision / 60:g})",
     )
     return parser
 
@@ -1234,7 +1343,24 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, signal.default_int_handler)
     for stop in (signal.SIGTERM, signal.SIGHUP):  # each stops the script as Ctrl-C does
         signal.signal(stop, _stop)
-    return E2E(args, Deps()).run()
+    code = E2E(args, Deps()).run()
+    release_dead_stdout()
+    return code
+
+
+def release_dead_stdout() -> None:
+    """When stdout is gone (EIO, EPIPE), output that emit() dropped still sits in its buffer,
+    and Python's flush at exit would fail and exit 120. Point stdout at /dev/null instead, as
+    the signal module's note on SIGPIPE does, so the exit status stays this script's."""
+    try:
+        sys.stdout.flush()
+    except OSError:
+        with contextlib.suppress(OSError):
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(devnull, sys.stdout.fileno())
+            finally:
+                os.close(devnull)
 
 
 if __name__ == "__main__":

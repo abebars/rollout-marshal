@@ -11,9 +11,11 @@ to send, so a request that escaped a fake could not reach AWS.
 from __future__ import annotations
 
 import ast
+import errno
 import io
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -24,6 +26,7 @@ import boto3
 import botocore.httpsession
 import pytest
 from boto3.dynamodb.types import TypeSerializer
+from botocore import xform_name
 from botocore.exceptions import ClientError, NoCredentialsError
 from botocore.stub import Stubber
 
@@ -372,6 +375,79 @@ class FakeDynamo:
         return {"Item": {key: serialize(value) for key, value in self.item.items()}}
 
 
+# A value in rm-invoker's environment that must never be printed or recorded.
+SECRET_VALUE = "env-value-never-shown-7f3a"
+
+
+class ReadOnly:
+    """A fake AWS client that answers only the reads it defines: any other call fails."""
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        raise AssertionError(f"{type(self).__name__}.{name} was called: e2e.py only reads")
+
+
+class FakeCloudWatch(ReadOnly):
+    """DescribeAlarms: count alarms named rm-cheaper-latency-p95, each in state."""
+
+    def __init__(self, state=names.ALARM_STATE_OK, count=1, error=None):
+        self.state, self.count, self.error = state, count, error
+        self.calls: list[dict] = []
+
+    def describe_alarms(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        alarm = {"AlarmName": names.ALARM_NAME, "StateValue": self.state}
+        return {"MetricAlarms": [alarm] * self.count, "CompositeAlarms": []}
+
+
+class FakeLambda(ReadOnly):
+    """GetFunctionConfiguration: rm-invoker's environment, STUB (absent when None) and one
+    variable whose value must never be shown."""
+
+    def __init__(self, stub="0", error=None):
+        self.variables = {"OTHER_SETTING": SECRET_VALUE}
+        if stub is not None:
+            self.variables[names.INVOKER_STUB_ENV] = stub
+        self.error = error
+        self.calls: list[dict] = []
+
+    def get_function_configuration(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return {
+            "FunctionName": kwargs["FunctionName"],
+            "Environment": {"Variables": dict(self.variables)},
+        }
+
+
+def template(template_id, **tags):
+    return {"id": template_id, "description": "a template", "tags": tags}
+
+
+class FakeFis(ReadOnly):
+    """ListExperimentTemplates' paginator over the given pages."""
+
+    def __init__(self, *pages, error=None):
+        self.pages = pages or ([template("EXTt3mpl4te", Name=names.FIS_TEMPLATE)],)
+        self.error = error
+        self.reads = 0
+
+    def get_paginator(self, operation):
+        assert operation == "list_experiment_templates"
+        return self
+
+    def paginate(self):
+        self.reads += 1
+        if self.error is not None:
+            raise self.error
+        for items in self.pages:
+            yield {"experimentTemplates": items}
+
+
 class Harness:
     """One e2e.py run against the fakes. Every part can be changed before run()."""
 
@@ -381,6 +457,7 @@ class Harness:
         self.world = World(self.clock, timeline, **world)
         self.spawner = Spawner(self.clock)
         self.sts, self.apis, self.dynamo = FakeSts(), FakeApis(), FakeDynamo()
+        self.cloudwatch, self.functions, self.fis = FakeCloudWatch(), FakeLambda(), FakeFis()
         self.lock_checks = 0
         self.lock_error: Exception | None = None
         self.record = tmp_path / "record.json"
@@ -398,6 +475,9 @@ class Harness:
             spawn=self.spawner.spawn,
             killpg=self.spawner.killpg,
             sts=lambda: self.sts,
+            cloudwatch=lambda: self.cloudwatch,
+            lambda_=lambda: self.functions,
+            fis=lambda: self.fis,
             apigateway=lambda: self.apis,
             dynamodb=lambda: self.dynamo,
             check_lock=self.check_lock,
@@ -476,6 +556,7 @@ def _call_name(call):
 
 
 HUMAN_ACTIONS = ("ACTION_APPROVE", "ACTION_DECLINE", "ACTION_CHECK")
+OS_RUNS_PROGRAMS = ("system", "popen", "fork", "forkpty", "posix_spawn", "posix_spawnp")
 
 
 def test_the_source_never_invokes_approve_decline_or_check():
@@ -522,16 +603,17 @@ def test_the_source_never_invokes_approve_decline_or_check():
             assert "marshal decline" not in node.value, node.lineno
             assert "marshal check" not in node.value, node.lineno
 
-    runs_programs = {
-        _call_name(node)
+    module_calls = [
+        (node.func.value.id, node.func.attr)
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
-        and node.func.value.id in ("subprocess", "os")
-        and node.func.attr not in ("killpg",)
-    }
-    assert runs_programs == {"Popen"}
+    ]
+    assert {attr for module, attr in module_calls if module == "subprocess"} == {"Popen"}
+    for module, attr in module_calls:  # os may open, dup and signal, but never run a program
+        if module == "os":
+            assert attr not in OS_RUNS_PROGRAMS and not attr.startswith(("exec", "spawn")), attr
     popens = [
         node
         for node in ast.walk(tree)
@@ -661,16 +743,18 @@ def test_each_pause_prints_exactly_what_the_human_types(harness, capsys):
     launch = "\n".join(
         [
             "PAUSE: review the plan above. To launch it, type in another terminal:",
-            f"    marshal approve {RUN_ID} launch",
-            f"e2e.py approves nothing itself; it reads `marshal status {RUN_ID}` every 10 s"
-            " until the run moves.",
+            f"    uv run marshal approve {RUN_ID} launch",
+            "Run it from the repository root, with the same AWS_PROFILE as this shell.",
+            "e2e.py approves nothing itself; it reads the run's status every 10 s until the"
+            " run moves.",
             e2e.HUMAN_RULE,
         ]
     )
     resume = "\n".join(
         [
             "PAUSE: the cheaper model is healthy again. To resume the experiment, type:",
-            f"    marshal approve {RUN_ID} resume",
+            f"    uv run marshal approve {RUN_ID} resume",
+            "Run it from the repository root, with the same AWS_PROFILE as this shell.",
             e2e.HUMAN_RULE,
         ]
     )
@@ -678,10 +762,11 @@ def test_each_pause_prints_exactly_what_the_human_types(harness, capsys):
         [
             "PAUSE: results are ready. Choose one, in another terminal.",
             "  To hold the run, type:",
-            f"    marshal decline {RUN_ID}",
+            f"    uv run marshal decline {RUN_ID}",
             "    then end the experiment in the Flagsmith dashboard: a hold leaves it running.",
             "  Or, to promote it, end the experiment in the Flagsmith dashboard, then type:",
-            f"    marshal approve {RUN_ID} promotion",
+            f"    uv run marshal approve {RUN_ID} promotion",
+            "Run it from the repository root, with the same AWS_PROFILE as this shell.",
             "  Note which metric the dashboard shows as primary, and the rollout decision you"
             " choose: evidence/5.1-e2e.md records both.",
             e2e.HUMAN_RULE,
@@ -705,11 +790,14 @@ def test_the_plan_is_printed_as_the_cli_renders_it(harness, capsys):
 
 
 def test_the_pause_helpers_build_the_commands_from_names():
-    assert e2e.launch_pause(RUN_ID)[1] == f"    marshal approve {RUN_ID} launch"
-    assert e2e.resume_pause(RUN_ID)[1] == f"    marshal approve {RUN_ID} resume"
+    assert e2e.HUMAN_CLI == ("uv", "run", names.CLI_NAME)
+    launch, resume = e2e.launch_pause(RUN_ID), e2e.resume_pause(RUN_ID)
+    assert launch[1:3] == [f"    uv run marshal approve {RUN_ID} launch", e2e.HUMAN_WHERE]
+    assert resume[1:3] == [f"    uv run marshal approve {RUN_ID} resume", e2e.HUMAN_WHERE]
     decision = e2e.decision_pause(RUN_ID)
-    assert decision[2] == f"    marshal decline {RUN_ID}"
-    assert decision[5] == f"    marshal approve {RUN_ID} promotion"
+    assert decision[2] == f"    uv run marshal decline {RUN_ID}"
+    assert decision[5:7] == [f"    uv run marshal approve {RUN_ID} promotion", e2e.HUMAN_WHERE]
+    assert "repository root" in e2e.HUMAN_WHERE and "AWS_PROFILE" in e2e.HUMAN_WHERE
 
 
 def test_a_hold_says_to_end_the_experiment_and_every_pause_states_the_rule():
@@ -754,14 +842,14 @@ TIMEOUTS = [
         _upto(0),
         40 + 30 * 60,
         "timed out after 30 min waiting for the launch approval.",
-        f"`marshal decline {RUN_ID}` drops it before a new start",
+        f"`uv run marshal decline {RUN_ID}` drops it before a new start",
     ),
     (
         "launch",
         _upto(300),
         300 + 15 * 60,
         "timed out after 15 min waiting for RUNNING.",
-        f"`marshal check {RUN_ID}` finishes a stalled transition once its claim is older"
+        f"`uv run marshal check {RUN_ID}` finishes a stalled transition once its claim is older"
         " than 360 s",
     ),
     (
@@ -769,29 +857,31 @@ TIMEOUTS = [
         _upto(340),
         340 + 15 * 60,
         "timed out after 15 min waiting for ROLLED_BACK.",
-        "should reach ALARM 3 to 5 minutes into the fault",
+        "should reach ALARM 3 to 5 minutes into the fault (design.md section 9), and"
+        " rm-invoker hands it, and every tick, to the agent, unless invoker_stub is true"
+        " (STUB=1: it only logs them)",
     ),
     (
         "resume request",
         _upto(650),
         650 + 25 * 60,
         "timed out after 25 min waiting for AWAITING_RESUME.",
-        "the alarm back to OK (about 7 minutes after the last cheaper datapoint; 6 min 36 s"
-        " in evidence/4.1-alarm.md)",
+        "the alarm back to OK (about 7 min 20 s after the start of its last breaching"
+        " minute; evidence/4.3-fis.md)",
     ),
     (
         "resume approval",
         _upto(1150),
         1150 + 30 * 60,
         "timed out after 30 min waiting for the resume approval.",
-        f"`marshal approve {RUN_ID} resume` resumes it",
+        f"`uv run marshal approve {RUN_ID} resume` resumes it",
     ),
     (
         "resume",
         _upto(1300),
         1300 + 15 * 60,
         "timed out after 15 min waiting for RUNNING.",
-        f"`marshal status {RUN_ID}` shows what is pending",
+        f"`uv run marshal status {RUN_ID}` shows what is pending",
     ),
     (
         "results",
@@ -805,14 +895,15 @@ TIMEOUTS = [
         _upto(1900),
         1900 + 60 * 60,
         "timed out after 60 min waiting for the decision.",
-        f"end the experiment in the Flagsmith dashboard, then `marshal approve {RUN_ID} promotion`",
+        f"end the experiment in the Flagsmith dashboard, then `uv run marshal approve {RUN_ID}"
+        " promotion`",
     ),
     (
         "decision effects",
         (*_upto(1900), (2100, RR, PR)),
         2100 + 15 * 60,
         "timed out after 15 min waiting for HELD or PROMOTED.",
-        f"`marshal check {RUN_ID}` finishes a stalled transition",
+        f"`uv run marshal check {RUN_ID}` finishes a stalled transition",
     ),
 ]
 
@@ -839,10 +930,13 @@ def test_each_wait_times_out_with_a_clear_message(
         assert process.signals == [signal.SIGTERM]  # every child still running is stopped
 
 
-def test_pause_minutes_sets_only_the_three_human_waits(harness, tmp_path):
+def _timeouts(harness, *argv):
+    return e2e.E2E(e2e.parse_args(list(argv)), harness.deps()).timeouts
+
+
+def test_pause_minutes_lengthens_only_the_three_human_waits(harness):
     default = e2e.Timeouts()
-    args = e2e.parse_args(["--pause-minutes", "720"])
-    timeouts = e2e.E2E(args, harness.deps()).timeouts
+    timeouts = _timeouts(harness, "--pause-minutes", "720")
     assert timeouts.launch_approval == timeouts.resume_approval == timeouts.decision == 720 * 60
     assert (timeouts.effects, timeouts.rollback, timeouts.resume_request, timeouts.results) == (
         default.effects,
@@ -850,7 +944,35 @@ def test_pause_minutes_sets_only_the_three_human_waits(harness, tmp_path):
         default.resume_request,
         default.results,
     )
-    assert e2e.E2E(e2e.parse_args([]), harness.deps()).timeouts == default
+    assert _timeouts(harness) == default
+
+
+def test_pause_minutes_never_shortens_a_pause(harness):
+    """Each pause waits the longer of its default and the value: 3 leaves all three, and 45
+    lengthens the launch and the resume (30) but not the decision (60)."""
+    default = e2e.Timeouts()
+    assert _timeouts(harness, "--pause-minutes", "3") == default
+    assert _timeouts(harness, "--pause-minutes", "45") == e2e.Timeouts(
+        launch_approval=45 * 60, resume_approval=45 * 60, decision=default.decision
+    )
+    assert default.decision == 60 * 60 > 45 * 60
+
+
+def test_a_short_pause_minutes_still_waits_the_default(monkeypatch, tmp_path):
+    h = make(monkeypatch, tmp_path, _upto(0))
+    assert h.run("--pause-minutes", "3") == e2e.EXIT_FAILED
+    assert h.clock.t == 40 + 30 * 60  # the default launch wait, not 3 minutes
+    assert h.recorded()["reason"].startswith(
+        "timed out after 30 min waiting for the launch approval."
+    )
+
+
+def test_the_help_says_pause_minutes_only_lengthens(capsys):
+    with pytest.raises(SystemExit):
+        e2e.parse_args(["--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "each waits the longer of its default and this many minutes" in text
+    assert "never shortens one" in e2e.__doc__
 
 
 @pytest.mark.parametrize("value", ["0", str(e2e.PAUSE_MINUTES_MAX + 1), "x"])
@@ -872,11 +994,16 @@ def test_a_long_pause_waits_past_the_default_launch_timeout(monkeypatch, tmp_pat
 
 
 def test_the_resume_request_wait_allows_for_the_fault_and_the_alarms_return_to_ok():
-    # The fault's 6 minutes, the alarm's 6 min 36 s back to OK, then a 2-minute tick: even
-    # end to end, that fits in the lead's 25 minutes.
-    floor = names.FIS_DURATION_MINUTES * 60 + 396 + names.TICK_INTERVAL_MINUTES * 60
+    # The fault's 6 minutes, the alarm's lag back to OK from the start of its last breaching
+    # minute (7 min 20 s in 4.1, 7 min 17 s in 4.3), then a 2-minute tick: even end to end,
+    # that fits in the lead's 25 minutes.
+    assert e2e.ALARM_OK_LAG == "7 min 20 s" and e2e.ALARM_OK_LAG_SECONDS == 440
+    floor = (
+        names.FIS_DURATION_MINUTES * 60
+        + e2e.ALARM_OK_LAG_SECONDS
+        + names.TICK_INTERVAL_MINUTES * 60
+    )
     assert e2e.Timeouts().resume_request == 25 * 60 > floor
-    assert e2e.ALARM_OK_LAG == "6 min 36 s"
 
 
 # ---------------------------------------------------------------------------
@@ -921,7 +1048,9 @@ def test_five_status_errors_in_a_row_stop_the_script(fault, said, monkeypatch, t
         assert f"status error {k} of 5 in a row: " in out
     assert "status error 6" not in out
     reason = h.recorded()["reason"]
-    assert reason.startswith(f"`marshal status {RUN_ID}` failed 5 times in a row; the last: ")
+    assert reason.startswith(
+        f"`uv run marshal status {RUN_ID}` failed 5 times in a row; the last: "
+    )
     assert said in reason
     assert h.world.status_calls == 3 + 5
 
@@ -988,8 +1117,8 @@ def test_an_unexpected_state_stops_with_a_clear_message(
         assert "is still" not in out
     else:
         assert (
-            f"run {RUN_ID} is still {state}: `marshal status {RUN_ID}` shows it,"
-            f" `marshal decline {RUN_ID}` ends it.\n"
+            f"run {RUN_ID} is still {state}: `uv run marshal status {RUN_ID}` shows it,"
+            f" `uv run marshal decline {RUN_ID}` ends it.\n"
         ) in out
 
 
@@ -1065,6 +1194,104 @@ def test_ctrl_c_stops_both_children_with_sigterm_and_still_summarises(harness, c
     assert f"run {RUN_ID} is still RUNNING" in out
 
 
+class DeadStdout:
+    """sys.stdout that works until it breaks, then fails as a closed terminal (EIO) or a
+    pipe with no reader (EPIPE) does, on every write and flush."""
+
+    def __init__(self, error, events=None):
+        self.error, self.broken, self.events = error, False, events
+        self.written: list[str] = []
+
+    def write(self, text):
+        if self.broken:
+            raise self.error
+        self.written.append(text)
+        if self.events is not None:
+            self.events.append(("print", text))
+        return len(text)
+
+    def flush(self):
+        if self.broken:
+            raise self.error
+
+
+DEAD_STDOUT = [
+    OSError(errno.EIO, "Input/output error"),
+    BrokenPipeError(errno.EPIPE, "Broken pipe"),
+]
+
+
+@pytest.mark.parametrize("error", DEAD_STDOUT, ids=["EIO", "EPIPE"])
+def test_a_stop_with_no_usable_stdout_still_stops_both_children_and_writes_the_record(
+    error, harness, monkeypatch
+):
+    out = DeadStdout(error)
+    monkeypatch.setattr(sys, "stdout", out)
+
+    def hang_up(clock):
+        if clock.t >= 500:  # both children are running: the terminal closes, then SIGHUP
+            clock.on_sleep = None
+            out.broken = True
+            raise KeyboardInterrupt
+
+    harness.clock.on_sleep = hang_up
+    assert harness.run() == e2e.EXIT_INTERRUPTED
+    assert harness.spawner.kills == [(LOAD_PID, signal.SIGTERM), (FAULT_PID, signal.SIGTERM)]
+    record = harness.recorded()
+    assert record["outcome"] == "interrupted" and record["answers_sent"] == 700
+    assert record["load"]["signalled"] == ["SIGTERM"] == record["fault"]["signalled"]
+    assert record["load"]["output"][-1] == "sent=700 ok=698 failed=2"
+
+
+def test_the_shield_is_up_before_the_stopping_line(harness, monkeypatch):
+    events: list = []
+    monkeypatch.setattr(sys, "stdout", DeadStdout(OSError(errno.EIO, "unused"), events))
+
+    class Shield:
+        def __enter__(self):
+            events.append("shield up")
+
+        def __exit__(self, *exc_info):
+            events.append("shield down")
+
+    def interrupt(clock):
+        if clock.t >= 500:
+            clock.on_sleep = None
+            raise KeyboardInterrupt
+
+    harness.clock.on_sleep = interrupt
+    harness.run(shield=Shield)
+    up, down = events.index("shield up"), events.index("shield down")
+    stopping = [n for n, e in enumerate(events) if e[0] == "print" and "stopping" in e[1]]
+    assert stopping and all(up < n < down for n in stopping)  # the reason and each SIGTERM
+
+
+@pytest.mark.parametrize("error", DEAD_STDOUT, ids=["EIO", "EPIPE"])
+def test_nothing_printed_is_fatal_when_stdout_is_dead_from_the_start(error, harness, monkeypatch):
+    out = DeadStdout(error)
+    out.broken = True
+    monkeypatch.setattr(sys, "stdout", out)
+    assert harness.run() == e2e.EXIT_OK  # the plan, the pauses and the summary are dropped
+    assert harness.recorded()["outcome"] == "completed"
+
+
+def test_a_dead_stdout_is_pointed_at_devnull_so_the_exit_status_holds(tmp_path, monkeypatch):
+    target = open(tmp_path / "terminal", "w")  # kept open: its descriptor is the point
+
+    class Gone(DeadStdout):
+        def fileno(self):
+            return target.fileno()
+
+    out = Gone(BrokenPipeError(errno.EPIPE, "Broken pipe"))
+    monkeypatch.setattr(sys, "stdout", out)
+    e2e.release_dead_stdout()
+    assert not os.path.samestat(os.fstat(target.fileno()), os.stat(os.devnull))
+    out.broken = True
+    e2e.release_dead_stdout()
+    assert os.path.samestat(os.fstat(target.fileno()), os.stat(os.devnull))
+    target.close()
+
+
 def test_a_child_that_ignores_sigterm_gets_sigkill_after_the_grace(harness, capsys):
     harness.spawner.specs["load"] = load_spec(ignores_term=True)
 
@@ -1097,7 +1324,7 @@ def test_ctrl_c_at_a_pause_stops_no_child_and_names_the_run(monkeypatch, tmp_pat
     assert h.run() == e2e.EXIT_INTERRUPTED
     assert h.spawner.kills == []
     out = capsys.readouterr().out
-    assert f"run {RUN_ID} is still PLANNED: `marshal status {RUN_ID}` shows it" in out
+    assert f"run {RUN_ID} is still PLANNED: `uv run marshal status {RUN_ID}` shows it" in out
     assert "answers sent: 0 (load.py did not start)" in out
 
 
@@ -1112,9 +1339,20 @@ def test_it_never_stops_a_fis_experiment_through_the_api():
         and node.args
         and isinstance(node.args[0], ast.Constant)
     }
-    assert services == {"sts", "apigatewayv2", "dynamodb"}
-    for word in ("stop_experiment", "StopExperiment", '"fis"', "'fis'"):
-        assert word not in source
+    assert services == {"sts", "cloudwatch", "lambda", "fis", "apigatewayv2", "dynamodb"}
+    # FIS is only listed: no FIS operation but a Get or a List is named, in either spelling.
+    fis_model = boto3.session.Session().client("fis", region_name=names.REGION).meta.service_model
+    writes = [op for op in fis_model.operation_names if not op.startswith(("Get", "List"))]
+    assert "StopExperiment" in writes and "StartExperiment" in writes
+    for operation in writes:
+        for spelling in (operation, xform_name(operation)):
+            assert spelling not in source, spelling
+    paginators = {
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _call_name(node) == "get_paginator"
+    }
+    assert paginators == {"get_apis", "list_experiment_templates"}
 
 
 def test_the_load_ending_early_stops_the_run(harness, capsys):
@@ -1128,6 +1366,29 @@ def test_the_load_ending_early_stops_the_run(harness, capsys):
     assert harness.recorded()["reason"] == "load.py ended early, exit 3; see its output above"
     assert harness.spawner.kills == [(FAULT_PID, signal.SIGTERM)]
     assert "[load] load.py: refused to start: another load holds" in capsys.readouterr().out
+
+
+def test_a_load_that_exits_130_on_its_own_ended_early_even_with_its_counts(harness):
+    harness.spawner.specs["load"] = load_spec(
+        exit_at=500,
+        exit_code=130,
+        exit_lines=["interrupted: sent 400 of 1500", "sent=400 ok=400 failed=0"],
+    )
+    assert harness.run() == e2e.EXIT_FAILED
+    record = harness.recorded()
+    assert record["reason"] == "load.py ended early, exit 130; see its output above"
+    assert record["answers_sent"] == 400 and record["load"]["signalled"] == []
+
+
+def test_a_spawn_that_fails_gives_a_message_without_the_url(harness, capsys):
+    def no_python(argv, log):
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), " ".join(argv))
+
+    assert harness.run(spawn=no_python) == e2e.EXIT_FAILED
+    shown = f"scripts/load.py --run-id {RUN_ID} --users 150 --questions 10 --url <not shown>"
+    assert harness.recorded()["reason"] == f"could not start {shown}: No such file or directory"
+    printed = _everything_printed(capsys, harness)
+    assert ASK_URL not in printed and API_ID not in printed
 
 
 def test_a_load_whose_requests_all_failed_stops_the_run(harness):
@@ -1231,7 +1492,9 @@ class SteppingClock(FakeClock):
         super().sleep(seconds)
 
 
-def test_real_children_get_sigterm_in_their_own_sessions(monkeypatch, tmp_path, capsys):
+def _real_run(monkeypatch, tmp_path, *, at_interrupt=lambda: None):
+    """One run with real stand-in children, real killpg and the real shield, stopped as if
+    by Ctrl-C once both stand-ins are up. at_interrupt runs just before the stop."""
     load_script, fault_script = tmp_path / "load_standin.py", tmp_path / "fault_standin.sh"
     load_script.write_text(LOAD_STANDIN)
     fault_script.write_text(FAULT_STANDIN)
@@ -1249,18 +1512,31 @@ def test_real_children_get_sigterm_in_their_own_sessions(monkeypatch, tmp_path, 
                 if child is not None:
                     sessions[child.name] = os.getsid(child.process.pid) == child.process.pid
             clock.on_sleep = None
+            at_interrupt()
             raise KeyboardInterrupt
 
     h.clock.on_sleep = interrupt
-    code = h.run(
-        clock=h.clock,
-        spawn=e2e.spawn_child,
-        killpg=os.killpg,
-        shield=e2e.shield_signals,
-        load_argv=lambda run_id, users, questions, url: [sys.executable, str(load_script)],
-        fault_argv=lambda: ["bash", str(fault_script)],
-        timeouts=e2e.Timeouts(rollback=10**6),
-    )
+    try:
+        code = h.run(
+            clock=h.clock,
+            spawn=e2e.spawn_child,
+            killpg=os.killpg,
+            shield=e2e.shield_signals,
+            load_argv=lambda run_id, users, questions, url: [sys.executable, str(load_script)],
+            fault_argv=lambda: ["bash", str(fault_script)],
+            timeouts=e2e.Timeouts(rollback=10**6),
+        )
+    finally:  # a failing run must not leave its stand-ins running
+        run = getattr(h, "e2e", None)
+        for child in (run.load, run.fault) if run is not None else ():
+            if child is not None and child.process.poll() is None:
+                os.killpg(child.process.pid, signal.SIGKILL)
+                child.process.wait()
+    return h, code, sessions
+
+
+def test_real_children_get_sigterm_in_their_own_sessions(monkeypatch, tmp_path, capsys):
+    h, code, sessions = _real_run(monkeypatch, tmp_path)
     assert code == e2e.EXIT_INTERRUPTED
     assert sessions == {"load": True, "fault": True}
     assert h.e2e.load.process.returncode == 130 and h.e2e.fault.process.returncode == 143
@@ -1273,6 +1549,20 @@ def test_real_children_get_sigterm_in_their_own_sessions(monkeypatch, tmp_path, 
     assert record["answers_sent"] == 3
     assert record["fault"]["experiment_id"] == "EXPstandin01"
     assert signal.getsignal(signal.SIGINT) is signal.default_int_handler  # the shield restored it
+
+
+@pytest.mark.parametrize("error", DEAD_STDOUT, ids=["EIO", "EPIPE"])
+def test_real_children_stop_when_the_terminal_is_gone(error, monkeypatch, tmp_path):
+    """The review's case: the terminal closes (or the pipe's reader dies), then the stop
+    signal comes. Both real children still get SIGTERM, and the record is written."""
+    out = DeadStdout(error)
+    monkeypatch.setattr(sys, "stdout", out)
+    h, code, _ = _real_run(monkeypatch, tmp_path, at_interrupt=lambda: setattr(out, "broken", True))
+    assert code == e2e.EXIT_INTERRUPTED
+    assert h.e2e.load.process.returncode == 130 and h.e2e.fault.process.returncode == 143
+    record = h.recorded()
+    assert record["outcome"] == "interrupted" and record["answers_sent"] == 3
+    assert record["load"]["signalled"] == ["SIGTERM"] == record["fault"]["signalled"]
 
 
 # ---------------------------------------------------------------------------
@@ -1356,6 +1646,26 @@ def test_a_history_off_the_pass_exits_1(monkeypatch, tmp_path, capsys):
     assert "does not read as task 5.1's Pass" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    "states",
+    [(*PASS_HISTORY[:-1], RB), (P, R, RB, AR, R, RR, RB, AR, R, RR, H), PASS_HISTORY[:-1]],
+    ids=["right prefix, wrong end", "extra entries after the prefix", "no end"],
+)
+def test_the_pass_check_needs_exactly_the_path_then_held_or_promoted(states, monkeypatch, tmp_path):
+    h = make(monkeypatch, tmp_path)
+    h.dynamo = FakeDynamo(run_item(states))
+    assert h.run() == e2e.EXIT_FAILED
+    assert h.recorded()["history_matches_pass"] is False
+
+
+@pytest.mark.parametrize("end", [H, PR])
+def test_the_pass_check_takes_held_or_promoted(end, monkeypatch, tmp_path):
+    h = make(monkeypatch, tmp_path)
+    h.dynamo = FakeDynamo(run_item((*PASS_HISTORY[:-1], end)))
+    assert h.run() == e2e.EXIT_OK
+    assert h.recorded()["history_matches_pass"] is True
+
+
 def test_a_run_item_that_cannot_be_read_still_gives_the_summary(monkeypatch, tmp_path, capsys):
     h = make(monkeypatch, tmp_path)
     h.dynamo = FakeDynamo(error=NoCredentialsError())
@@ -1370,6 +1680,14 @@ def test_without_record_nothing_is_written(harness, tmp_path):
     assert harness.run(record=False) == e2e.EXIT_OK
     assert not harness.record.exists()
     assert sorted(p.name for p in tmp_path.iterdir()) == ["fault.log", "load.log"]
+
+
+def test_the_docstring_says_what_the_script_does():
+    doc = " ".join(e2e.__doc__.split())
+    assert "An existing --record file is refused while the arguments are read (exit 2)." in doc
+    assert "A failed check refuses (exit 3)" in doc
+    assert "Each line of its own carries a UTC timestamp; the plan, the pause blocks and" in doc
+    assert "the children still stop and --record is still written" in doc
 
 
 def test_record_refuses_an_existing_file(tmp_path, capsys):
@@ -1501,6 +1819,14 @@ def test_a_bad_url_is_refused_without_quoting_it(url, capsys):
     assert "argument --url: not" in err and API_ID not in err
 
 
+def test_a_url_given_to_help_is_scrubbed(capsys):
+    with pytest.raises(SystemExit) as stop:
+        e2e.parse_args(["--help=" + ASK_URL])
+    assert stop.value.code == e2e.EXIT_USAGE
+    err = capsys.readouterr().err
+    assert "<not shown>" in err and ASK_URL not in err and API_ID not in err
+
+
 def test_a_stray_url_is_counted_not_quoted(capsys):
     with pytest.raises(SystemExit):
         e2e.parse_args([ASK_URL])
@@ -1567,6 +1893,179 @@ def test_no_credentials_start_nothing(monkeypatch, tmp_path, capsys):
     assert "refused: could not read the caller identity (NoCredentialsError" in (
         capsys.readouterr().out
     )
+
+
+def _refused(h, capsys):
+    """The run refused before anything started: exit 3, no start, no child, no record."""
+    assert h.run() == e2e.EXIT_REFUSED
+    assert h.world.payloads == [] and h.spawner.processes == {} and not h.record.exists()
+    return capsys.readouterr().out
+
+
+def test_the_checks_are_one_read_each(harness, capsys):
+    assert harness.run() == e2e.EXIT_OK
+    assert harness.cloudwatch.calls == [
+        {"AlarmNames": [names.ALARM_NAME], "AlarmTypes": ["MetricAlarm"]}
+    ]
+    assert harness.functions.calls == [{"FunctionName": names.INVOKER_FUNCTION}]
+    assert harness.fis.reads == 1  # ReadOnly fails any call but these reads
+    out = capsys.readouterr().out
+    assert f"{at(0)}  alarm rm-cheaper-latency-p95: OK\n" in out
+    assert f"{at(0)}  rm-invoker: STUB is not 1\n" in out
+    assert f"{at(0)}  fault template: EXTt3mpl4te, tagged Name=rm-delay-cheaper\n" in out
+
+
+@pytest.mark.parametrize("state", [names.ALARM_STATE_OK, names.ALARM_STATE_INSUFFICIENT_DATA])
+def test_an_alarm_that_is_not_in_alarm_lets_the_run_start(state, monkeypatch, tmp_path):
+    h = make(monkeypatch, tmp_path)
+    h.cloudwatch = FakeCloudWatch(state=state)
+    assert h.run() == e2e.EXIT_OK
+
+
+def test_an_alarm_in_alarm_starts_nothing(monkeypatch, tmp_path, capsys):
+    h = make(monkeypatch, tmp_path)
+    h.cloudwatch = FakeCloudWatch(state=names.ALARM_STATE_ALARM)
+    assert (
+        "refused: the alarm rm-cheaper-latency-p95 is in ALARM: wait until it is OK again"
+        " (about 7 min 20 s after the start of its last breaching minute), then start again;"
+        " nothing was started"
+    ) in _refused(h, capsys)
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_without_exactly_one_alarm_nothing_starts(count, monkeypatch, tmp_path, capsys):
+    h = make(monkeypatch, tmp_path)
+    h.cloudwatch = FakeCloudWatch(count=count)
+    assert (
+        f"refused: expected one alarm named rm-cheaper-latency-p95, found {count}:"
+        " apply infra/ (task 4.1); nothing was started"
+    ) in _refused(h, capsys)
+
+
+def test_a_stubbed_invoker_starts_nothing_and_its_environment_is_never_shown(
+    monkeypatch, tmp_path, capsys
+):
+    h = make(monkeypatch, tmp_path)
+    h.functions = FakeLambda(stub="1")
+    out = _refused(h, capsys)
+    assert (
+        "refused: rm-invoker runs with STUB=1: set invoker_stub = false in"
+        " infra/terraform.tfvars and apply infra/ (task 5.1); nothing was started"
+    ) in out
+    assert SECRET_VALUE not in out and "OTHER_SETTING" not in out
+
+
+@pytest.mark.parametrize("stub", ["0", None, "true", ""])
+def test_only_stub_1_is_a_stub_as_the_invoker_reads_it(stub, monkeypatch, tmp_path, capsys):
+    """rm-invoker: STUB=1, and nothing else, means log the payload and send nothing."""
+    h = make(monkeypatch, tmp_path)
+    h.functions = FakeLambda(stub=stub)
+    assert h.run() == e2e.EXIT_OK
+    printed = _everything_printed(capsys, h)
+    assert SECRET_VALUE not in printed and "OTHER_SETTING" not in printed
+
+
+@pytest.mark.parametrize(
+    ("pages", "found"),
+    [
+        (([],), 0),
+        (([template("EXTa", Name="rm-delay-other"), template("EXTb")],), 0),
+        (
+            (
+                [template("EXTa", Name=names.FIS_TEMPLATE)],
+                [template("EXTb", Name=names.FIS_TEMPLATE)],
+            ),
+            2,
+        ),
+        (([template("EXTa", name=names.FIS_TEMPLATE)],), 0),  # tag keys are case-sensitive
+    ],
+    ids=["none", "other names", "one on each page", "lower-case key"],
+)
+def test_without_exactly_one_fault_template_nothing_starts(
+    pages, found, monkeypatch, tmp_path, capsys
+):
+    h = make(monkeypatch, tmp_path)
+    h.fis = FakeFis(*pages)
+    assert (
+        "refused: scripts/inject_fault.sh needs exactly one FIS experiment template tagged"
+        f" Name=rm-delay-cheaper, found {found}: apply infra/ (task 4.3); nothing was started"
+    ) in _refused(h, capsys)
+
+
+def test_the_fault_template_is_found_on_any_page(monkeypatch, tmp_path, capsys):
+    h = make(monkeypatch, tmp_path)
+    h.fis = FakeFis(
+        [template("EXTa", Name="rm-delay-other"), template("EXTb")],
+        [template("EXTright", Name=names.FIS_TEMPLATE, Owner="rm")],
+    )
+    assert h.run() == e2e.EXIT_OK
+    assert "fault template: EXTright, tagged Name=rm-delay-cheaper" in capsys.readouterr().out
+
+
+def test_the_fault_template_is_selected_as_inject_fault_sh_selects_it():
+    script = (ROOT / names.INJECT_FAULT_SCRIPT).read_text()
+    assert f'TEMPLATE_NAME="{names.FIS_TEMPLATE}"' in script
+    query = re.search(r"experimentTemplates\[\?tags\.(\w+)=='\$TEMPLATE_NAME'\]\.id", script)
+    assert query is not None and query.group(1) == e2e.FAULT_TEMPLATE_TAG
+    assert "list-experiment-templates" in script
+
+
+@pytest.mark.parametrize(
+    ("client", "what"),
+    [
+        ("cloudwatch", "the alarm rm-cheaper-latency-p95"),
+        ("functions", "rm-invoker"),
+        ("fis", "the FIS experiment templates"),
+    ],
+)
+def test_a_failed_check_read_starts_nothing(client, what, monkeypatch, tmp_path, capsys):
+    h = make(monkeypatch, tmp_path)
+    denied = ClientError({"Error": {"Code": "AccessDenied", "Message": "no"}}, "Read")
+    setattr(
+        h,
+        client,
+        {"cloudwatch": FakeCloudWatch, "functions": FakeLambda, "fis": FakeFis}[client](
+            error=denied
+        ),
+    )
+    assert f"refused: could not read {what} (ClientError: " in _refused(h, capsys)
+
+
+def test_the_checks_send_well_formed_reads_to_the_real_clients():
+    """Each read against botocore's own model, through a Stubber: no request is sent."""
+    session = boto3.session.Session()
+    cloudwatch = session.client("cloudwatch", region_name=names.REGION)
+    functions = session.client("lambda", region_name=names.REGION)
+    fis = session.client("fis", region_name=names.REGION)
+    stubs = [Stubber(cloudwatch), Stubber(functions), Stubber(fis)]
+    stubs[0].add_response(
+        "describe_alarms",
+        {"MetricAlarms": [{"AlarmName": names.ALARM_NAME, "StateValue": "OK"}]},
+        {"AlarmNames": [names.ALARM_NAME], "AlarmTypes": ["MetricAlarm"]},
+    )
+    stubs[1].add_response(
+        "get_function_configuration",
+        {"Environment": {"Variables": {names.INVOKER_STUB_ENV: "0"}}},
+        {"FunctionName": names.INVOKER_FUNCTION},
+    )
+    stubs[2].add_response(
+        "list_experiment_templates",
+        {"experimentTemplates": [template("EXTa")], "nextToken": "t"},
+        {},
+    )
+    stubs[2].add_response(
+        "list_experiment_templates",
+        {"experimentTemplates": [template("EXTb", Name=names.FIS_TEMPLATE)]},
+        {"nextToken": "t"},
+    )
+    for stub in stubs:
+        stub.activate()
+    assert e2e.check_alarm(cloudwatch) == "OK"
+    assert e2e.check_invoker(functions) is None
+    assert e2e.check_fault_template(fis) == "EXTb"
+    for stub in stubs:
+        stub.assert_no_pending_responses()
+        stub.deactivate()
 
 
 def test_a_held_load_lock_starts_nothing(monkeypatch, tmp_path, capsys):
