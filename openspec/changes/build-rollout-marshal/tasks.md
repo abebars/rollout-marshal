@@ -463,7 +463,7 @@ their tasks name, not against each other.
 
 ## 3. Workstream B: assistant API
 
-- [ ] 3.1 **Answer functions**
+- [x] 3.1 **Answer functions**
   - Needs: 1.4. Files: `app/answer/handler.py`, tests.
   - Produces: one handler deployed twice, `rm-answer-current` and
     `rm-answer-cheaper`, model from env `MODEL_ID`. Input `{question,
