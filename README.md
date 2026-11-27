@@ -1,5 +1,5 @@
-<!-- Draft (task 6.2). Each remaining [[source: what]] is filled from the source it names
-before Gate 4: 5.2's run and 6.4's video. Delete this comment once the last one is filled. -->
+<!-- Draft (task 6.2). The one remaining placeholder, [[6.4: video URL]], is Ahmed's, after he
+records. Delete this comment once it is filled. -->
 
 # Rollout Marshal
 
@@ -14,22 +14,27 @@ Track 2, "AI Agents and Feature Flags". Demo video: [[6.4: video URL]].
 
 ## The numbers
 
-From one dashboard pass and the first full run, `r202611271927`, both on 2026-11-27:
+From one dashboard pass and the two full runs, all on 2026-11-27:
 
 | Setting up the experiment | Time |
 | --- | --- |
 | In the Flagsmith dashboard, clicked through in Chrome by an AI agent (the one that led this build) at Ahmed's instruction, not by a person. One metric attached | about 2:18 |
-| Rollout Marshal's own work: planning, then launching. All three metrics attached | about 1:20 |
-| The plan waiting for the engineer's approval, between those two parts | 12:33 |
-| `marshal start` to `RUNNING`, in all | 13:53 |
+| Rollout Marshal's own work, planning then launching, all three metrics attached: second full run, `r202611272042` | about 0:39 |
+| The same, first full run, `r202611271927` | about 1:20 |
+
+| Run | The plan waiting for the engineer's approval | `marshal start` to `RUNNING`, in all |
+| --- | --- | --- |
+| `r202611271927` | 12:33 | 13:53 |
+| `r202611272042` | 6:43 | 7:22 |
 
 - **The dashboard pass** was done by an agent because Ahmed told the lead agent to do it,
   where the task asked for a person. So it includes that agent's own time between actions,
   and a person might be faster or slower. The dashboard's experiment form took only the
   primary metric.
-- **Rollout Marshal's 1:20** is 7.6 s to plan and 72.9 s to launch. The launch includes a
-  failed experiment start that the next tick retried.
-- **The 12:33** is the human's, not the agent's.
+- **Rollout Marshal's own work** is 6.6 s to plan and 32.7 s to launch in the second run. In
+  the first it was 7.6 s and 72.9 s: its first experiment start failed, and the next tick
+  retried it.
+- **The wait for approval** is the human's time, not the agent's.
 
 How each was measured, and what neither number counts: [docs/time-saved.md](docs/time-saved.md).
 
@@ -91,52 +96,62 @@ get, except the rollback, which it does at once.
 - `marshal status [run_id]` shows a run. `marshal check <run_id>` does now what the alarm or
   the next tick would do, the manual fallback if the alarm path breaks.
 
-## The first full run
+## The two full runs
 
-Run `r202611271927`, on 2026-11-27, ended `HELD` (`evidence/5.1-e2e.md`). Its history:
-`PLANNED`, `RUNNING`, `ROLLED_BACK`, `AWAITING_RESUME`, `RUNNING`, `RESULTS_READY`, `HELD`.
+Both ran on 2026-11-27 and ended `HELD`, each with the history `PLANNED`, `RUNNING`,
+`ROLLED_BACK`, `AWAITING_RESUME`, `RUNNING`, `RESULTS_READY`, `HELD`. No code changed between
+them. The records are `evidence/5.1-e2e.md` and `evidence/5.2/r202611272042.md`.
 
-| UTC | What happened |
-| --- | --- |
-| 19:26:55Z | `marshal start`. The plan came back 7.6 s later |
-| 19:39:35Z | Ahmed's `marshal approve … launch` took effect; the plan had waited 12 min 33 s |
-| 19:40:48Z | `RUNNING`. The first experiment start timed out, and the next tick finished the launch |
-| 19:40:50Z | The fault started. The load sent 1,500 requests, and 1,498 were answered |
-| 19:44:43Z | The alarm rolled the run back, 3 min 53 s into the fault, with no human: `assistant_cheaper_enabled` off, and the incident note published to SNS |
-| 20:14:19Z | The resume request, 29 min 36 s after the rollback. Until a fix was deployed mid-run, every health probe failed (below) |
-| 20:32:52Z | Ahmed approved the resume |
-| 20:34:39Z | Results ready: the report was written to S3 and published |
-| 20:35:20Z | Ahmed declined: `HELD` |
+| | First, `r202611271927` | Second, `r202611272042` |
+| --- | --- | --- |
+| `marshal start` | 19:26:55Z | 20:42:29Z |
+| The plan returned | 7.6 s later | 6.6 s later |
+| The plan waiting for Ahmed's launch approval | 12 min 33 s | 6 min 43 s |
+| `RUNNING`, after the approval | 72.9 s: the first experiment start timed out, and the next tick finished the launch | 32.7 s |
+| The fault started | 19:40:50Z | 20:49:52Z |
+| Rolled back, with no human | 19:44:43Z, 3 min 53 s into the fault | 20:54:15Z, 4 min 22.6 s into the fault: the alarm's invocation claimed it by 20:53:24Z, and the next tick finished it |
+| The resume request | 29 min 36 s after the rollback, held back by a probe bug fixed mid-run (below) | 7 min 45 s after the rollback |
+| Ahmed approved the resume | 20:32:52Z | 21:03:00Z |
+| Results ready: the report written to S3 and published | 20:34:39Z | 21:04:20Z |
+| Ahmed declined: `HELD` | 20:35:20Z | 21:05:06Z |
+| The load | 1,500 sent, 1,498 answered | 1,500 sent, 1,500 answered |
+| `scripts/e2e.py` | drove it to `ROLLED_BACK`; the lead finished it with `marshal status` reads | drove it from `start` to `HELD`, and exited 0 |
 
-The report:
+The reports:
 
-| Arm | Identities | `helpful_rate` | `mean_latency_ms` | `mean_cost_micro_usd` |
-| --- | --- | --- | --- | --- |
-| current | 76 | 0.996053 | 5519.33 | 13498.3 |
-| cheaper | 74 | 0.997297 | 6361.33 | 11284.7 |
+| Run | Arm | Identities | `helpful_rate` | `mean_latency_ms` | `mean_cost_micro_usd` |
+| --- | --- | --- | --- | --- | --- |
+| `r202611271927` | current | 76 | 0.996053 | 5519.33 | 13498.3 |
+| | cheaper | 74 | 0.997297 | 6361.33 | 11284.7 |
+| `r202611272042` | current | 81 | 0.99369 | 5456.23 | 13561.9 |
+| | cheaper | 69 | 0.997101 | 6297.08 | 9887.46 |
 
-- **Recommendation: `hold, re-run`**, because the run had an incident.
-- **Latency guardrail: failed.** The cheaper arm's latency was 115 percent of the current
-  arm's, over the 110 percent limit. The fault drove it.
-- **Cost guardrail: passed, but biased.** After the rollback, most of the cheaper arm's
-  identities were served the current model. So its mean cost is far above the roughly 2,700
-  micro-USD per answer that Claude Sonnet 5's answers alone averaged in task 3.6.
-- **Helpfulness is at its ceiling.** `helpful_rate` is near 1 in both arms, so its interval
-  (lower bound -0.0045) is not evidence that the two models are equally helpful.
-- **Flagsmith's dashboard pointed the other way.**
-  - Its experiment page read "66% Winner Probability … Consider rolling out cheaper to all
-    users".
+- **Recommendation: `hold, re-run`**, both times, because each run had an incident.
+- **Latency guardrail: failed** both times. The cheaper arm's latency was 115 percent of the
+  current arm's, over the 110 percent limit. The fault drove it.
+- **Cost guardrail: passed, but biased.** Rolled-back users count in the cheaper arm although
+  they were served the current model. So its mean cost, 11284.7 and 9887.46 micro-USD, is
+  far above the roughly 2,700 per answer that Claude Sonnet 5's answers alone averaged in
+  task 3.6.
+- **Helpfulness is at its ceiling.** `helpful_rate` is near 1 in both arms of both runs, so
+  its interval (lower bound -0.0045 both times) is not evidence that the two models are
+  equally helpful.
+- **Flagsmith's dashboard pointed the other way**, both times.
+  - Its experiment page read "66% Winner Probability Confirmed" in the first run and "80%
+    Winner Probability Confirmed" in the second, each with "Consider rolling out cheaper to
+    all users".
   - Its "Complete experiment" dialog pre-selected "Roll out a variant: cheaper".
   - Rollout Marshal's report said `hold, re-run`, because the run had an incident; the
-    latency guardrail had failed too, while the fault ran. Ahmed held the run, and the
+    latency guardrail had failed too, while the fault ran. Ahmed held each run, and each
     experiment was ended with "Roll out control" to match.
-- **Who did what.** Ahmed typed every `marshal approve` and `marshal decline`. Claude Code's
-  auto mode refused the lead agent's own attempt to approve. The lead agent ended experiment
-  1495 in the dashboard, under Ahmed's delegation.
-- **What the run found.**
+- **Who did what.** Ahmed typed every `marshal approve` and `marshal decline`. In the first
+  run, Claude Code's auto mode refused the lead agent's own attempt to approve. The lead
+  agent ended experiments 1495 and 1503 in the dashboard, under Ahmed's delegation.
+- **What the first run found.**
   - The agent's OpenTelemetry instrumentation added a `headers` field to the health probe's
     request, which `answer_request` refuses. So every probe failed, and the run could not
-    reach the resume request until the fix (PR #38) was deployed mid-run.
+    reach the resume request until the fix (PR #38) was deployed mid-run. The second run
+    used the fixed runtime, and its probe passed on the first tick.
   - Three earlier starts never launched: two approval windows ran out, then an SSO session
     expired.
 
@@ -266,7 +281,7 @@ stateDiagram-v2
   is refused, and its Admin API path builder cannot produce `complete/`, `pause/` or
   `rollout/`. The engineer ends every experiment in the dashboard.
 - **The primary metric.** The API has no primary-metric field, so the agent attaches
-  `helpful_rate` first. In run `r202611271927` the dashboard showed `helpful_rate`, "should not
+  `helpful_rate` first. In both full runs the dashboard showed `helpful_rate`, "should not
   decrease", as primary.
 
 ## How the decision is made
@@ -284,8 +299,8 @@ stateDiagram-v2
     That is at least a 97.5 percent probability that the lift is at least minus 5 percent;
   - otherwise `hold`.
 - **What to expect.** No run has recommended `promote`. Every planned run injects the fault,
-  so the rule says `hold, re-run` after each one, as it did in run `r202611271927`. The
-  `promote` branch is covered by unit tests.
+  so the rule says `hold, re-run` after each one, as it did in both full runs. The `promote`
+  branch is covered by unit tests.
 - **Promotion still needs a person.** Whatever the report recommends, promotion waits for the
   engineer to end the experiment in Flagsmith and approve.
 
@@ -295,7 +310,7 @@ The runs recorded for this entry, each with its history in `evidence/5.1-e2e.md`
 | Run | Final state | Recommendation, as its report states it | Report |
 | --- | --- | --- | --- |
 | `r202611271927` | `HELD` | `hold, re-run` | `runs/r202611271927/report.md` |
-| [[5.2: run ID]] | [[5.2: final state]] | [[5.2: recommendation]] | [[5.2: report S3 key]] |
+| `r202611272042` | `HELD` | `hold, re-run` | `runs/r202611272042/report.md` |
 
 Each report is at `s3://rm-reports-818928662830/runs/<run_id>/report.md`, with nine sections:
 Hypothesis, Setup, Timeline, Results, Guardrails, Incident, Known bias, Recommendation and Time
@@ -478,16 +493,17 @@ uv run python scripts/reset.py            # back to the resting state before the
 - `marshal start` prints the run's ID on its `run:` line. Every `marshal` command exits 0
   when the response has no error, 1 when it carries an error code, and 2 on a usage error.
 - `scripts/e2e.py` drives the same run, prints UTC timestamps and pauses for the engineer at
-  each approval; it never approves anything itself. Task 5.1 ran it as
+  each approval; it never approves anything itself. Both full runs ran it as
   `uv run python scripts/e2e.py --pause-minutes 180 --record <new file>.json` (PR #37).
 - `scripts/inject_fault.sh` needs credentials that may start AWS FIS experiments. The fault
   ends by itself.
 - `scripts/reset.py` refuses while a run is still active, unless given `--force`, and lists
   any experiment still running for the engineer to end in the dashboard.
-- Each answer cost about 13,510 micro-USD on Claude Fable 5.1 and about 2,727 on Claude
-  Sonnet 5 (US$0.0135 and US$0.0027). These are CloudWatch's means of `AnswerCostMicroUsd`
-  over every judged answer of the build, read after run `r202611271927`
-  (`evidence/5.1-e2e.md`). Judging and the agent's own calls come on top.
+- Each answer cost 13,531.3 micro-USD on Claude Fable 5.1 and 2,708.5 on Claude Sonnet 5, on
+  average (US$0.0135 and US$0.0027). These are CloudWatch's means of `AnswerCostMicroUsd`
+  over every judged answer of the build, read after the last run
+  (`evidence/5.2/r202611272042.md`). Over the whole build it sums to 40,812,020 micro-USD
+  (US$40.81), for 3,601 answers sent. Judging and the agent's own calls come on top.
 
 ## Safety rails
 

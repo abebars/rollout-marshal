@@ -5,14 +5,21 @@ dashboard, against how long Rollout Marshal takes.
 
 ## The numbers
 
-From one dashboard pass and the first full run, `r202611271927`, both on 2026-11-27:
+From one dashboard pass and the two full runs, all on 2026-11-27:
 
 | Setting up the experiment | Time |
 | --- | --- |
 | **In the Flagsmith dashboard**, from the first click to the experiment running, clicked through by the lead agent in Chrome at Ahmed's instruction, not by a person. One metric attached | about 2:18 |
-| **Rollout Marshal's own work**: planning, then launching. All three metrics attached | about 1:20 |
-| The plan waiting for the engineer's approval, between those two parts | 12:33 |
-| `marshal start` to `RUNNING`, in all | 13:53 |
+| **Rollout Marshal's own work**, planning then launching, all three metrics attached: the second full run, `r202611272042` | about 0:39 |
+| The same in the first full run, `r202611271927`, whose first experiment start failed and was retried | about 1:20 |
+
+Rollout Marshal's own work sits on either side of the plan's wait for the engineer's
+approval, which is the human's time, shown apart:
+
+| Run | The plan waiting for approval | `marshal start` to `RUNNING`, in all |
+| --- | --- | --- |
+| `r202611271927` | 12:33 | 13:53 |
+| `r202611272042` | 6:43 | 7:22 |
 
 **Who did the dashboard pass.** Task 6.1 asks the Human to do it. Ahmed told the lead to do it
 instead (chat, 2026-11-27: "use chrome to test that and add any human gaps needed. don't ask
@@ -25,14 +32,15 @@ agent's own time between actions, and a person might be faster or slower.
 - **The dashboard pass** attached only the primary metric. Its experiment form takes one
   metric, so that experiment had one where Rollout Marshal's has three. Details are under
   "What the pass found" below.
-- **Rollout Marshal's 1:20** includes a failed experiment start that its next tick retried.
+- **Rollout Marshal's 1:20** in the first run includes a failed experiment start that its
+  next tick retried. The second run, with no code change between, had no such failure.
 
 Setting up is not a one-off cost. Flagsmith allows one active experiment per feature, and an
 ended experiment cannot restart, so every run needs a new feature and a new experiment
 (design.md section 4). The dashboard steps repeat on every run, and so does the agent's
 launch.
 
-## Rollout Marshal's time, from task 5.1
+## The first run, from task 5.1
 
 Run `r202611271927` (`evidence/5.1-e2e.md`). `scripts/e2e.py` printed four UTC timestamps
 (tasks.md 5.1):
@@ -61,7 +69,28 @@ The launch's 72.9 s includes a failure and a retry:
   the launch at 19:40:46Z.
 - The cause is not settled (finding 2 in `evidence/5.1-e2e.md`).
 
-Inside that interval the agent does what design.md section 6 lists:
+## The second run, from task 5.2
+
+Run `r202611272042` (`evidence/5.2/r202611272042.md`), with no code change since the first.
+`scripts/e2e.py` drove it from `start` to `HELD` and exited 0. It printed:
+
+| `scripts/e2e.py` printed | UTC, 2026-11-27 | |
+| --- | --- | --- |
+| it sent `start` | 20:42:29.56Z | |
+| the plan returned | 20:42:36.14Z | 6.6 s after the start |
+| it saw the approve | 20:49:18.86Z | the launch claimed, 6 min 43 s after the plan returned |
+| the run reached `RUNNING` | 20:49:51.54Z | 32.7 s after the approve was seen |
+
+So, to the nearest second:
+
+- **`marshal start` to `RUNNING`:** 7:22.
+- **The plan waiting for approval:** 6:43. Ahmed typed `marshal approve r202611272042 launch`
+  at about 20:49:15Z.
+- **Rollout Marshal's own work:** 0:39, that is 6.6 s to plan and 32.7 s to launch.
+
+## What the agent does in that time
+
+In both runs, the agent does what design.md section 6 lists:
 
 - **Plan.** The model writes the hypothesis and the summary. Code fills every other field of
   the plan from `contracts/names.py`: models, metrics, split, sample floor, stop rules,
@@ -162,24 +191,27 @@ experiment changed nothing that is served. It made no Bedrock call and no SDK fl
 - **The dashboard pass covers less than Rollout Marshal's launch.**
   - Every name and value was chosen before the pass began, while an engineer starting from
     the same prompt would first decide them: the metrics, their directions, the split, the
-    rollout and the hypothesis. Rollout Marshal's 1:20 includes that planning.
+    rollout and the hypothesis. Rollout Marshal's own work includes that planning.
   - The dashboard experiment had only the primary metric, where Rollout Marshal's has all
     three.
-- **The review is shown on its own.** Of the 13:53 from `marshal start` to `RUNNING`, 12:33
-  was the plan waiting for Ahmed's approval. That time is the human's, not the agent's, and
-  it would differ from engineer to engineer.
+- **The review is shown on its own.** Of the 13:53 from `marshal start` to `RUNNING` in the
+  first run, 12:33 was the plan waiting for Ahmed's approval; in the second, 6:43 of 7:22.
+  That time is the human's, not the agent's, and it differs from run to run and from
+  engineer to engineer.
 - **Neither number counts what comes after the start.** That is watching latency, turning the
   kill switch off when the cheaper model slows, checking it is healthy before resuming,
   reading results and writing the report. The agent does those too (design.md section 6),
-  but this file times setup only. In run `r202611271927`, the alarm rolled the run back 3 min
-  53 s after the fault started, with no human involved (`evidence/5.1-e2e.md`).
+  but this file times setup only. With no human involved, the first run was rolled back 3 min
+  53 s after the fault started, and the second 4 min 22.6 s after (`evidence/5.1-e2e.md`,
+  `evidence/5.2/r202611272042.md`).
 - **Neither counts one-time setup.** The two permanent features and the three metrics exist
   once per environment; both the agent and the dashboard pass find them on every later run.
 
 ## Difference
 
-- **Against Rollout Marshal's own work.** The dashboard pass took about a minute longer, 2:18
-  against 1:20, and attached one metric where Rollout Marshal attached three.
-- **Against the whole interval.** With the 12:33 the plan waited for approval,
-  `marshal start` to `RUNNING` took 13:53. That is about 11:35 longer than the dashboard
-  pass.
+- **Against Rollout Marshal's own work.** The dashboard pass took about 1:39 longer than the
+  second run's 0:39, and about a minute longer than the first run's 1:20. It attached one
+  metric where Rollout Marshal attached three.
+- **Against the whole interval.** With the plan's wait for approval, `marshal start` to
+  `RUNNING` took 7:22 in the second run and 13:53 in the first. That is about 5:04 and 11:35
+  longer than the dashboard pass.

@@ -1,7 +1,3 @@
-<!-- Draft (task 6.3). Each [[source: what]] is filled from the source it names before Gate 4.
-[[run: what]] comes from the evidence of the run being recorded: evidence/5.1-e2e.md, or that
-run's history under evidence/5.2/. Delete this comment once the last one is filled. -->
-
 # Demo video: script and shot list
 
 Six beats, 2:57 in all: the ask, the plan and approval, the setup, the failure, the rollback
@@ -10,25 +6,30 @@ ends on the two timed numbers.
 
 ## Recording notes
 
-- **One real run, cut, not staged.** Record one planned run as it happens: [[run: run ID]].
-  It takes [[run: start to final state, minutes]] minutes of real time. The video cuts
-  between beats and keeps a UTC clock in shot (`scripts/e2e.py`'s timestamps, or the shell
-  prompt's), so each cut shows how much time passed. Nothing is re-enacted, and nothing is
-  sped up without a caption saying so.
+- **One real run, cut, not staged.** The video shows run `r202611272042` (task 5.2,
+  `evidence/5.2/r202611272042.md`), the clean end-to-end run.
+  - It took 22 min 37 s of real time, from `start` at 20:42:29Z to `HELD` at 21:05:06Z.
+  - The video cuts between beats and keeps a UTC clock in shot (`scripts/e2e.py`'s
+    timestamps, or the shell prompt's), so each cut shows how much time passed.
+  - Nothing is re-enacted, and nothing is sped up without a caption saying so.
+  - Where a screen was not captured while the run happened, show only what is left of it,
+    captioned as a later read: `e2e.py`'s log, the three emails, the report, the completed
+    experiment's page.
+  - The "Complete experiment" dialog cannot be opened again once the experiment is ended,
+    so show it, and the page's banner, only if they were captured at the time.
 - **The numbers on the end card** are the ones in `docs/time-saved.md`:
   - the dashboard pass, about 2:18 with one metric attached. An AI agent clicked it through
     in Chrome at Ahmed's instruction, and the card says so: it was not a person;
-  - Rollout Marshal's own work in run `r202611271927`, about 1:20 with all three metrics,
-    with the 12:33 its plan waited for approval shown apart. If the recorded run is a
-    different one, the card still names `r202611271927`.
-- **The recommendation** on screen and in the voiceover is the one the recorded run's report
-  states. No run has recommended `promote`: every planned run injects the fault, so by
-  design it is `hold, re-run`, as in `r202611271927`. The video says `promote` only if the
-  recorded run's report did.
-- **The dashboard's suggestion.** In `r202611271927`, Flagsmith's experiment page read "66%
-  Winner Probability … Consider rolling out cheaper to all users", and its "Complete
-  experiment" dialog pre-selected "Roll out a variant: cheaper". Beat 6 shows what the
-  recorded run's dashboard says.
+  - Rollout Marshal's own work in run `r202611272042`, about 0:39 with all three metrics,
+    with the 6:43 its plan waited for approval shown apart. The card also gives the first
+    run's 1:20, which included a failed experiment start that the next tick retried.
+- **The recommendation** on screen and in the voiceover is the one run `r202611272042`'s
+  report states: `hold, re-run`. No run has recommended `promote`. Every planned run
+  injects the fault, so by design each recommends `hold, re-run`, as both full runs did.
+- **The dashboard's suggestion.** In run `r202611272042`, Flagsmith's experiment page read
+  "80% Winner Probability Confirmed … cheaper is outperforming Control by +0.3% … Consider
+  rolling out cheaper to all users". Its "Complete experiment" dialog pre-selected "Roll out
+  a variant: cheaper" ("80% chance to win"). In the first run the page read 66%.
 - **Never on screen:**
   - the incident email's address, wherever it shows: blur the To line and the mail client's
     account menu;
@@ -44,10 +45,10 @@ ends on the two timed numbers.
   - the email client, with the incident address hidden;
   - the report, which the "results ready" email carries in full.
 - **The voiceover** runs at about 150 words a minute. Each beat's lines fit inside its time.
-- **The engineer** on screen is the Human. He types every `marshal approve` and
-  `marshal decline`, as in `r202611271927`, where Claude Code's auto mode refused the lead
-  agent's own attempt to approve. Rollout Marshal never ends an experiment; in
-  `r202611271927` the lead agent ended it in the dashboard, under Ahmed's delegation.
+- **The engineer** on screen is the Human. In run `r202611272042` he typed the launch, the
+  resume and the decline. In the first run, Claude Code's auto mode had refused the lead
+  agent's own attempt to approve. Rollout Marshal never ends an experiment: the lead agent
+  ended experiment 1503 in the dashboard, under Ahmed's delegation.
 
 ## Overview
 
@@ -82,14 +83,14 @@ Voiceover:
 
 | Time | On screen |
 | --- | --- |
-| 0:27 to 0:40 | Terminal: the reply. Run [[run: run ID]], state `PLANNED`, the plan in its message (the hypothesis, primary metric `helpful_rate`, guardrails `mean_latency_ms` and `mean_cost_micro_usd`, the 50/50 split, the stop rules), and awaiting `launch`. |
+| 0:27 to 0:40 | Terminal: the reply. Run `r202611272042`, state `PLANNED`, the plan in its message (the hypothesis, primary metric `helpful_rate`, guardrails `mean_latency_ms` and `mean_cost_micro_usd`, the 50/50 split, the stop rules), and awaiting `launch`. |
 | 0:40 to 0:47 | Flagsmith dashboard: the features list, searched for the run's ID. Nothing is there yet. |
-| 0:47 to 0:57 | Terminal: the engineer types `uv run marshal approve [[run: run ID]] launch`. Caption: "An approve names its step: launch, resume or promotion". |
+| 0:47 to 0:57 | Terminal: the engineer types `uv run marshal approve r202611272042 launch`. Caption: "An approve names its step: launch, resume or promotion". |
 
 Voiceover:
 
-> In [[run: start sent to plan returned, seconds]] seconds it returns a plan. The model
-> wrote the hypothesis; the metrics, the split and the stop rules come from code.
+> In 6.6 seconds it returns a plan. The model wrote the hypothesis; the metrics, the split
+> and the stop rules come from code.
 >
 > Flagsmith has nothing for this run yet: nothing changes until I approve. My approval names
 > the step, launch, so it can't be mistaken for another.
@@ -98,9 +99,9 @@ Voiceover:
 
 | Time | On screen |
 | --- | --- |
-| 0:57 to 1:05 | Terminal: the approve's reply, state `RUNNING`. |
-| 1:05 to 1:13 | Flagsmith dashboard: feature `assistant_model_<run_id>` for [[run: run ID]], value `current`, one variation `cheaper`. |
-| 1:13 to 1:22 | Flagsmith dashboard: the experiment, running. Rollout 100 percent, split 50/50, metrics `helpful_rate`, `mean_latency_ms` and `mean_cost_micro_usd`, with `helpful_rate` shown as primary, as in `r202611271927`. |
+| 0:57 to 1:05 | Terminal: the approve's reply, state `RUNNING`, 32.7 s after the approve. |
+| 1:05 to 1:13 | Flagsmith dashboard: feature `assistant_model_r202611272042`, value `current`, one variation `cheaper`. |
+| 1:13 to 1:22 | Flagsmith dashboard: the experiment, running. Rollout 100 percent, split 50/50, metrics `helpful_rate`, `mean_latency_ms` and `mean_cost_micro_usd`, with `helpful_rate` shown as primary. |
 
 Voiceover:
 
@@ -112,9 +113,9 @@ Voiceover:
 
 | Time | On screen |
 | --- | --- |
-| 1:22 to 1:32 | Terminal: `uv run python scripts/load.py --run-id [[run: run ID]] --users 150 --questions 10 --url "$ASK_URL"`, running. |
-| 1:32 to 1:40 | Second terminal: `scripts/inject_fault.sh` prints the FIS experiment's ID and its UTC start and end. |
-| 1:40 to 1:52 | Cut, with the UTC clock in shot, [[run: fault start to ALARM, minutes]] minutes later: the CloudWatch alarm `rm-cheaper-latency-p95` in ALARM, in the AWS console. |
+| 1:22 to 1:32 | Terminal: `uv run python scripts/load.py --run-id r202611272042 --users 150 --questions 10 --url "$ASK_URL"`, running. |
+| 1:32 to 1:40 | Second terminal: `scripts/inject_fault.sh` prints the FIS experiment's ID and its UTC start, 20:49:52Z, and end. |
+| 1:40 to 1:52 | Cut, with the UTC clock in shot: the CloudWatch alarm `rm-cheaper-latency-p95` in ALARM, in the AWS console. The alarm's invocation had claimed the rollback by 20:53:24Z, 3 min 31 s into the fault. |
 
 Voiceover:
 
@@ -124,53 +125,51 @@ Voiceover:
 > Now I break the cheaper one on purpose. AWS Fault Injection Service adds ten seconds to
 > every answer it gives, for six minutes.
 >
-> [[run: fault start to ALARM, minutes]] minutes in, the p95 latency alarm on the cheaper arm
-> fires.
+> Within four minutes, the p95 latency alarm on the cheaper arm fires.
 
 ## Beat 5: the rollback and resume (1:52 to 2:22)
 
 | Time | On screen |
 | --- | --- |
-| 1:52 to 2:00 | Email client: the message "Rollout Marshal [[run: run ID]]: rolled back", with the incident note. The To line is blurred. |
+| 1:52 to 2:00 | Email client: the message "Rollout Marshal r202611272042: rolled back", with the incident note. The To line is blurred. |
 | 2:00 to 2:05 | Flagsmith dashboard: `assistant_cheaper_enabled` is off. |
-| 2:05 to 2:09 | Terminal: `uv run marshal status [[run: run ID]]` shows state `ROLLED_BACK`. |
-| 2:09 to 2:15 | Cut, clock in shot: the email "Rollout Marshal [[run: run ID]]: ready to resume". |
-| 2:15 to 2:22 | Terminal: `uv run marshal approve [[run: run ID]] resume`, then state `RUNNING`. |
+| 2:05 to 2:09 | Terminal: `uv run marshal status r202611272042` shows state `ROLLED_BACK`. |
+| 2:09 to 2:15 | Cut, clock in shot: the email "Rollout Marshal r202611272042: ready to resume", 7 min 45 s after the rollback. |
+| 2:15 to 2:22 | Terminal: `uv run marshal approve r202611272042 resume`, then state `RUNNING`. |
 
 Voiceover:
 
-> Nobody asked it to. Within [[run: ALARM to ROLLED_BACK, seconds]] seconds of the alarm,
-> the agent turned the kill switch off, so every user is back on the current model, and
-> emailed me what it saw and did. That is the only change to traffic it makes without me.
+> Nobody asked it to. Four minutes twenty-two into the fault, the run is rolled back: the
+> kill switch is off, so every user gets the current model, and the agent has sent me what
+> it saw and did. That is the only change to traffic it makes without me.
 >
-> When the alarm cleared and five probe calls all answered under its threshold, it asked to
-> resume. I say yes.
+> When the alarm cleared and five probes answered under its threshold, it asked to resume.
+> I say yes.
 
 ## Beat 6: the decision (2:22 to 2:57)
 
 | Time | On screen |
 | --- | --- |
-| 2:22 to 2:31 | Email client: "Rollout Marshal [[run: run ID]]: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation: **[[run: recommendation, as the report states it]]**. Caption: "`helpful_rate` is near 1 in both arms: not evidence that the models are equally helpful". |
-| 2:31 to 2:37 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval, and the page's banner: [[run: the dashboard's banner, as it reads]]. |
-| 2:37 to 2:41 | Flagsmith dashboard: End Experiment. The "Complete experiment" dialog pre-selects [[run: the dialog's pre-selected choice]], and [[run: rollout decision chosen when the experiment was ended]] is chosen. |
-| 2:41 to 2:44 | Terminal: [[run: the decision, either `uv run marshal decline <run_id>` then state `HELD`, or `uv run marshal approve <run_id> promotion` then state `PROMOTED`]]. |
-| 2:44 to 2:57 | End card, two lines: "Flagsmith dashboard, clicked through in Chrome by an AI agent: about 2:18, one metric" and "Rollout Marshal's own work: about 1:20, all three metrics (run `r202611271927`; its plan also waited 12:33 for approval)". |
+| 2:22 to 2:31 | Email client: "Rollout Marshal r202611272042: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation: **`hold, re-run`**. Caption: "`helpful_rate` is near 1 in both arms: not evidence that the models are equally helpful". |
+| 2:31 to 2:37 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval, and the page's banner: "80% Winner Probability Confirmed … Consider rolling out cheaper to all users". |
+| 2:37 to 2:40 | Terminal: `uv run marshal decline r202611272042`, then state `HELD`. |
+| 2:40 to 2:44 | Flagsmith dashboard: End Experiment. The "Complete experiment" dialog pre-selects "Roll out a variant: cheaper" ("80% chance to win"); "Roll out control" is chosen, and the page then reads "Control rolled out to everyone". |
+| 2:44 to 2:57 | End card, three lines: "Flagsmith dashboard, clicked through in Chrome by an AI agent: about 2:18, one metric"; "Rollout Marshal's own work: about 0:39, all three metrics (run `r202611272042`; 1:20 in the first run, which retried a failed start)"; and "The plan also waited 6:43 for the engineer's approval". |
 
 Voiceover:
 
-> Flagsmith's dashboard [[run: what the dashboard suggests, in words]]. The report says
-> [[run: recommendation, as the report states it]], because the run had an incident.
+> Flagsmith's dashboard gives cheaper an 80 percent win probability, and suggests rolling it
+> out to everyone. The report says: hold, re-run, because the run had an incident.
 >
-> The experiment is ended in Flagsmith, never by Rollout Marshal, and
-> [[run: the decision, in words]].
+> I hold it, and the experiment is ended in Flagsmith, never by Rollout Marshal.
 >
 > An AI agent clicking this setup through Flagsmith's dashboard took two minutes eighteen,
-> with one metric. Rollout Marshal's own work took one minute twenty, with all three,
-> besides the twelve and a half minutes its plan waited for my approval.
+> with one metric. Rollout Marshal's own work took thirty-nine seconds, with all three,
+> besides the nearly seven minutes its plan waited for my approval.
 
 ## Before recording
 
-- The recorded run's report is read, and its recommendation is the one in beat 6.
-- Every placeholder is filled, and the end card's numbers match `docs/time-saved.md`.
+- Run `r202611272042`'s report is read, and its recommendation is the one in beat 6.
+- The end card's numbers match `docs/time-saved.md`.
 - Nothing from "Never on screen" appears, in any frame.
 - The cut runs 3:00 or less.
