@@ -189,8 +189,9 @@ def test_a_sampling_parameter_is_refused_before_bedrock(monkeypatch, model_id):
         return request
 
     monkeypatch.setattr(handler, "converse_request", with_top_k)
-    with pytest.raises(handler.AnswerFailed, match="top_k"):
+    with pytest.raises(handler.AnswerFailed, match="top_k") as raised:
         handler.handler(_event(), None)
+    _clean_message(raised.value)
     assert fake.calls == []
 
 
@@ -299,8 +300,9 @@ def test_model_id_must_name_one_of_the_two_answer_models(monkeypatch, value):
     else:
         monkeypatch.setenv(handler.MODEL_ID_ENV, value)
     fake = _use(monkeypatch, FakeBedrock(_reply()))
-    with pytest.raises(handler.AnswerFailed, match=handler.MODEL_ID_ENV):
+    with pytest.raises(handler.AnswerFailed, match=handler.MODEL_ID_ENV) as raised:
         handler.handler(_event(), None)
+    _clean_message(raised.value)
     assert fake.calls == []
 
 
@@ -438,10 +440,12 @@ def test_a_max_tokens_stop_raises_answer_failed(bedrock, model_id):
     _clean_message(raised.value)
 
 
-def test_a_reply_of_an_unexpected_shape_raises_answer_failed(monkeypatch, model_id):
-    _use(monkeypatch, FakeBedrock({"stopReason": "end_turn"}))
-    with pytest.raises(handler.AnswerFailed):
+@pytest.mark.parametrize("reply", [{"stopReason": "end_turn"}, None], ids=["no output", "None"])
+def test_a_reply_of_an_unexpected_shape_raises_answer_failed(monkeypatch, model_id, reply):
+    _use(monkeypatch, FakeBedrock(reply))
+    with pytest.raises(handler.AnswerFailed) as raised:
         handler.handler(_event(), None)
+    _clean_message(raised.value)
 
 
 # ---------------------------------------------------------------------------
