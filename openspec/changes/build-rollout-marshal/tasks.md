@@ -424,7 +424,7 @@ their tasks name, not against each other.
 
 - [x] 2.6 **CLI**
   - Needs: 1.1. Files: `cli/marshal.py`, `cli/tests/test_cli.py`.
-  - Produces: `marshal start "<prompt>"`, `approve <run_id>`,
+  - Produces: `marshal start "<prompt>"`, `approve <run_id> <awaiting>`,
     `decline <run_id>`, `status [run_id]`, `check <run_id>`; one payload
     per call, a new session ID each time, through the `InvokeAgentRuntime`
     client setting shared with `rm-invoker` (read timeout 290 seconds, one
