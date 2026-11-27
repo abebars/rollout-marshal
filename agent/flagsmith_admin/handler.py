@@ -72,14 +72,13 @@ _EXPERIMENT_SUFFIXES = {
     PATH_EXPOSURES: "exposures/",
 }
 PATH_KINDS = (PATH_METRICS, *_EXPERIMENT_SUFFIXES)
-# The end, pause and rollout endpoints in Flagsmith's published spec. admin_path() has no
-# kind for any of them; this is the final guard on every path it returns.
-FLAGSMITH_ADMIN_FORBIDDEN_PATHS = ("complete/", "pause/", "rollout/")  # names.<this> after c2
-# The spec's DELETE, PUT and PATCH on the experiment read's own path delete it or rewrite its
-# rollout, metrics and feature, so the boundary is methods and paths together.
-FLAGSMITH_ADMIN_METHODS = ("GET", "POST")  # names.FLAGSMITH_ADMIN_METHODS after c2
-# The only (method, path) pairs this function sends: reads are GET; the metric create, the
-# start and the results refresh are POST.
+# names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS are the end, pause and rollout endpoints of
+# Flagsmith's published spec: admin_path() has no kind for any, and guards every path it
+# returns against them. The spec's DELETE, PUT and PATCH on the experiment read's own path
+# delete it or rewrite its rollout, metrics and feature, so the boundary is methods
+# (names.FLAGSMITH_ADMIN_METHODS) and paths together. The only (method, path) pairs this
+# function sends: reads are GET; the metric create, the start and the results refresh are
+# POST.
 ADMIN_ROUTES = frozenset(
     {
         ("GET", PATH_METRICS),
@@ -138,7 +137,7 @@ def admin_path(
         ):
             raise Refused(f"an experiment ID must be a positive integer, not {experiment_id!r}")
         path = f"{base}experiments/{experiment_id}/{_EXPERIMENT_SUFFIXES[kind]}"
-    if any(forbidden in path for forbidden in FLAGSMITH_ADMIN_FORBIDDEN_PATHS):
+    if any(forbidden in path for forbidden in names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS):
         raise Refused("no path that ends, pauses or rolls out an experiment")
     return path
 
@@ -337,7 +336,7 @@ def urllib_http(authorization: str) -> Http:
     GET and POST only, whatever asks it."""
 
     def send(method: str, path: str, body: Any) -> tuple[int, Any]:
-        if method not in FLAGSMITH_ADMIN_METHODS:
+        if method not in names.FLAGSMITH_ADMIN_METHODS:
             raise Refused(f"{method} is never sent")
         data = None if body is None else json.dumps(body).encode()
         request = urllib.request.Request(

@@ -59,15 +59,8 @@ ADMIN_TOOLS = (
     "get_results",
     "get_experiment",
 )
-# Fields refused anywhere in these tools' arguments (Gate 1, rule 1(b)): task 1.3 found
-# both tools' schemas list them, and what sending one would do is unknown.
-MCP_EXPERIMENT_FORBIDDEN_FIELDS = (  # names.MCP_EXPERIMENT_FORBIDDEN_FIELDS after c2
-    "status",
-    "rollout_decision",
-    "rollout_variant",
-    "started_at",
-    "ended_at",
-)
+# names.MCP_EXPERIMENT_FORBIDDEN_FIELDS are refused anywhere in these tools' arguments
+# (Gate 1, rule 1(b)): task 1.3 found both tools' schemas list them.
 _EXPERIMENT_WRITE_TOOLS = ("create_experiment", "update_experiment")
 
 # Flagsmith's API spellings, as the evidence records them (Gate 1, rule 4; c2 moves these
@@ -79,16 +72,9 @@ API_ROLLOUT_VALUE_TYPE = "string"  # the experiment rollout's value: {"type": "s
 API_VERSION_VALUE_TYPE = "unicode"  # a v2 version state's value: {"type": "unicode", ...}
 API_PATH_ID = "id__path"  # MCP's name for a path ID that clashes with a body field
 
+# The two of names.FLAGSMITH_EXPERIMENT_STATUSES the start compares against by name.
 STATUS_CREATED = "created"
 STATUS_RUNNING = "running"
-EXPERIMENT_STATUS_PAUSED = "paused"  # names.EXPERIMENT_STATUS_PAUSED after c2
-EXPERIMENT_STATUS_ENDED = "completed"  # names.EXPERIMENT_STATUS_ENDED after c2
-FLAGSMITH_EXPERIMENT_STATUSES = (  # names.FLAGSMITH_EXPERIMENT_STATUSES after c2
-    STATUS_CREATED,
-    STATUS_RUNNING,
-    EXPERIMENT_STATUS_PAUSED,
-    EXPERIMENT_STATUS_ENDED,
-)
 
 # The results label each arm: the control as "control" (task 1.2), the treatment by its key.
 _VARIANT_BY_LABEL = {
@@ -160,7 +146,7 @@ def _keys(value: Any) -> set[str]:
 def check_experiment_arguments(tool: str, arguments: dict) -> None:
     """Refuse create_experiment or update_experiment arguments that carry a status field."""
     if tool in _EXPERIMENT_WRITE_TOOLS:
-        found = sorted(_keys(arguments) & set(MCP_EXPERIMENT_FORBIDDEN_FIELDS))
+        found = sorted(_keys(arguments) & set(names.MCP_EXPERIMENT_FORBIDDEN_FIELDS))
         if found:
             raise ToolRefused(f"{tool} may not send {found}: it could change the status")
 
@@ -234,7 +220,7 @@ class LambdaAdmin:
 
 def is_ended(status: str) -> bool:
     """Ended in Flagsmith means completed (Gate 1, rule 2). paused is not ended."""
-    return status == EXPERIMENT_STATUS_ENDED
+    return status == names.EXPERIMENT_STATUS_ENDED
 
 
 def results_current(envelope: dict, refreshed_at: str) -> bool:
@@ -296,7 +282,6 @@ def map_results(envelope: dict, metric_ids: dict[str, int]) -> dict:
     return {
         "ready": ready,
         "variations": variations,
-        "prob_cheaper_not_worse": None,  # dropped by c2: Flagsmith has no such field
         "helpful_lift_ci_lower": inference.get("ci_low"),
     }
 

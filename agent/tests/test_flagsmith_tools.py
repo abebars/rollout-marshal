@@ -482,7 +482,7 @@ def test_an_ended_experiment_on_the_runs_feature_stops():
     world = World()
     t = make(world)
     t.fs.ensure_experiment("rlive1530", PLAN)
-    world.experiments[0]["status"] = flagsmith.EXPERIMENT_STATUS_ENDED
+    world.experiments[0]["status"] = names.EXPERIMENT_STATUS_ENDED
     with pytest.raises(flagsmith.FlagsmithError, match="ended"):
         t.fs.ensure_experiment("rlive1530", PLAN)
     assert len(world.experiments) == 1
@@ -516,7 +516,7 @@ def test_a_tool_off_the_allow_list_is_refused_before_the_call(tool):
 
 
 @pytest.mark.parametrize("tool", ["create_experiment", "update_experiment"])
-@pytest.mark.parametrize("field", flagsmith.MCP_EXPERIMENT_FORBIDDEN_FIELDS)
+@pytest.mark.parametrize("field", names.MCP_EXPERIMENT_FORBIDDEN_FIELDS)
 def test_experiment_arguments_that_carry_a_status_field_are_refused(tool, field):
     experiment = recorded("create_experiment")
     for arguments in (
@@ -534,8 +534,8 @@ def test_experiment_arguments_that_carry_a_status_field_are_refused(tool, field)
 
 def test_the_forbidden_fields_are_the_ones_the_gateway_lists_for_experiments():
     schema = GATEWAY_TOOLS[flagsmith.MCP_TOOL_PREFIX + "update_experiment"]["inputSchema"]
-    assert set(flagsmith.MCP_EXPERIMENT_FORBIDDEN_FIELDS) <= set(schema["properties"])
-    assert flagsmith.MCP_EXPERIMENT_FORBIDDEN_FIELDS == (
+    assert set(names.MCP_EXPERIMENT_FORBIDDEN_FIELDS) <= set(schema["properties"])
+    assert names.MCP_EXPERIMENT_FORBIDDEN_FIELDS == (
         "status",
         "rollout_decision",
         "rollout_variant",
@@ -568,8 +568,8 @@ def test_experiment_status_is_the_raw_status_and_only_completed_is_ended(t):
     out = t.fs.ensure_experiment("rlive1530", PLAN)
     experiment = t.world.experiment(out["experiment_id"])
     assert "`status` (`created`, `running`, `paused`, `completed`)" in SPIKE_EVIDENCE
-    assert flagsmith.FLAGSMITH_EXPERIMENT_STATUSES == ("created", "running", "paused", "completed")
-    for status in flagsmith.FLAGSMITH_EXPERIMENT_STATUSES:
+    assert names.FLAGSMITH_EXPERIMENT_STATUSES == ("created", "running", "paused", "completed")
+    for status in names.FLAGSMITH_EXPERIMENT_STATUSES:
         experiment["status"] = status
         assert t.fs.experiment_status(out["experiment_id"]) == status
         assert flagsmith.is_ended(status) is (status == "completed")
@@ -827,7 +827,6 @@ def test_get_results_maps_task_1_4s_sample(t):
                 "mean_cost_micro_usd": None,
             },
         },
-        "prob_cheaper_not_worse": None,  # Flagsmith has no such field (task 1.4)
         "helpful_lift_ci_lower": metric["inference"]["cheaper"]["ci_low"],
     }
 
@@ -995,18 +994,18 @@ def test_admin_path_refuses_everything_else(kind, key, experiment_id, query):
 
 
 def test_the_handler_has_no_way_to_end_or_pause_an_experiment():
-    """The forbidden paths appear once, in the constant the final guard checks, and no path
-    the builder makes contains one."""
-    assert handler.FLAGSMITH_ADMIN_FORBIDDEN_PATHS == ("complete/", "pause/", "rollout/")
+    """The forbidden paths come from names.py, which the final guard checks: the handler holds
+    no literal for any of them, and no path the builder makes contains one."""
+    assert names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS == ("complete/", "pause/", "rollout/")
     source = (ROOT / "agent/flagsmith_admin/handler.py").read_text()
-    for forbidden in handler.FLAGSMITH_ADMIN_FORBIDDEN_PATHS:
-        assert source.count(f'"{forbidden}"') == 1
+    for forbidden in names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS:
+        assert forbidden not in source
     buildable = [handler.admin_path(handler.PATH_METRICS, ENV_KEY)] + [
         handler.admin_path(kind, ENV_KEY, 819)
         for kind in handler.PATH_KINDS
         if kind != handler.PATH_METRICS
     ]
-    assert not [p for p in buildable for f in handler.FLAGSMITH_ADMIN_FORBIDDEN_PATHS if f in p]
+    assert not [p for p in buildable for f in names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS if f in p]
     assert set(handler.TOOLS) == set(flagsmith.ADMIN_TOOLS)
 
 
@@ -1015,7 +1014,7 @@ def test_the_final_guard_refuses_a_forbidden_path_even_if_a_kind_for_one_were_ad
 ):
     """Defence in depth: no kind builds one today, so this edits the suffix table the way a
     careless change would, and the guard still refuses."""
-    for forbidden in handler.FLAGSMITH_ADMIN_FORBIDDEN_PATHS:
+    for forbidden in names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS:
         monkeypatch.setitem(handler._EXPERIMENT_SUFFIXES, "added", forbidden)
         with pytest.raises(handler.Refused, match="ends, pauses or rolls out"):
             handler.admin_path("added", ENV_KEY, 819)
@@ -1024,7 +1023,7 @@ def test_the_final_guard_refuses_a_forbidden_path_even_if_a_kind_for_one_were_ad
 def test_the_only_calls_are_get_reads_and_four_posts():
     """c2's review: Flagsmith's spec lets DELETE, PUT and PATCH on the experiment read's own
     path delete it or rewrite its rollout, metrics and feature."""
-    assert handler.FLAGSMITH_ADMIN_METHODS == ("GET", "POST")
+    assert names.FLAGSMITH_ADMIN_METHODS == ("GET", "POST")
     assert handler.ADMIN_ROUTES == {
         ("GET", handler.PATH_METRICS),
         ("POST", handler.PATH_METRICS),
@@ -1074,7 +1073,9 @@ def test_a_method_on_a_path_it_is_not_paired_with_is_refused(method, kind):
 
 def test_no_delete_tool_and_no_experiment_update_can_be_called():
     assert not [tool for tool in flagsmith.MCP_TOOLS if tool.startswith("delete_")]
-    assert "update_experiment" not in flagsmith.MCP_TOOLS
+    excluded = names.MCP_EXCLUDED_TOOL.removeprefix(flagsmith.MCP_TOOL_PREFIX)
+    assert names.MCP_EXCLUDED_TOOL == flagsmith.MCP_TOOL_PREFIX + "update_experiment"
+    assert excluded not in flagsmith.MCP_TOOLS
     deletes = sorted(
         n.removeprefix(flagsmith.MCP_TOOL_PREFIX) for n in GATEWAY_TOOLS if "___delete_" in n
     )
