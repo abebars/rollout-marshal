@@ -56,6 +56,21 @@ marks its commands read or write. The goldfish first checks that
 organisation SCP denies FIS to `rm-review-readonly`), and gives the
 goldfish the command and the raw output.
 
+**The `rm-review` profile.** `rm-review-readonly` trusts only roles from
+the IAM Identity Center permission set `abisb_IsbAdminsPS` in
+818928662830 (`infra/review.tf`). So the profile's source must be a
+signed-in SSO profile with that permission set. Other credentials for the
+account work for the build, but not for review. In `~/.aws/config`:
+
+```
+[profile rm-review]
+role_arn = arn:aws:iam::818928662830:role/rm-review-readonly
+source_profile = abisb_IsbAdminsPS-818928662830
+region = us-east-1
+```
+
+The role's ARN is also `terraform -chdir=infra output -raw review_role_arn`.
+
 A goldfish never edits code. An implementer never reviews its own task.
 The same agent instance never reviews twice.
 
