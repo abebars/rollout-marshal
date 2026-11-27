@@ -221,12 +221,19 @@ NOT_A_NAME = {
     "--profile rm-review": "the AWS CLI option and REVIEW_PROFILE, in the review-access rule",
     "AWS_PROFILE": "an AWS CLI environment variable the review-access rule warns about",
     "run_identity()": "helper in contracts.names; test_run_identities",
+    "is_run_identity()": "helper in contracts.names; test_run_identities",
+    "--run-id": "load.py's option, in section 4's identity rule",
+    "-user-": "the separator in a run identity, in section 4's identity rule",
+    "app/": "B's root package (design.md section 12)",
+    "import app": "the Python statement the entrypoint's name avoids",
     "agent/tests/": "a repo path (design.md section 12, A's agent/)",
     "codeLocation": "the AgentCore CLI's agentcore.json field",
     "contracts": "the repo's contracts package, linked into the code folder",
     "pyproject.toml": "a file name",
     "pythonpath": "the pytest setting in the root pyproject.toml",
     "uv.lock": "a file name",
+    "--url": "load.py's option, in section 11's request contract",
+    "load.py": "the load script, named in section 11's request contract",
     "<project>_<target>_<runtime>": (
         "the AgentCore CLI's naming pattern; see AGENT_RUNTIME_DEPLOYED_NAME"
     ),
@@ -245,7 +252,7 @@ NOT_A_NAME = {
     "s3://rm-reports-818928662830/runs/<run_id>/report.md": (
         "REPORTS_BUCKET + REPORT_KEY_TEMPLATE; test_report_location checks it"
     ),
-    "scripts/load.py --users N --questions M --url <api>": (
+    "scripts/load.py --run-id <run_id> --users N --questions M --url <api>": (
         "command line of LOAD_SCRIPT, owned by task 3.4"
     ),
 }
@@ -307,6 +314,12 @@ def test_run_identities():
     assert not names.is_run_identity(names.IDENTITY_FIRST)
     assert not names.is_run_identity(f"{run_id}-user-151")
     assert not names.is_run_identity(f"{run_id}-user-000")
+    assert not names.is_run_identity(f"{run_id}-user-001\n")
+    sec4 = re.sub(r"\s+", " ", section(4))
+    assert "| Identity format | the run ID, a hyphen, then `user-001` to `user-150`" in sec4
+    assert (
+        "with the pointer's `run_id` before `-user-`) gets a 400 before any Flagsmith call" in sec4
+    )
     with pytest.raises(ValueError):
         names.run_identity("live0230", 1)
     with pytest.raises(ValueError):
@@ -316,8 +329,8 @@ def test_run_identities():
     row = re.sub(r"\s+", " ", section(7))
     assert (
         f"so the code lives in `{names.AGENT_CODE_DIR}` (the CLI's `codeLocation` "
-        f"`{names.AGENT_CODE_LOCATION}`, entrypoint `{names.AGENT_ENTRYPOINT}`) as the package "
-        f"`{names.AGENT_PACKAGE}`" in row
+        f"`{names.AGENT_CODE_LOCATION}`, entrypoint `{names.AGENT_ENTRYPOINT}`, so no test's "
+        f"`import app` finds B's `app/`) as the package `{names.AGENT_PACKAGE}`" in row
     )
     pyproject = (ROOT / "pyproject.toml").read_text()
     assert f'pythonpath = [".", "{names.AGENT_CODE_DIR.rstrip("/")}"]' in pyproject
@@ -333,8 +346,39 @@ def test_run_identities():
         r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
     )
     assert "`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`" in tasks
+    assert "`run_identity(run_id, n)`" in tasks
+    code = names.AGENT_CODE_DIR
+    for path in ("rm_agent/state.py", "rm_agent/planner.py", "rm_agent/handlers.py"):
+        assert f"`{code}{path}`" in tasks
+    assert f"`{code}{names.AGENT_ENTRYPOINT}`" in tasks
+    assert (
+        f"`codeLocation` `{names.AGENT_CODE_LOCATION}`, entrypoint `{names.AGENT_ENTRYPOINT}`"
+        in tasks
+    )
+    assert f"`{code}rm_agent/tools/flagsmith.py`" in tasks
+    assert (
+        f"The rule is `{names.ALARM_RULE}`, the function's role `{names.INVOKER_ROLE}`, and "
+        f"`{names.TICK_SCHEDULE}` sits in the `{names.TICK_SCHEDULE_GROUP}` group with execution "
+        f"role `{names.SCHEDULER_ROLE}`" in tasks
+    )
+    assert "`lifecycle { ignore_changes = [state] }`" in tasks
     assert tasks.count("`load.py --run-id <run_id> --users 150") == 3
     assert "load.py --users" not in tasks
+    load = re.sub(r"\s+", " ", section(11))
+    assert "`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`" in load
+    assert (
+        f"the HTTP API's only route, `{names.API_ROUTE_KEY}`, as the app module's output "
+        f"`{names.APP_ASK_URL_OUTPUT}` gives it. The route uses `{names.API_AUTHORIZATION_TYPE}` "
+        f"authorization, so `load.py` signs every request with SigV4 (service "
+        f"`{names.API_SIGV4_SERVICE}`)" in load
+    )
+    spec = (ROOT / "openspec/changes/build-rollout-marshal/specs/assistant-api/spec.md").read_text()
+    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10`" in spec
+    assert "load.py --users" not in spec
+    assert (
+        "load.py --users"
+        not in (ROOT / "openspec/changes/build-rollout-marshal/design.md").read_text()
+    )
 
 
 def test_not_a_name_entries_still_exist_in_design():

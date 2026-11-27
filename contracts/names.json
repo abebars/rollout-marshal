@@ -38,7 +38,7 @@
   "AGENT_CLIENT_READ_TIMEOUT_SECONDS": 290,
   "AGENT_CODE_DIR": "agent/runtime/",
   "AGENT_CODE_LOCATION": "runtime",
-  "AGENT_ENTRYPOINT": "app.py",
+  "AGENT_ENTRYPOINT": "main.py",
   "AGENT_MAX_TOKENS": 4000,
   "AGENT_PACKAGE": "rm_agent",
   "AGENT_RUNTIME_ARN_PARAMETER": "/rm/agent-runtime-arn",
@@ -103,7 +103,11 @@
   ],
   "ANSWER_THINKING_EFFORT": "low",
   "ANSWER_TIMEOUT_SECONDS": 25,
+  "API_AUTHORIZATION_TYPE": "AWS_IAM",
   "API_GATEWAY_TIMEOUT_SECONDS": 30,
+  "API_ROUTE_KEY": "POST /ask",
+  "API_SIGV4_SERVICE": "execute-api",
+  "APP_ASK_URL_OUTPUT": "ask_url",
   "AWAITING_BY_STATE": {
     "AWAITING_RESUME": "resume",
     "PLANNED": "launch",
@@ -595,6 +599,7 @@
   "RUN_PK_PREFIX": "RUN#",
   "RUN_PK_TEMPLATE": "RUN#<run_id>",
   "SCHEDULER_ROLE": "rm-scheduler-role",
+  "SCHEDULER_SERVICE_PRINCIPAL": "scheduler.amazonaws.com",
   "SCHEMA_DIR": "contracts/schemas/",
   "SCHEMA_FILES": {
     "answer_request": "contracts/schemas/answer_request.json",
