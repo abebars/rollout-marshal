@@ -211,7 +211,16 @@ def test_the_cost_command_takes_the_planned_answers_and_prints_0_to_3_failures(c
 def test_the_cost_command_no_longer_takes_a_single_failure_count(cloudwatch):
     with pytest.raises(SystemExit):
         reads.main(
-            ["cost", "--answers-sent", "301", "--expected-failures", "1"], cloudwatch=cloudwatch
+            [
+                "cost",
+                "--answers-sent",
+                "301",
+                "--remaining-planned",
+                "3000",
+                "--expected-failures",
+                "1",
+            ],
+            cloudwatch=cloudwatch,
         )
 
 
