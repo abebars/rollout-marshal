@@ -214,6 +214,8 @@ NOT_A_NAME = {
     "TransactWriteItems": "DynamoDB API operation that carries every pointer change",
     "2#ROLLED_BACK": "example of dedupe_key(); test_dedupe_key_matches_design checks it",
     "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
+    "marshal approve <run_id> <awaiting>": "command line: CLI_NAME plus ACTION_APPROVE and an "
+    "AWAITING_VALUES entry (contract change c5)",
     "flag.variant": "SDK attribute the exposure call sends",
     "flag.value": "SDK attribute: the variant's value, which names the model served",
     "api_key_authorization()": "helper in contracts.names; test_spike_findings_match_design",
@@ -1398,6 +1400,9 @@ def design_payloads() -> list[dict]:
         "<text>": "Test moving the support assistant from Claude Fable 5.1 to Claude Sonnet 5.",
         "<id>": "r202611271530",
         "<ISO 8601>": "2026-11-27T15:42:00Z",
+        f"<{names.AWAITS_LAUNCH}, {names.AWAITS_RESUME} or {names.AWAITS_PROMOTION}>": (
+            names.AWAITS_PROMOTION
+        ),
     }
     out = []
     for line in section(7, keep_fences=True).splitlines():
@@ -1430,6 +1435,14 @@ def test_design_payload_examples_validate():
         {"action": "start", "prompt": "x"},
         {"action": "approve", "run_id": "r202611271530", "actor": "agent"},
         {"action": "approve", "run_id": "rspike", "actor": "engineer"},
+        {"action": "approve", "run_id": "r202611271530", "actor": "engineer"},
+        {
+            "action": "approve",
+            "run_id": "r202611271530",
+            "awaiting": "promote",
+            "actor": "engineer",
+        },
+        {"action": "decline", "run_id": "r202611271530", "awaiting": "launch", "actor": "engineer"},
         {"action": "decline", "actor": "engineer"},
         {"action": "check", "run_id": "r202611271530"},
         {"action": "status", "actor": "engineer"},
@@ -2775,6 +2788,45 @@ def test_contract_c4_judge():
     )
 
 
+def test_contract_c5_approve_names_what_it_approves():
+    """Contract change c5: approve carries awaiting, and a mismatch is illegal (design.md 7)."""
+    sec7 = flat_section(7)
+    launch, resume, promotion = names.AWAITING_VALUES
+    assert (
+        f"`{names.ACTION_APPROVE}` names what it approves: `awaiting` is the value the run's last "
+        f"response gave, `{launch}`, `{resume}` or `{promotion}`. Legality includes it: an "
+        f"`{names.ACTION_APPROVE}` whose `awaiting` is not the one the run's state gives returns "
+        f"`{names.ERROR_ILLEGAL_IN_STATE}`, naming what the run awaits, and changes nothing. So an "
+        "alarm between the engineer's read and the approve cannot turn one approval into another "
+        "(task 2.5's review). The CLI takes it as the second argument, `marshal approve <run_id> "
+        "<awaiting>`, and every message that asks for an approval names the command with its "
+        "value." in sec7
+    )
+    assert set(names.AWAITING_BY_STATE.values()) == set(names.AWAITING_VALUES)
+    spec = re.sub(
+        r"\s+",
+        " ",
+        (
+            ROOT / "openspec/changes/build-rollout-marshal/specs/experiment-agent/spec.md"
+        ).read_text(),
+    )
+    assert (
+        f"- **WHEN** the engineer approves with an `awaiting` the run does not await, such as "
+        f"`{promotion}` for a run an alarm has since moved to `{names.STATE_AWAITING_RESUME}` - "
+        f"**THEN** the response carries error `{names.ERROR_ILLEGAL_IN_STATE}` naming what the run "
+        "awaits, and nothing changes" in spec
+    )
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    assert (
+        "- `approve` carries `awaiting` (design.md section 7, contract change c5): the handler "
+        f"refuses a mismatch with `{names.ERROR_ILLEGAL_IN_STATE}`, its messages name `marshal "
+        "approve <run_id> <awaiting>`, and the CLI sends the value as its second argument (a 2.6 "
+        "follow-up in this task's pull request)." in tasks
+    )
+
+
 TIED_BY = {
     "PRICES_FIELDS": test_contract_c4_judge,
     "PRICE_FIELDS": test_contract_c4_judge,
@@ -2940,16 +2992,22 @@ def test_every_schema_copy_of_a_name_matches_names():
         tuple(b["properties"]["action"].get("enum", [b["properties"]["action"].get("const")])): b
         for b in invoke["oneOf"]
     }
-    engineer_actions = (names.ACTION_APPROVE, names.ACTION_DECLINE, names.ACTION_CHECK)
+    approve = (names.ACTION_APPROVE,)
+    engineer_actions = (names.ACTION_DECLINE, names.ACTION_CHECK)
     assert set(branches) == {
         (names.ACTION_START,),
+        approve,
         engineer_actions,
         (names.ACTION_STATUS,),
         (names.ACTION_ALARM,),
         (names.ACTION_TICK,),
     }
-    for key in [(names.ACTION_START,), engineer_actions]:
+    for key in [(names.ACTION_START,), approve, engineer_actions]:
         assert branches[key]["properties"]["actor"] == {"const": names.ACTOR_ENGINEER}
+    # Contract change c5: approve names what it approves.
+    assert branches[approve]["properties"]["awaiting"] == {"enum": list(names.AWAITING_VALUES)}
+    assert branches[approve]["required"] == ["action", "run_id", "awaiting", "actor"]
+    assert "awaiting" not in branches[engineer_actions]["properties"]
     alarm = branches[(names.ACTION_ALARM,)]["properties"]
     assert alarm["alarm_name"] == {"const": names.ALARM_NAME}
     assert alarm["alarm_state"] == {"const": names.ALARM_STATE_ALARM}

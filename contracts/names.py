@@ -581,7 +581,16 @@ ERROR_CODES = (
     ERROR_UPSTREAM_FAILED,
 )
 
-INVOKE_FIELDS = ("action", "prompt", "actor", "run_id", "alarm_name", "alarm_state", "at")
+INVOKE_FIELDS = (
+    "action",
+    "prompt",
+    "actor",
+    "run_id",
+    "awaiting",  # approve only: what it approves, one of AWAITING_VALUES (contract change c5)
+    "alarm_name",
+    "alarm_state",
+    "at",
+)
 RESPONSE_FIELDS = ("run_id", "state", "message", "awaiting", "pending", "error")
 NO_ACTIVE_RUN_MESSAGE = "no active run"  # status with no active run, every other field null
 ERROR_FIELDS = ("code", "message")

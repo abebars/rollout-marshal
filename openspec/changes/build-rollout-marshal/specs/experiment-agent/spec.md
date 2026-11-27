@@ -124,6 +124,10 @@ that is not legal in the run's current state without side effects.
 - **WHEN** the engineer approves, declines or checks a run that the pointer does not name
 - **THEN** the response carries error `RUN_ACTIVE` naming the active run and nothing changes
 
+#### Scenario: Approve names what it approves
+- **WHEN** the engineer approves with an `awaiting` the run does not await, such as `promotion` for a run an alarm has since moved to `AWAITING_RESUME`
+- **THEN** the response carries error `ILLEGAL_IN_STATE` naming what the run awaits, and nothing changes
+
 #### Scenario: A reset run cannot launch
 - **WHEN** the engineer approves or checks a `PLANNED` run that has no pointer
 - **THEN** the response carries error `ILLEGAL_IN_STATE` and nothing changes, while `decline` still ends it unless a launch is pending on it (such a run stays `PLANNED` and affects nothing)

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/invoke.json",
   "title": "Agent invocation payload",
-  "description": "What the marshal CLI, rm-invoker and the rm-tick schedule send to rm_agent (design.md section 7). One shape per action. actor is required, and is engineer, on the four engineer actions that change state, and absent elsewhere.",
+  "description": "What the marshal CLI, rm-invoker and the rm-tick schedule send to rm_agent (design.md section 7). One shape per action. actor is required, and is engineer, on the four engineer actions that change state, and absent elsewhere. approve also names what it approves, in awaiting (one of launch, resume, promotion).",
   "oneOf": [
     {
       "type": "object",
@@ -31,12 +31,39 @@
       "required": [
         "action",
         "run_id",
+        "awaiting",
+        "actor"
+      ],
+      "properties": {
+        "action": {
+          "const": "approve"
+        },
+        "run_id": {
+          "$ref": "#/$defs/run_id"
+        },
+        "awaiting": {
+          "enum": [
+            "launch",
+            "resume",
+            "promotion"
+          ]
+        },
+        "actor": {
+          "const": "engineer"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "run_id",
         "actor"
       ],
       "properties": {
         "action": {
           "enum": [
-            "approve",
             "decline",
             "check"
           ]
