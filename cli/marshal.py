@@ -1,7 +1,7 @@
 """marshal: the engineer's command line for rm_agent (tasks.md 2.6; design.md section 7).
 
     marshal start "<prompt>"
-    marshal approve <run_id>
+    marshal approve <run_id> <awaiting>   (launch, resume or promotion)
     marshal decline <run_id>
     marshal status [run_id]
     marshal check <run_id>
@@ -17,7 +17,11 @@ imports nothing from signals/.
 
 Exit codes (contracts.names): 0 when the response's error is null, 1 when it carries an error
 code, 2 on a usage error. A call that fails, or a reply that is not a response, also exits 1,
-with the reason on stderr and nothing on stdout.
+with the reason on stderr and nothing on stdout. Once the request has gone out, the
+action may have run even so, and the message says to look with marshal status first.
+
+approve names what it approves, the awaiting value the run's last response gave
+(contract change c5): an approval of one thing can never become another.
 """
 
 from __future__ import annotations
@@ -29,7 +33,13 @@ from typing import Any
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError, ReadTimeoutError
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+    HTTPClientError,
+    IncompleteReadError,
+    ReadTimeoutError,
+)
 
 from contracts import names
 
@@ -91,6 +101,13 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("prompt", help="what to test, in plain words")
         elif action == names.ACTION_STATUS:
             command.add_argument("run_id", nargs="?", help="a run ID; omit it for the active run")
+        elif action == names.ACTION_APPROVE:
+            command.add_argument("run_id", help="the run's ID, for example r202611271530")
+            command.add_argument(
+                "awaiting",
+                choices=names.AWAITING_VALUES,
+                help="what you approve: the awaiting value the run's status shows",
+            )
         else:
             command.add_argument("run_id", help="the run's ID, for example r202611271530")
     return parser
@@ -111,6 +128,13 @@ def payload_for(args: argparse.Namespace, parser: argparse.ArgumentParser) -> di
         return {"action": action} if run_id is None else {"action": action, "run_id": run_id}
     if action not in _RUN_ACTIONS:  # argparse offers only CLI_ACTIONS
         parser.error(f"no command {action!r}")
+    if action == names.ACTION_APPROVE:  # it names what it approves (contract change c5)
+        return {
+            "action": action,
+            "run_id": run_id,
+            "awaiting": args.awaiting,
+            "actor": names.ACTOR_ENGINEER,
+        }
     return {"action": action, "run_id": run_id, "actor": names.ACTOR_ENGINEER}
 
 
@@ -206,8 +230,11 @@ def main(argv: list[str] | None = None, *, ssm: Any = None, agent: Any = None) -
     except SystemExit as stop:  # argparse exits 0 after --help and 2 after a usage error
         return names.CLI_EXIT_OK if stop.code in (0, None) else names.CLI_EXIT_USAGE
 
-    ssm = ssm if ssm is not None else new_ssm_client()
-    agent = agent if agent is not None else new_agent_client()
+    try:  # a missing profile, say, is a clean failure too
+        ssm = ssm if ssm is not None else new_ssm_client()
+        agent = agent if agent is not None else new_agent_client()
+    except (BotoCoreError, ClientError) as error:
+        return _failed("could not make the AWS clients", error)
     try:
         runtime_arn = read_runtime_arn(ssm)
     except (BotoCoreError, ClientError) as error:
@@ -219,22 +246,27 @@ def main(argv: list[str] | None = None, *, ssm: Any = None, agent: Any = None) -
         )
 
     session_id = names.new_session_id()
+    look = f"{names.CLI_NAME} {names.ACTION_STATUS}"
+    if payload.get("run_id"):
+        look += f" {payload['run_id']}"
+    went_out = f"the action may still have run, so look with `{look}` before repeating it"
     try:
         response = invoke(agent, runtime_arn, payload, session_id)
     except ReadTimeoutError as error:
-        look = f"{names.CLI_NAME} {names.ACTION_STATUS}"
-        if payload.get("run_id"):
-            look += f" {payload['run_id']}"
         return _failed(
-            f"no reply within {names.AGENT_CLIENT_READ_TIMEOUT_SECONDS} s; the action may still "
-            f"have run, so look with `{look}` before repeating it",
+            f"no reply within {names.AGENT_CLIENT_READ_TIMEOUT_SECONDS} s; {went_out}",
             error,
             session_id=session_id,
         )
-    except (BotoCoreError, ClientError) as error:
+    except (ClientError, HTTPClientError, IncompleteReadError) as error:
+        # The request went out, so the runtime may have acted on it. HTTPClientError
+        # covers ConnectionClosedError and ResponseStreamingError; a connect error is
+        # botocore's ConnectionError, which is not one, and gives no such hint.
+        return _failed(f"InvokeAgentRuntime failed; {went_out}", error, session_id=session_id)
+    except BotoCoreError as error:  # no request went out: no credentials, no connection
         return _failed("InvokeAgentRuntime failed", error, session_id=session_id)
     except ReplyError as error:
-        return _failed(str(error), session_id=session_id)
+        return _failed(f"{error}; {went_out}", session_id=session_id)
 
     print(render(response))
     return names.CLI_EXIT_OK if response["error"] is None else names.CLI_EXIT_ERROR

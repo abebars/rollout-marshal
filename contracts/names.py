@@ -267,6 +267,15 @@ CW_METRIC_EMITTER = {
     CW_METRIC_ANSWER_HELPFUL: JUDGE_FUNCTION,
 }
 
+# Task 3.3's judge and its prices file (contract change c4, design.md section 5).
+JUDGE_REPLY_FIELD = "helpful"  # the judge model's reply: {"helpful": true} or false
+JUDGE_ERROR_THROTTLED = "JudgeThrottled"  # Bedrock's ThrottlingException, by its error code
+JUDGE_ERROR_FAILED = "JudgeFailed"  # any other failure before the CloudWatch write
+JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS = 5
+JUDGE_BEDROCK_READ_TIMEOUT_SECONDS = 10
+JUDGE_FLUSH_RESERVE_SECONDS = 13  # one SDK send and 1 s more, left before the CloudWatch write
+PRICES_FIELDS = ("source_url", "retrieved_on", "currency", "per_million_tokens")
+PRICE_FIELDS = ("input", "output")  # US dollars per million tokens
 PRICES_FILE = "app/prices.json"  # copied from the AWS Bedrock pricing page, with URL and date
 
 # The answer functions' interface (schemas answer_request and answer_response).
@@ -281,6 +290,29 @@ ANSWER_MODEL_ENV = "MODEL_ID"  # the model each deployment asks
 ANSWER_ERROR_THROTTLED = "AnswerThrottled"  # Bedrock's ThrottlingException, by its error code
 ANSWER_ERROR_FAILED = "AnswerFailed"  # any other error, max_tokens, no text, a bad event
 ROUTER_HANDLER = "app.router.handler.handler"
+JUDGE_HANDLER = "app.judge.handler.handler"  # task 3.5 (contract change c6)
+# Task 3.5's names (contract change c6, design.md section 5). Each app function's role,
+# inline policy and log group follow rm-flagsmith-admin's pattern.
+APP_ROLE_SUFFIX = "-role"
+APP_POLICY_SUFFIX = "-policy"
+APP_LOG_GROUP_PREFIX = "/aws/lambda/"
+API_NAME = "rm-api"
+API_STAGE = "$default"  # auto-deploy
+API_PERMISSION_STATEMENT = "AllowTheAskRoute"
+APP_FUNCTION_MEMORY_MB = 256  # task 1.2's spike size
+APP_BUILD_DIR = "app/build/"
+APP_ZIPS = ("rm-answer.zip", "rm-router.zip", "rm-judge.zip")  # answer, router, judge
+FLAGSMITH_API_BASE_URL = "https://api.flagsmith.com"
+# bootstrap_flagsmith.py, seed_experiment.py and reset.py (load.py has its own, task 3.4)
+SCRIPT_EXIT_OK = 0
+SCRIPT_EXIT_FAILED = 1
+SCRIPT_EXIT_USAGE = 2  # argparse's own
+SCRIPT_EXIT_REFUSED = 3
+SEED_HYPOTHESIS = (
+    "Claude Sonnet 5 answers support questions as helpfully as Claude Fable 5.1, at no more"
+    " latency or cost. Seeded by scripts/seed_experiment.py, without the agent."
+)
+SEED_METRIC_DESCRIPTION_SUFFIX = ", Rollout Marshal"  # after the metric's name
 API_PAYLOAD_FORMAT_VERSION = "2.0"  # the HTTP API's Lambda integration with rm-router
 # rm-router's error bodies are {"error": <string>}: these three, or the answer's errorType
 # (503 for ANSWER_ERROR_THROTTLED, 502 for any other).
@@ -572,7 +604,16 @@ ERROR_CODES = (
     ERROR_UPSTREAM_FAILED,
 )
 
-INVOKE_FIELDS = ("action", "prompt", "actor", "run_id", "alarm_name", "alarm_state", "at")
+INVOKE_FIELDS = (
+    "action",
+    "prompt",
+    "actor",
+    "run_id",
+    "awaiting",  # approve only: what it approves, one of AWAITING_VALUES (contract change c5)
+    "alarm_name",
+    "alarm_state",
+    "at",
+)
 RESPONSE_FIELDS = ("run_id", "state", "message", "awaiting", "pending", "error")
 NO_ACTIVE_RUN_MESSAGE = "no active run"  # status with no active run, every other field null
 ERROR_FIELDS = ("code", "message")
@@ -700,6 +741,22 @@ FIS_DURATION_MINUTES = 6
 FIS_SLOW_POLL_ENV = "AWS_FIS_SLOW_POLL_INTERVAL_SECONDS"
 FIS_SLOW_POLL_SECONDS = 10
 FIS_TIMEBOX_MINUTES = 120
+# Section 9's names (task 4.3, contract change c4). The configuration sits in the
+# bucket's FIS_CONFIG_PREFIX folder; the read policy goes on the cheaper function's role.
+# The extension layer is pinned (task 4.3's SSM read, PR #23's review); the module warns when
+# SSM's /aws/service/fis/lambda-extension/AWS-FIS-extension-arm64/1.x.x moves on.
+FIS_EXTENSION_LAYER_ARN = "arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441"
+FIS_CONFIG_BUCKET = "rm-fis-config-818928662830"
+FIS_CONFIG_PREFIX = "FisConfigs"  # the AWS FIS Lambda actions guide's example folder
+FIS_ROLE = "rm-fis-role"
+FIS_ROLE_POLICY = "rm-fis-actions"
+FIS_CONFIG_READ_POLICY = "rm-fis-config-read"
+# The app module and the FIS module meet through these (tasks 3.5 and 4.3): the FIS module
+# takes the first two of the app module's outputs and gives back the app module's two inputs.
+APP_CHEAPER_FUNCTION_NAME_OUTPUT = "cheaper_function_name"
+APP_CHEAPER_ROLE_NAME_OUTPUT = "cheaper_role_name"
+APP_CHEAPER_EXTRA_LAYERS_INPUT = "cheaper_extra_layers"
+APP_CHEAPER_EXTRA_ENV_INPUT = "cheaper_extra_env"
 
 # ---------------------------------------------------------------------------
 # Section 10. Report

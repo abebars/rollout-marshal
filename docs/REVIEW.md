@@ -52,8 +52,9 @@ marks its commands read or write. The goldfish first checks that
 `rm-review-readonly`, then reruns only the read commands, each with
 `--profile rm-review` (exported keys override `AWS_PROFILE`, not
 `--profile`), and never runs seed, load, inject, reset, `marshal` or
-`terraform`. The lead reruns any Flagsmith reads and gives the goldfish
-the command and the raw output.
+`terraform`. The lead reruns any Flagsmith reads, and any FIS reads (an
+organisation SCP denies FIS to `rm-review-readonly`), and gives the
+goldfish the command and the raw output.
 
 A goldfish never edits code. An implementer never reviews its own task.
 The same agent instance never reviews twice.

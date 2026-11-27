@@ -234,6 +234,37 @@ def run_in(target: str) -> state.Run:
 
 
 # ---------------------------------------------------------------------------
+# record_refresh: the write a tick makes when it refreshes results and does not move
+# ---------------------------------------------------------------------------
+def test_record_refresh_sets_and_only_moves_last_refresh_at_forward(db, clock):
+    run = run_in(names.STATE_RUNNING)
+    first, later, earlier = (names.utc_iso(START + timedelta(seconds=s)) for s in (700, 1100, 650))
+    assert state.record_refresh(run.run_id, first) is True
+    assert stored(db, run.run_id)["last_refresh_at"] == first
+    assert state.record_refresh(run.run_id, earlier) is False  # never backwards
+    assert state.record_refresh(run.run_id, first) is False  # nor sideways
+    assert state.record_refresh(run.run_id, later) is True
+    assert stored(db, run.run_id)["last_refresh_at"] == later
+
+
+def test_record_refresh_writes_nothing_once_the_run_has_moved_on(db, clock):
+    run = run_in(names.STATE_ROLLED_BACK)
+    before = stored(db, run.run_id)
+    assert state.record_refresh(run.run_id, names.utc_iso(START + timedelta(hours=1))) is False
+    assert stored(db, run.run_id) == before
+    assert state.record_refresh("r202611271599", names.utc_iso(START)) is False
+
+
+def test_record_refresh_that_meets_an_in_flight_transaction_is_false(db, clock, monkeypatch):
+    run = run_in(names.STATE_RUNNING)
+    before = stored(db, run.run_id)
+    collides = Interfere(db, "update_item", lambda: conflict(db))
+    monkeypatch.setattr(state, "_client", lambda: collides)
+    assert state.record_refresh(run.run_id, names.utc_iso(START + timedelta(minutes=11))) is False
+    assert collides.calls == 1 and stored(db, run.run_id) == before
+
+
+# ---------------------------------------------------------------------------
 # Fault injection: what moto cannot produce by itself
 # ---------------------------------------------------------------------------
 class Interfere:

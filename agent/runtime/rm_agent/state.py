@@ -52,6 +52,7 @@ _PENDING = _named("pending", names.RUN_ITEM_ATTRIBUTES)
 _PENDING_AT = _named("pending_at", names.RUN_ITEM_ATTRIBUTES)
 _CREATED_AT = _named("created_at", names.RUN_ITEM_ATTRIBUTES)
 _UPDATED_AT = _named("updated_at", names.RUN_ITEM_ATTRIBUTES)
+_LAST_REFRESH_AT = _named("last_refresh_at", names.RUN_ITEM_ATTRIBUTES)
 # The pointer's attributes (names.POINTER_ATTRIBUTES) and a history entry's fields.
 _POINTER_RUN_ID = _named("run_id", names.POINTER_ATTRIBUTES)
 _POINTER_FEATURE_KEY = _named("feature_key", names.POINTER_ATTRIBUTES)
@@ -437,6 +438,39 @@ def release(run_id: str, claimed_at: str) -> bool:
             retried = True
             continue
         return True
+
+
+def record_refresh(run_id: str, refreshed_at: str) -> bool:
+    """A tick that refreshes results without moving the run records when (tasks.md 2.5): no
+    commit carries last_refresh_at then. last_refresh_at = refreshed_at, on condition the run
+    is RUNNING and the value only moves forward.
+
+    False, with nothing written, when the condition fails or the write meets an in-flight
+    transaction: the run has moved on, or a later refresh is already recorded. Either way
+    the refresh window is the newer one's.
+    """
+    refreshed_at = names.utc_iso(refreshed_at)  # one form, so the comparison is by time
+    try:
+        _client().update_item(
+            TableName=names.RUNS_TABLE,
+            Key=_key(names.run_pk(run_id)),
+            UpdateExpression="SET #last_refresh_at = :refreshed_at, #updated_at = :now",
+            ConditionExpression=(
+                "#state = :running AND (attribute_not_exists(#last_refresh_at) "
+                "OR #last_refresh_at < :refreshed_at)"
+            ),
+            ExpressionAttributeNames=_attribute_names(_STATE, _LAST_REFRESH_AT, _UPDATED_AT),
+            ExpressionAttributeValues=_values(
+                running=names.STATE_RUNNING,
+                refreshed_at=refreshed_at,
+                now=names.utc_iso(_now()),
+            ),
+        )
+    except ClientError as error:
+        if _code(error) in (_CONDITION_FAILED, _CONFLICT):
+            return False
+        raise
+    return True
 
 
 def _checked(updates: dict[str, Any]) -> dict[str, Any]:
