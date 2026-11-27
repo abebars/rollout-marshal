@@ -57,7 +57,7 @@ DATA_RETENTION_MODE = "aws_review"  # needed by MODEL_CURRENT in us-east-1
 BEDROCK_RUNTIME_SERVICE = "bedrock-runtime"  # every call uses its Converse API
 # design.md section 3's list, including Converse's spelling topP (inside inferenceConfig);
 # top_k goes only in additionalModelRequestFields. A guard checks every one, at any depth.
-FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "topP", "top_k")
+FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "topP", "top_k", "topK")
 
 ANSWER_MAX_TOKENS = 2000  # caps thinking plus text
 ANSWER_THINKING_EFFORT = "low"
@@ -196,7 +196,7 @@ FLAGSMITH_SDK_MIN_VERSION = "6.6.0"
 FLAGSMITH_CLIENT_OPTIONS = {"enable_events": True}  # remote evaluation
 # SDK calls; the exact signatures are proven by task 1.2.
 SDK_FLAGS_CALL = "get_identity_flags"  # once per answer, the only identity request
-SDK_EXPOSURE_CALL = "track_exposure_event"  # only when in the experiment with a variant set
+SDK_EXPOSURE_CALL = "track_exposure_event"  # only when enabled, in the experiment, with a variant
 SDK_OUTCOME_CALL = "track_event"  # with the identity and a numeric value
 SDK_FLUSH_CALL = "flush_events"  # before every handler returns
 SDK_FORBIDDEN_CALL = "get_experiment_flag"  # makes its own identity request
@@ -349,7 +349,6 @@ PLAN_STOP_RULE_FIELDS = (
 PLAN_GUARDRAIL_FIELDS = ("max_latency_ratio", "max_cost_ratio")
 PLAN_RECOMMENDATION_RULE_FIELDS = (
     "after_incident",
-    "promote_min_prob_not_worse",
     "promote_min_helpful_lift_ci_lower",
 )
 
@@ -464,11 +463,24 @@ RECOMMEND_HOLD = "hold"
 RECOMMEND_HOLD_RERUN = "hold, re-run"  # after any incident
 # In the order design.md section 6 applies them: the first that matches wins.
 RECOMMENDATIONS = (RECOMMEND_HOLD_RERUN, RECOMMEND_PROMOTE, RECOMMEND_HOLD)
-PROMOTE_MIN_PROB_NOT_WORSE = 0.95
-# Fallback when prob_cheaper_not_worse is null: the lower bound of the credible
-# interval for the lift on helpful_rate is at or above minus 5 percent, as a fraction
-# of relative lift (design.md section 7; 1.2's results sample confirms the unit).
+# The promote rule (design.md section 6): the lower bound of Flagsmith's 95 percent
+# credible interval for the lift on helpful_rate is at or above minus 5 percent, as a
+# fraction of relative lift. Flagsmith has no "not worse" probability (task 1.4).
 PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER = -0.05
+EXPERIMENT_STATUS_ENDED = "completed"  # "ended in Flagsmith"; paused is not ended
+EXPERIMENT_STATUS_PAUSED = "paused"
+FLAGSMITH_EXPERIMENT_STATUSES = ("created", "running", "paused", "completed")
+# Refused before any call (design.md section 4): no code ends or re-states an experiment.
+MCP_EXPERIMENT_FORBIDDEN_FIELDS = (
+    "status",
+    "rollout_decision",
+    "rollout_variant",
+    "started_at",
+    "ended_at",
+)
+FLAGSMITH_ADMIN_FORBIDDEN_PATHS = ("complete/", "pause/", "rollout/")
+FLAGSMITH_ADMIN_METHODS = ("GET", "POST")  # never DELETE, PUT or PATCH
+MCP_EXCLUDED_TOOL = "flagsmith___update_experiment"  # with every flagsmith___delete_* tool
 
 # ---------------------------------------------------------------------------
 # Section 7. Invoking the agent
@@ -483,6 +495,11 @@ AGENT_CODE_DIR = "agent/runtime/"
 AGENT_CODE_LOCATION = "runtime"  # agentcore.json codeLocation, relative to agent/
 AGENT_ENTRYPOINT = "main.py"  # not app.py: B's root app/ would shadow it in tests
 AGENT_PACKAGE = AGENT_RUNTIME_NAME  # the Python package in the code folder
+AGENT_STACK = "AgentCore-rm-default"  # the CLI's CloudFormation stack
+# Terraform reads the stack's runtime role from this export and attaches the tools'
+# policy to it (design.md section 7).
+AGENT_RUNTIME_ROLE_EXPORT = "AgentCore-rm-default-rm-agent-RoleArn"
+AGENT_RUNTIME_TOOLS_POLICY = "rm-agent-runtime-tools"
 SESSION_ID_PREFIX = "rm-session-"  # + UUID4
 SESSION_ID_MIN_LENGTH = 33
 
@@ -521,7 +538,7 @@ INVOKE_FIELDS = ("action", "prompt", "actor", "run_id", "alarm_name", "alarm_sta
 RESPONSE_FIELDS = ("run_id", "state", "message", "awaiting", "pending", "error")
 NO_ACTIVE_RUN_MESSAGE = "no active run"  # status with no active run, every other field null
 ERROR_FIELDS = ("code", "message")
-RESULTS_FIELDS = ("ready", "variations", "prob_cheaper_not_worse", "helpful_lift_ci_lower")
+RESULTS_FIELDS = ("ready", "variations", "helpful_lift_ci_lower")
 VARIATION_FIELDS = ("identities", "helpful_rate", "mean_latency_ms", "mean_cost_micro_usd")
 
 SCHEMA_DIR = "contracts/schemas/"
@@ -539,6 +556,9 @@ SCHEMA_FILES = {name: f"{SCHEMA_DIR}{name}.json" for name in SCHEMA_NAMES}
 
 CLI_NAME = "marshal"
 CLI_ENTRY_POINT = "cli.marshal:main"  # the console script; pyproject.toml gains it with 2.6
+CLI_EXIT_OK = 0  # the response's error is null
+CLI_EXIT_ERROR = 1  # the response carries an error code
+CLI_EXIT_USAGE = 2
 CLI_ACTIONS = (ACTION_START, ACTION_APPROVE, ACTION_DECLINE, ACTION_STATUS, ACTION_CHECK)
 INVOKER_FUNCTION = "rm-invoker"  # sends alarm and tick
 AGENT_RUNTIME_ARN_PARAMETER = "/rm/agent-runtime-arn"

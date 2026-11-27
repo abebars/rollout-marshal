@@ -77,14 +77,12 @@
       "additionalProperties": false,
       "required": [
         "after_incident",
-        "promote_min_prob_not_worse",
         "promote_min_helpful_lift_ci_lower"
       ],
       "properties": {
         "after_incident": { "const": "hold, re-run" },
-        "promote_min_prob_not_worse": { "const": 0.95 },
         "promote_min_helpful_lift_ci_lower": {
-          "description": "Used when prob_cheaper_not_worse is null. A fraction of relative lift: -0.05 is minus 5 percent.",
+          "description": "The promote rule's floor for the lower bound of the 95 percent credible interval for the lift on helpful_rate. A fraction of relative lift: -0.05 is minus 5 percent.",
           "const": -0.05
         }
       }

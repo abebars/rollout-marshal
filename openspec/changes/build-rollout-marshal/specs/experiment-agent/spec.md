@@ -87,7 +87,7 @@ decided by fixed rules, and SHALL state any incident and the bias it causes.
 - **AND** the run is `RESULTS_READY`
 
 #### Scenario: Clean run that qualifies
-- **WHEN** there was no incident, the probability that `cheaper` is not worse on `helpful_rate` is at least 0.95, and both guardrails pass
+- **WHEN** there was no incident, the lower bound of the 95 percent credible interval for the lift on `helpful_rate` is at or above -0.05, and both guardrails pass
 - **THEN** the report recommends `promote`
 
 ### Requirement: Promotion needs a human
