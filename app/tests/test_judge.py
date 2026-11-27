@@ -178,6 +178,17 @@ class FakeFlagsmith:
         return sum(1 for entry in self.log if entry[0] == "flush")
 
 
+class LambdaContext:
+    """The parts of Lambda's context the judge reads: the request ID and the time left."""
+
+    def __init__(self, remaining_ms: int = 29_000, aws_request_id: str = REQUEST_ID) -> None:
+        self.remaining_ms = remaining_ms
+        self.aws_request_id = aws_request_id
+
+    def get_remaining_time_in_millis(self) -> int:
+        return self.remaining_ms
+
+
 class World:
     """A Judge with fakes, recording what it built, wrote and tracked, in order."""
 
@@ -215,9 +226,10 @@ class World:
         self.lines.append(line)
         self.log.append(("cloudwatch",))
 
-    def handle(self, payload=DEFAULT, request_id: str | None = REQUEST_ID):
+    def handle(self, payload=DEFAULT, context=DEFAULT):
         payload = _payload() if payload is DEFAULT else payload
-        return self.judge.handle(payload, request_id=request_id)
+        context = LambdaContext() if context is DEFAULT else context
+        return self.judge.handle(payload, context)
 
     @property
     def documents(self) -> list[dict]:
@@ -342,6 +354,7 @@ def test_load_prices_refuses_a_file_that_is_not_json(tmp_path):
         (handler.Price(input=2.2, output=11.0), (1000, 200), 4400),
         (handler.Price(input=11.0, output=55.0), (91, 10), 1551),
         (handler.Price(input=2.2, output=11.0), (3, 0), 7),  # 6.6 rounds up
+        (handler.Price(input=2.2, output=11.0), (1, 0), 2),  # 2.2 rounds down: no ceil
         (handler.Price(input=2.2, output=11.0), (0, 0), 0),
         (handler.Price(input=0.11, output=0.55), (1_000_000, 1_000_000), 660_000),
     ],
@@ -982,28 +995,117 @@ def test_the_flagsmith_client_reads_the_server_key_and_turns_events_on(monkeypat
     assert made == [{"environment_key": DUMMY_SDK_KEY, **names.FLAGSMITH_CLIENT_OPTIONS}]
 
 
-def test_the_lambda_entry_point_uses_one_judge_per_container_and_passes_the_request_id(
+def test_the_lambda_entry_point_uses_one_judge_per_container_and_passes_the_context(
     monkeypatch,
 ):
     made, seen = [], []
 
     class Spy:
-        def handle(self, event, request_id=None):
-            seen.append((event, request_id))
+        def handle(self, event, context=None):
+            seen.append((event, context))
             return {"handled": True}
 
     monkeypatch.setattr(handler, "_judge", None)
     monkeypatch.setattr(handler, "Judge", lambda **kwargs: made.append(kwargs) or Spy())
+    context = LambdaContext()
 
-    assert handler.handler({"n": 1}, SimpleNamespace(aws_request_id=REQUEST_ID)) == {
-        "handled": True
-    }
+    assert handler.handler({"n": 1}, context) == {"handled": True}
     handler.handler({"n": 2}, None)
 
     assert len(made) == 1
     assert made[0]["bedrock_factory"] is handler.new_bedrock_client
     assert made[0]["flagsmith_factory"] is handler.new_flagsmith_client
-    assert seen == [({"n": 1}, REQUEST_ID), ({"n": 2}, None)]
+    assert seen == [({"n": 1}, context), ({"n": 2}, None)]
+
+
+def test_the_judge_writes_its_metrics_with_print_unless_given_another_writer(capsys):
+    handler._print('{"_aws": {}}')
+    assert capsys.readouterr().out == '{"_aws": {}}\n'
+    built = handler.Judge(bedrock_factory=lambda: None, flagsmith_factory=lambda: None)
+    assert built.emit is handler._print
+
+
+# ---------------------------------------------------------------------------
+# The 30 s budget (the lead's decision for 3.3)
+# ---------------------------------------------------------------------------
+def test_the_bedrock_call_is_bounded_well_inside_the_functions_time():
+    config = REAL_NEW_BEDROCK_CLIENT().meta.config  # built only: nothing is sent
+    assert config.connect_timeout == handler.JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS == 5
+    assert config.read_timeout == handler.JUDGE_BEDROCK_READ_TIMEOUT_SECONDS == 10
+    assert config.retries["total_max_attempts"] == 1
+    worst = (
+        handler.JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS
+        + handler.JUDGE_BEDROCK_READ_TIMEOUT_SECONDS
+        + handler.JUDGE_FLUSH_RESERVE_SECONDS
+    )
+    assert worst < names.JUDGE_TIMEOUT_SECONDS
+
+
+@pytest.mark.parametrize("remaining_ms", [12_999, 1_000, 0])
+def test_with_too_little_time_left_nothing_is_written_and_the_attempt_fails(remaining_ms, caplog):
+    """One SDK send takes about 12 s: a flush the timeout cut off could send the events
+    twice on the retry, so the judge writes nothing and lets the retry start clean."""
+    caplog.set_level(logging.DEBUG, logger=JUDGE_LOGGER)
+    world = World()
+
+    with pytest.raises(handler.JudgeFailed, match="13 s"):
+        world.handle(context=LambdaContext(remaining_ms=remaining_ms))
+
+    assert world.lines == [] and world.flagsmith.tracked == []
+    assert len(world.bedrock.calls) == 1  # the verdict came first
+    [line] = [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR]
+    assert RUN_ID in line and REQUEST_ID in line and "JudgeFailed" in line
+
+
+def test_thirteen_seconds_left_is_enough():
+    world = World()
+    world.handle(context=LambdaContext(remaining_ms=13_000))
+    assert len(world.lines) == 1 and len(world.flagsmith.tracked) == len(names.EVENTS)
+
+
+# ---------------------------------------------------------------------------
+# Events tracked one at a time
+# ---------------------------------------------------------------------------
+def _failing_track(world: World, failing_call: int) -> None:
+    real = world.flagsmith.track_event
+    calls = []
+
+    def track_event(event, identifier=None, value=None, traits=None, metadata=None):
+        calls.append(event)
+        if len(calls) == failing_call:
+            raise RuntimeError("the buffer is gone")
+        real(event, identifier=identifier, value=value)
+
+    world.flagsmith.track_event = track_event
+
+
+@pytest.mark.parametrize("failing_call", [2, 3])
+def test_a_track_that_fails_after_the_first_is_logged_and_never_raised(failing_call, caplog):
+    """A retry would track every event again, so once one is tracked the judge returns."""
+    caplog.set_level(logging.WARNING, logger=JUDGE_LOGGER)
+    world = World()
+    _failing_track(world, failing_call)
+
+    world.handle()  # returns
+
+    assert len(world.flagsmith.tracked) == failing_call - 1
+    assert world.flagsmith.flushes == 1
+    [line] = [r.getMessage() for r in caplog.records if r.name == JUDGE_LOGGER]
+    assert RUN_ID in line and REQUEST_ID in line and "RuntimeError" in line
+    _clean(line)
+
+
+def test_a_first_track_that_fails_raises_for_a_clean_retry(caplog):
+    caplog.set_level(logging.WARNING, logger=JUDGE_LOGGER)
+    world = World()
+    _failing_track(world, 1)
+
+    with pytest.raises(RuntimeError):
+        world.handle()
+
+    assert world.flagsmith.tracked == []
+    [line] = [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR]
+    assert RUN_ID in line and REQUEST_ID in line and "RuntimeError" in line
 
 
 def test_the_judge_loads_without_the_answer_package_or_jsonschema():

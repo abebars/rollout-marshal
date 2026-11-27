@@ -26,13 +26,18 @@ model_id, question, answer, input_tokens, output_tokens, latency_ms}. For one an
 Failures, the lead's decision for 3.3: all or nothing, in an order that makes Lambda's
 retry safe.
 - The judge call and the reply's parse come before any write. An unparseable reply is not
-  a failure.
+  a failure. The call has a 5 s connect and a 10 s read timeout, so it ends well inside the
+  function's 30 s; botocore's 60 s defaults would let Lambda kill it with no line logged.
+- Nothing is written with under 13 s left: one SDK send takes about 12 s, plus 1 s. The
+  judge raises JudgeFailed instead, so the retry starts clean and no flush is cut off by
+  the timeout, which could send the events twice.
 - CloudWatch is written first, then the Flagsmith events. Any failure up to the events
   raises, so Lambda's asynchronous retries run the answer again. A retry after a failed
   write may count the cost twice in CloudWatch, which is the safe side for the budget check.
-- Once the events are tracked nothing raises, because a retry would track them again. The
-  SDK's flush_events() swallows send errors anyway: it returns once the batch is
-  delivered, dropped, or kept for its next send (flagsmith 6.7.0, analytics.py).
+- The events are tracked one at a time. Once the first is tracked nothing raises, because
+  a retry would track them again: a later track that fails logs one warning. The SDK's
+  flush_events() swallows send errors anyway: it returns once the batch is delivered,
+  dropped, or kept for its next send (flagsmith 6.7.0, analytics.py).
 - Each failed attempt logs one line with the run ID, Lambda's request ID and the error
   type. The request ID is the same on each retry of one event, so its lines are the
   attempts of one answer. Nothing logged names the identity or quotes the question or the
@@ -77,6 +82,12 @@ SYSTEM_PROMPT = (
     f" {HELPFUL_REPLY} or {NOT_HELPFUL_REPLY}."
 )
 THROTTLING_CODE = "ThrottlingException"  # Bedrock's error code for a throttled request
+# The judge's time limits, the lead's decision for 3.3: its Bedrock call ends well inside
+# the function's 30 s, and nothing is written with less time left than a flush needs.
+JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS = 5  # names.JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS after c4
+JUDGE_BEDROCK_READ_TIMEOUT_SECONDS = 10  # names.JUDGE_BEDROCK_READ_TIMEOUT_SECONDS after c4
+# One SDK send of about 12 s, plus 1 s.
+JUDGE_FLUSH_RESERVE_SECONDS = 13  # names.JUDGE_FLUSH_RESERVE_SECONDS after c4
 
 PRICES_PATH = Path(__file__).resolve().parents[2] / names.PRICES_FILE
 # The shape of app/prices.json, the lead's decision for 3.3.
@@ -315,11 +326,13 @@ class Judge:
         self._flagsmith = None
         self._prices: dict[str, Price] | None = None
 
-    def handle(self, event: object, request_id: str | None = None) -> dict:
+    def handle(self, event: object, context: object = None) -> dict:
         """Judge one answer and send its outcome, which it returns. Or it logs one line and
-        raises, having sent no event. request_id is Lambda's, kept across its retries."""
+        raises, having sent no event. context is Lambda's: its request ID, kept across
+        Lambda's retries, and the time the function has left."""
+        request_id = getattr(context, "aws_request_id", None)
         try:
-            return self._judge(event)
+            return self._judge(event, context, request_id)
         except Exception as err:
             detail = f": {err}" if isinstance(err, JudgeThrottled | JudgeFailed) else ""
             logger.error(
@@ -333,7 +346,7 @@ class Judge:
         finally:
             self._flush(event, request_id)  # before every return, error paths included
 
-    def _judge(self, event: object) -> dict:
+    def _judge(self, event: object, context: object, request_id: str | None) -> dict:
         problem = payload_problem(event)
         if problem:
             raise JudgeFailed(f"not a judge_payload: {problem}")
@@ -343,10 +356,33 @@ class Judge:
         client = self._client()
         helpful = int(self._verdict(event))  # 1 or 0: an int, never a bool
         outcome = dict(zip(names.EVENTS, (helpful, event["latency_ms"], cost), strict=True))
-        # The writes: CloudWatch, then the Flagsmith events. Nothing after them raises.
+        if context is not None:
+            left = context.get_remaining_time_in_millis() / 1000
+            if left < JUDGE_FLUSH_RESERVE_SECONDS:
+                raise JudgeFailed(
+                    f"{left:.1f} s left, under the {JUDGE_FLUSH_RESERVE_SECONDS} s a flush"
+                    " needs; nothing is written, so Lambda's retry starts clean"
+                )
+        # The writes: CloudWatch, then the Flagsmith events, one at a time. Once the first
+        # event is tracked nothing raises, because a retry would track them all again.
         self.emit(metric_line(event["served"], cost, helpful, int(self.wall() * 1000)))
-        for name, value in outcome.items():
-            client.track_event(name, identifier=event["identity"], value=value)
+        for count, (name, value) in enumerate(outcome.items()):
+            try:
+                client.track_event(name, identifier=event["identity"], value=value)
+            except Exception as err:
+                if count == 0:
+                    raise  # nothing tracked: the failure line, and Lambda's retry
+                logger.warning(
+                    "run %s, request %s: tracking %s failed with %s after %d of %d events;"
+                    " not retried, so no event is sent twice",
+                    event["run_id"],
+                    request_id,
+                    name,
+                    type(err).__name__,
+                    count,
+                    len(outcome),
+                )
+                break
         return outcome
 
     def _price(self, model_id: str) -> Price:
@@ -426,11 +462,16 @@ class Judge:
 # Clients and the entry point
 # ---------------------------------------------------------------------------
 def new_bedrock_client():
-    """A bedrock-runtime client in us-east-1 that makes one attempt per call."""
+    """A bedrock-runtime client in us-east-1 that makes one attempt per call, bounded well
+    inside the function's 30 s. botocore's defaults, 60 s each, would outlive it."""
     return boto3.client(
         names.BEDROCK_RUNTIME_SERVICE,
         region_name=names.REGION,
-        config=Config(retries={"total_max_attempts": 1}),
+        config=Config(
+            connect_timeout=JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS,
+            read_timeout=JUDGE_BEDROCK_READ_TIMEOUT_SECONDS,
+            retries={"total_max_attempts": 1},
+        ),
     )
 
 
@@ -462,4 +503,4 @@ def handler(event, context):
             flagsmith_factory=new_flagsmith_client,
             prices_loader=load_prices,
         )
-    return _judge.handle(event, request_id=getattr(context, "aws_request_id", None))
+    return _judge.handle(event, context)
