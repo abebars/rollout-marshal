@@ -301,7 +301,7 @@ their tasks name, not against each other.
     against `rm-flagsmith-admin`'s 30-second timeout, and reads it back; **Human** ends
     it; the ID is in the pull request.
 
-- [ ] 2.3 **Planner**
+- [x] 2.3 **Planner**
   - Needs: 1.1. Files: `agent/runtime/rm_agent/planner.py`,
     `agent/tests/test_planner.py`.
   - Produces: `make_plan(prompt) -> Plan`, valid against `plan.json`. The
