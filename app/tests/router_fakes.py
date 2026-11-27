@@ -18,6 +18,7 @@ from __future__ import annotations
 import io
 import json
 import threading
+import time as real_time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import NamedTuple
@@ -124,14 +125,18 @@ def function_error(error_type: str) -> dict:
 class FakeLambda:
     """reply(function, request) gives a synchronous invoke's response: by default a valid
     answer, a dict from function_error(), or an exception to raise. Each answer takes
-    answer_seconds on FakeTime."""
+    answer_seconds on FakeTime, and real_seconds of real time (for tests of what runs
+    alongside it); answer_started_at and answer_finished_at record the real time."""
 
     def __init__(self, time: FakeTime, answer_seconds: float = 1.5) -> None:
         self.time = time
         self.answer_seconds = answer_seconds
+        self.real_seconds = 0.0
         self.invokes: list[Invoke] = []
         self.reply: Callable[[str, dict], object] = answer_for
         self.judge_error: Exception | None = None
+        self.answer_started_at: float | None = None
+        self.answer_finished_at: float | None = None
 
     def invoke(self, *, FunctionName: str, InvocationType: str, Payload: bytes):  # noqa: N803
         payload = json.loads(Payload)
@@ -140,7 +145,11 @@ class FakeLambda:
             if self.judge_error is not None:
                 raise self.judge_error
             return {"StatusCode": 202, "Payload": io.BytesIO(b"")}
+        self.answer_started_at = real_time.monotonic()
+        if self.real_seconds:
+            real_time.sleep(self.real_seconds)
         self.time.advance(self.answer_seconds)
+        self.answer_finished_at = real_time.monotonic()
         outcome = self.reply(FunctionName, payload)
         if isinstance(outcome, BaseException):
             raise outcome
@@ -212,7 +221,11 @@ class FakeFlagsmith:
         self.environment_requests = 0
         self.exposures: list[dict] = []
         self.events: list[dict] = []
-        self.flushes = 0
+        self.flushes = 0  # counted when a flush finishes
+        self.flush_seconds = 0.0  # real time a flush takes
+        self.flush_error: Exception | None = None
+        self.flush_started_at: float | None = None
+        self.flush_finished_at: float | None = None
 
     def get_identity_flags(self, identifier, traits=None, *, transient=False):
         self.calls.append("identity")
@@ -248,7 +261,13 @@ class FakeFlagsmith:
 
     def flush_events(self):
         self.calls.append("flush")
+        self.flush_started_at = real_time.monotonic()
+        if self.flush_seconds:
+            real_time.sleep(self.flush_seconds)
+        if self.flush_error is not None:
+            raise self.flush_error
         self.flushes += 1
+        self.flush_finished_at = real_time.monotonic()
 
 
 # ---------------------------------------------------------------------------
@@ -277,14 +296,16 @@ class _Server(ThreadingHTTPServer):
 
 class FakeFlagsmithApi:
     """POST /api/v1/identities/ returns flags_for(identifier); POST /v1/events records the
-    batch. With hold_events set, every events POST waits until it is set (or
-    HOLD_SECONDS), long past the SDK's 3 second timeout."""
+    batch. With hold_events (or hold_identities) set, every events (or identities) POST
+    waits until it is set, or HOLD_SECONDS, long past the SDK's timeouts: a Flagsmith that
+    accepts the connection and never answers."""
 
     HOLD_SECONDS = 15
 
     def __init__(self) -> None:
         self.flags_for: Callable[[str], list[dict]] = lambda identifier: []
         self.hold_events: threading.Event | None = None
+        self.hold_identities: threading.Event | None = None
         self.identity_bodies: list[dict] = []
         self.event_batches: list[list[dict]] = []
         self.event_posts = 0
@@ -312,9 +333,16 @@ class FakeFlagsmithApi:
         self._thread.start()
         return self
 
+    def release(self) -> None:
+        """Answer at once from now on, and let every held POST go."""
+        held = (self.hold_events, self.hold_identities)
+        self.hold_events = self.hold_identities = None
+        for gate in held:
+            if gate is not None:
+                gate.set()
+
     def stop(self) -> None:
-        if self.hold_events is not None:
-            self.hold_events.set()
+        self.release()
         self._server.shutdown()
         self._server.server_close()
 
@@ -342,12 +370,18 @@ class FakeFlagsmithApi:
                 if self.path == "/api/v1/identities/":
                     with fake._lock:
                         fake.identity_bodies.append(body)
+                    held = fake.hold_identities
+                    if held is not None:
+                        held.wait(fake.HOLD_SECONDS)
+                        self._reply(503, None)
+                        return
                     self._reply(200, {"flags": fake.flags_for(body["identifier"]), "traits": []})
                 elif self.path == "/v1/events":
                     with fake._lock:
                         fake.event_posts += 1
-                    if fake.hold_events is not None:
-                        fake.hold_events.wait(fake.HOLD_SECONDS)
+                    held = fake.hold_events
+                    if held is not None:
+                        held.wait(fake.HOLD_SECONDS)
                         self._reply(503, None)
                         return
                     with fake._lock:

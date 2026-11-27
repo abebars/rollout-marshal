@@ -602,6 +602,35 @@ def test_flush_events_runs_before_every_return(active):
     assert active.flagsmith.calls[-1] == "flush"
 
 
+def test_a_failing_flush_is_logged_and_the_answer_still_returned(active, caplog):
+    active.flagsmith.flush_error = RuntimeError("the events processor broke")
+    caplog.set_level(logging.WARNING, logger=ROUTER_LOGGER)
+
+    assert _ask(active) == (200, {names.ANSWER_RESPONSE_FIELDS[0]: "An answer from cheaper."})
+    assert "flush_events failed (RuntimeError)" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        function_error("AnswerFailed"),
+        function_error("AnswerThrottled"),
+        ClientError({"Error": {"Code": "ServiceException"}}, "Invoke"),
+    ],
+    ids=["502", "503", "an invoke exception"],
+)
+def test_on_an_answer_error_the_flush_is_joined_before_the_return(active, reply):
+    active.flagsmith.flush_seconds = 0.3  # the flush thread outlasts the failed answer
+    active.lam.reply = lambda function, request: reply
+
+    status, _ = _ask(active)
+    returned = time.monotonic()
+
+    assert status in (502, 503)
+    assert active.flagsmith.flushes == 1
+    assert active.flagsmith.flush_finished_at <= returned  # joined, not left running
+
+
 def test_before_the_first_flagsmith_call_there_is_nothing_to_flush(active):
     active.router.handle({"body": "not json"})
     assert active.flagsmith.calls == []
@@ -741,7 +770,15 @@ def test_the_flagsmith_client_is_built_from_the_server_key_with_events_on(monkey
 
     with stubber:
         assert handler.new_flagsmith_client() == "client"
-    assert built == [{"environment_key": DUMMY_SDK_KEY, **names.FLAGSMITH_CLIENT_OPTIONS}]
+    [kwargs] = built
+    retries = kwargs.pop("retries")
+    # c3's limits spelled out, not the handler's constants (names.* after c3).
+    assert kwargs == {
+        "environment_key": DUMMY_SDK_KEY,
+        **names.FLAGSMITH_CLIENT_OPTIONS,
+        "request_timeout_seconds": 3,
+    }
+    assert (retries.total, retries.backoff_factor) == (1, 0)
     assert DUMMY_SDK_KEY not in caplog.text
 
 
@@ -790,20 +827,19 @@ def flagsmith_api():
     clients: list[Flagsmith] = []
 
     def real_client() -> Flagsmith:
-        client = Flagsmith(
-            environment_key=DUMMY_SDK_KEY,
+        """The client the router builds in production, pointed at this server."""
+        client = handler.flagsmith_client(
+            DUMMY_SDK_KEY,
             api_url=api.api_url,
-            **names.FLAGSMITH_CLIENT_OPTIONS,
             event_processor_config=EventProcessorConfig(events_api_url=api.events_url),
         )
         clients.append(client)
         return client
 
     api.real_client = real_client
+    api.clients = clients
     yield api
-    held, api.hold_events = api.hold_events, None  # later sends are answered at once
-    if held is not None:
-        held.set()  # and the held ones let go
+    api.release()  # later sends are answered at once, and the held ones let go
     for client in clients:
         client.close()
     api.stop()
@@ -824,11 +860,94 @@ def test_with_the_real_sdk_one_identity_request_and_the_exposure_reach_flagsmith
     assert [a.function for a in world.lam.answers()] == [names.ANSWER_CHEAPER_FUNCTION]
 
 
+# A faulted cheaper answer: the 10 s fault plus about 3 s of Sonnet 5 (1.2's one sample: 2.8 s).
+FAULTED_ANSWER_SECONDS = names.FIS_DELAY_MS / 1000 + 3
+
+
+def test_the_flush_runs_alongside_the_answer_and_is_joined_before_the_return(
+    flagsmith_api, record_property, capsys
+):
+    """Contract change c3, option (a). The flush starts right after the exposure, runs
+    while the answer does, and is joined before the router returns.
+
+    With a silent events API and a faulted 13 s answer, the request takes about the longer
+    of the two: within c3's 3 s for the identity request, plus 13 s, plus 1.5 s. It does not
+    take their sum."""
+    flagsmith_api.hold_events = threading.Event()
+    times: dict[str, float] = {}
+
+    def watched_client():
+        client = flagsmith_api.real_client()
+        real_flush = client.flush_events
+
+        def flush_events():
+            times["flush_started"] = time.monotonic()
+            real_flush()
+            times["flush_finished"] = time.monotonic()
+
+        client.flush_events = flush_events
+        return client
+
+    world = _world(pointer=pointer_item(RUN_ID), flagsmith=watched_client)
+    world.lam.real_seconds = FAULTED_ANSWER_SECONDS
+
+    started = time.perf_counter()
+    status, _ = _ask(world)
+    returned = time.monotonic()
+    elapsed = time.perf_counter() - started
+
+    assert status == 200
+    assert FAULTED_ANSWER_SECONDS <= elapsed <= 3 + FAULTED_ANSWER_SECONDS + 1.5
+    # Alongside: the flush began before the answer ended, and ended before the return.
+    assert times["flush_started"] < world.lam.answer_finished_at
+    assert times["flush_finished"] <= returned
+    # Every one of the flush's attempts, before the return. The SDK's own 10 s timer may add a
+    # send of the kept batch while the answer still runs, independent of the router.
+    assert flagsmith_api.event_posts >= EVENTS_MAX_ATTEMPTS
+    # One after the other they would have taken at least the answer plus three 3 s attempts.
+    sequential_at_least = FAULTED_ANSWER_SECONDS + EVENTS_MAX_ATTEMPTS * (
+        EVENTS_REQUEST_TIMEOUT_SECONDS
+    )
+    assert elapsed < sequential_at_least
+    record_property("request_seconds_with_a_13_s_answer_and_a_silent_events_api", round(elapsed, 2))
+    with capsys.disabled():
+        print(
+            f"\n13 s answer and a silent events API: {elapsed:.2f} s in all; the flush took"
+            f" {times['flush_finished'] - times['flush_started']:.2f} s alongside it"
+            f" (one after the other: at least {sequential_at_least:.0f} s)"
+        )
+
+
+def test_with_c3s_limits_a_silent_identity_request_gives_up_after_one_3_second_attempt(
+    flagsmith_api, record_property, capsys
+):
+    """c3's request_timeout_seconds reaches the identity request. urllib3 never retries a
+    POST after a read timeout, so Retry(total=1) adds no second try here; it retries only
+    a failed connect. So a Flagsmith that accepts and never answers costs one 3 s try."""
+    flagsmith_api.hold_identities = threading.Event()
+    world = _world(pointer=pointer_item(RUN_ID), flagsmith=flagsmith_api.real_client)
+
+    started = time.perf_counter()
+    assert _ask(world) == (502, {"error": handler.UPSTREAM_FAILED})
+    elapsed = time.perf_counter() - started
+
+    assert len(flagsmith_api.identity_bodies) == 1
+    assert 3 <= elapsed <= 4  # c3's 3 s, plus a little overhead
+    assert world.lam.invokes == []  # nothing was answered
+    record_property("identity_request_seconds", round(elapsed, 2))
+    with capsys.disabled():
+        print(f"\nidentity request with a silent Flagsmith, c3's limits: {elapsed:.2f} s, 1 try")
+
+
 def test_with_a_slow_events_api_the_flush_takes_about_twelve_seconds(
     flagsmith_api, record_property, capsys
 ):
     """Records how long flush_events() takes when the events API never answers, as task 3.2
-    asks. Every attempt then hits the SDK's own timeout."""
+    asks. Every attempt then hits the SDK's own timeout.
+
+    c3's limits do not reach the flush. The SDK's events processor keeps its own session and
+    posts with its own Final constants, a 3 s timeout and 3 attempts, whatever the client
+    was given (flagsmith 6.7.0, analytics.py)."""
     flagsmith_api.hold_events = threading.Event()
     world = _world(pointer=pointer_item(RUN_ID), flagsmith=flagsmith_api.real_client)
 
@@ -837,7 +956,10 @@ def test_with_a_slow_events_api_the_flush_takes_about_twelve_seconds(
     elapsed = time.perf_counter() - started
 
     assert status == 200  # the answer still comes back once the flush gives up
-    assert flagsmith_api.event_posts == EVENTS_MAX_ATTEMPTS
+    [client] = flagsmith_api.clients
+    assert client.request_timeout_seconds == 3  # c3's limit, on the client
+    assert client.session.get_adapter(flagsmith_api.api_url).max_retries.total == 1
+    assert flagsmith_api.event_posts == EVENTS_MAX_ATTEMPTS == 3  # not 2: retries ignored
     assert flagsmith_api.events() == []  # kept for the next send, never delivered
     # Three attempts of 3 s each, with random backoffs of up to 1 s and then 2 s between them
     # (flagsmith/analytics.py), so between 9 s and 12 s, plus a little overhead.
@@ -846,14 +968,15 @@ def test_with_a_slow_events_api_the_flush_takes_about_twelve_seconds(
         EVENTS_RETRY_BASE_SECONDS * 2**n for n in range(EVENTS_MAX_ATTEMPTS - 1)
     )
     assert shortest <= elapsed <= longest + 1.5
-    # The budget: the router's 29 s, less the slowest such flush and the 10 s fault, is what a
-    # faulted cheaper answer has left.
-    left = names.ROUTER_TIMEOUT_SECONDS - longest - names.FIS_DELAY_MS / 1000
+    # The budget, now that the flush runs alongside the answer (c3, option (a)). The router's
+    # 29 s, less c3's 3 s identity request, leaves 26 s for the longer of the answer and the
+    # flush. That covers the answer function's own 25 s timeout, so the slowest flush, 12 s,
+    # never sets the limit. One after the other, a faulted answer would have had 7 s.
+    for_answer_or_flush = names.ROUTER_TIMEOUT_SECONDS - 3  # names.* after c3
+    assert longest < names.ANSWER_TIMEOUT_SECONDS <= for_answer_or_flush
     record_property("flush_seconds", round(elapsed, 2))
-    record_property("answer_seconds_left_under_the_fault", left)
     with capsys.disabled():
         print(
             f"\nflush with a silent events API: {elapsed:.2f} s (at most {longest:.0f} s);"
-            f" the cheaper model's own answer time left under the fault: {left:.0f} s"
+            f" alongside the answer, which has up to {for_answer_or_flush} s"
         )
-    assert left == 7

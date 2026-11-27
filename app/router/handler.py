@@ -28,7 +28,12 @@ metric are section 5's. Per request:
    AnswerThrottled is 503. Any other function error (Lambda's own timeout included), a
    reply that is not the served arm's answer_response, or a failed invoke is 502. Either
    body is {"error": <errorType, or invoke_failed>}.
-8. flush_events() before every return.
+8. flush_events() before every return. Where an answer is invoked, it starts on a thread
+   just before the invoke, right after the exposure, and is joined before the return. A
+   slow events API then overlaps the answer instead of adding to it (contract change c3).
+   The SDK client gives up on a request after 3 s and retries it at most once, which bounds
+   the identity request. Its events processor ignores both settings, so a flush can take
+   up to 12 s.
 
 Also the lead's decision: flags without the experiment feature while a run is active
 (just after launch, say) serve current, record nothing, do not invoke rm-judge, and log
@@ -55,6 +60,7 @@ import base64
 import binascii
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass
 
@@ -62,6 +68,7 @@ import boto3
 from botocore.config import Config
 from flagsmith import Flagsmith
 from flagsmith.exceptions import FlagsmithFeatureDoesNotExistError
+from urllib3 import Retry
 
 from contracts import names
 
@@ -76,6 +83,11 @@ INVOKE_FAILED = "invoke_failed"
 UPSTREAM_FAILED = "upstream_failed"
 SYNC, ASYNC = "RequestResponse", "Event"  # Lambda InvocationType values
 IDENTITY_USER_SEPARATOR = "-user-"  # <run_id>-user-NNN (names.run_identity)
+# The SDK's request limits (contract change c3), so a Flagsmith that never answers cannot
+# spend the router's 29 s: each request gives up after 3 s and is retried at most once,
+# with no backoff. Until c3 merges, the values are kept here.
+FLAGSMITH_REQUEST_TIMEOUT_SECONDS = 3  # names.FLAGSMITH_REQUEST_TIMEOUT_SECONDS after c3
+FLAGSMITH_RETRY = {"total": 1, "backoff_factor": 0}  # names.FLAGSMITH_RETRY after c3
 
 
 class Upstream(Exception):
@@ -214,12 +226,14 @@ class Router:
         self.clock, self.timer, self.wall, self.emit = clock, timer, wall, emit
         self._pointer: tuple[float, Run | None] | None = None
         self._default: tuple[float, str] | None = None
+        self._flushing: threading.Thread | None = None  # this request's flush, while it runs
 
     def handle(self, event: object) -> dict:
+        self._flushing = None
         try:
             return self._route(event)
         finally:
-            self._flush()
+            self._finish_flush()  # before every return, error paths included
 
     # -- the steps ----------------------------------------------------------
     def _route(self, event: object) -> dict:
@@ -279,6 +293,7 @@ class Router:
         """Invoke the served arm, time it, emit the latency, and judge a good answer."""
         function = names.ANSWER_FUNCTION_BY_VARIANT[served]
         request = json.dumps({QUESTION_FIELD: question, IDENTITY_FIELD: identity}).encode()
+        self._start_flush()  # right after the exposure: it runs while the answer does
         started = self.timer()
         try:
             reply = self.lambda_client.invoke(
@@ -425,8 +440,25 @@ class Router:
         }
         self.emit(json.dumps(document))
 
-    def _flush(self) -> None:
-        """flush_events() before every return; before the first Flagsmith call there is none."""
+    # -- flushing (contract change c3, option (a)) --------------------------------------
+    def _start_flush(self) -> None:
+        """Flush on a thread while the answer runs, so a slow events API overlaps the answer
+        instead of adding to it: the request takes about the identity request plus the
+        longer of the two. Nothing is tracked while it runs: rm-judge is a Lambda invoke."""
+        if self._flagsmith is None:
+            return  # before the first Flagsmith call, nothing was ever tracked
+        self._flushing = threading.Thread(target=self._flush_now, name="flush", daemon=True)
+        self._flushing.start()
+
+    def _finish_flush(self) -> None:
+        """Join this request's flush thread, or flush now when none was started."""
+        thread, self._flushing = self._flushing, None
+        if thread is not None:
+            thread.join()
+        else:
+            self._flush_now()
+
+    def _flush_now(self) -> None:
         if self._flagsmith is None:
             return
         try:
@@ -462,12 +494,24 @@ def new_lambda_client():
     )
 
 
+def flagsmith_client(environment_key: str, **overrides) -> Flagsmith:
+    """The SDK client rm-router uses: remote evaluation with events on, and c3's request
+    limits. Tests pass a local server's URLs in overrides."""
+    return Flagsmith(
+        environment_key=environment_key,
+        **names.FLAGSMITH_CLIENT_OPTIONS,
+        request_timeout_seconds=FLAGSMITH_REQUEST_TIMEOUT_SECONDS,
+        retries=Retry(**FLAGSMITH_RETRY),
+        **overrides,
+    )
+
+
 def new_flagsmith_client() -> Flagsmith:
     """The SDK client, built with the server key read from Secrets Manager at run time. The
     key stays in memory: nothing logs or returns it (design.md section 8)."""
     secrets = boto3.client("secretsmanager", region_name=names.REGION)
     key = secrets.get_secret_value(SecretId=names.SECRET_FLAGSMITH_SERVER_KEY)["SecretString"]
-    return Flagsmith(environment_key=key, **names.FLAGSMITH_CLIENT_OPTIONS)
+    return flagsmith_client(key)
 
 
 _router: Router | None = None
