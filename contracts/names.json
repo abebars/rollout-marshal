@@ -87,13 +87,17 @@
   "ANSWER_CHEAPER_FUNCTION": "rm-answer-cheaper",
   "ANSWER_COST_STOP_MICRO_USD": 60000000,
   "ANSWER_CURRENT_FUNCTION": "rm-answer-current",
+  "ANSWER_ERROR_FAILED": "AnswerFailed",
+  "ANSWER_ERROR_THROTTLED": "AnswerThrottled",
   "ANSWER_FUNCTION_BY_VARIANT": {
     "cheaper": "rm-answer-cheaper",
     "current": "rm-answer-current"
   },
+  "ANSWER_HANDLER": "app.answer.handler.handler",
   "ANSWER_HARD_STOP": 7500,
   "ANSWER_MAX_TOKENS": 2000,
   "ANSWER_MAX_WORDS": 120,
+  "ANSWER_MODEL_ENV": "MODEL_ID",
   "ANSWER_REQUEST_FIELDS": [
     "question",
     "identity"
@@ -107,10 +111,18 @@
   "ANSWER_THINKING_EFFORT": "low",
   "ANSWER_TIMEOUT_SECONDS": 25,
   "API_AUTHORIZATION_TYPE": "AWS_IAM",
+  "API_FEATURE_MULTIVARIATE": "MULTIVARIATE",
+  "API_FEATURE_STANDARD": "STANDARD",
   "API_GATEWAY_TIMEOUT_SECONDS": 30,
   "API_INVOKE_ACTION": "execute-api:Invoke",
+  "API_METRIC_DEFINITION_VERSION": 1,
+  "API_OPTION_TYPE": "unicode",
+  "API_PATH_ID": "id__path",
+  "API_PAYLOAD_FORMAT_VERSION": "2.0",
+  "API_ROLLOUT_VALUE_TYPE": "string",
   "API_ROUTE_KEY": "POST /ask",
   "API_SIGV4_SERVICE": "execute-api",
+  "API_VERSION_VALUE_TYPE": "unicode",
   "APP_ASK_URL_OUTPUT": "ask_url",
   "AWAITING_BY_STATE": {
     "AWAITING_RESUME": "resume",
@@ -150,6 +162,7 @@
   "CLI_NAME": "marshal",
   "CONTROL_LABEL": "control",
   "CONTROL_VALUE": "current",
+  "CREDIBLE_INTERVAL_PERCENT": 95,
   "CW_DIMENSION_SETS": [
     [
       "Variant"
@@ -223,8 +236,10 @@
   "EXPERIMENT_FEATURE_KEY_TEMPLATE": "assistant_model_<run_id>",
   "EXPERIMENT_FEATURE_PREFIX": "assistant_model_",
   "EXPERIMENT_ROLLOUT_PERCENT": 100,
+  "EXPERIMENT_STATUS_CREATED": "created",
   "EXPERIMENT_STATUS_ENDED": "completed",
   "EXPERIMENT_STATUS_PAUSED": "paused",
+  "EXPERIMENT_STATUS_RUNNING": "running",
   "EXPOSURE_METADATA_KEY": "experiment_id",
   "FEATURE_KEYS": [
     "assistant_model_<run_id>",
@@ -247,11 +262,22 @@
     "rollout/"
   ],
   "FLAGSMITH_ADMIN_FUNCTION": "rm-flagsmith-admin",
+  "FLAGSMITH_ADMIN_LOG_GROUP": "/aws/lambda/rm-flagsmith-admin",
   "FLAGSMITH_ADMIN_METHODS": [
     "GET",
     "POST"
   ],
+  "FLAGSMITH_ADMIN_POLICY": "rm-flagsmith-admin-policy",
+  "FLAGSMITH_ADMIN_REQUEST_TIMEOUT_SECONDS": 4,
+  "FLAGSMITH_ADMIN_ROLE": "rm-flagsmith-admin-role",
   "FLAGSMITH_ADMIN_TIMEOUT_SECONDS": 30,
+  "FLAGSMITH_ADMIN_TOOLS": [
+    "ensure_metrics",
+    "start_experiment",
+    "refresh_results",
+    "get_results",
+    "get_experiment"
+  ],
   "FLAGSMITH_API_KEY_NAME": "rollout-marshal-agent",
   "FLAGSMITH_CLIENT_OPTIONS": {
     "enable_events": true
@@ -283,6 +309,8 @@
   ],
   "FLAGSMITH_SDK_MIN_VERSION": "6.6.0",
   "FLAGSMITH_SDK_PACKAGE": "flagsmith",
+  "FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS": 3,
+  "FLAGSMITH_SDK_RETRIES": 1,
   "FLAGSMITH_USAGE_STOP": 35000,
   "FORBIDDEN_SAMPLING_PARAMETERS": [
     "temperature",
@@ -493,6 +521,11 @@
   },
   "MODEL_CHEAPER": "us.anthropic.claude-sonnet-5",
   "MODEL_CURRENT": "us.anthropic.claude-fable-5-1",
+  "MODEL_DISPLAY_NAMES": {
+    "us.anthropic.claude-fable-5-1": "Claude Fable 5.1",
+    "us.anthropic.claude-haiku-5-5": "Claude Haiku 5.5",
+    "us.anthropic.claude-sonnet-5": "Claude Sonnet 5"
+  },
   "MODEL_JUDGE": "us.anthropic.claude-haiku-5-5",
   "NAMES_JSON_FILE": "contracts/names.json",
   "NO_ACTIVE_RUN_MESSAGE": "no active run",
@@ -566,6 +599,7 @@
   "RECOMMEND_HOLD": "hold",
   "RECOMMEND_HOLD_RERUN": "hold, re-run",
   "RECOMMEND_PROMOTE": "promote",
+  "REFRESH_CLOCK_ALLOWANCE_SECONDS": 60,
   "REGION": "us-east-1",
   "REPO": "github.com/abebars/rollout-marshal",
   "REPORTS_BUCKET": "rm-reports-818928662830",
@@ -600,7 +634,11 @@
   "RESULTS_REFRESH_MIN_SECONDS": 300,
   "REVIEW_PROFILE": "rm-review",
   "REVIEW_ROLE": "rm-review-readonly",
+  "ROUTER_ERROR_BAD_REQUEST": "bad_request",
+  "ROUTER_ERROR_INVOKE_FAILED": "invoke_failed",
+  "ROUTER_ERROR_UPSTREAM_FAILED": "upstream_failed",
   "ROUTER_FUNCTION": "rm-router",
+  "ROUTER_HANDLER": "app.router.handler.handler",
   "ROUTER_TIMEOUT_SECONDS": 29,
   "RUNS_TABLE": "rm-runs",
   "RUN_IDENTITY_PATTERN": "^r[a-z]*[0-9]{4,12}-user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$",
