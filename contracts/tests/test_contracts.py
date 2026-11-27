@@ -537,6 +537,10 @@ def test_contract_c2():
         in spec.read_text()
     )
     assert (
+        f"Flagsmith's {names.CREDIBLE_INTERVAL_PERCENT} percent credible interval for the relative "
+        "lift" in re.sub(r"\s+", " ", section(7))
+    )
+    assert (
         f"recommend `promote` only if the lower bound of the {names.CREDIBLE_INTERVAL_PERCENT} "
         "percent credible interval that Flagsmith gives for the lift on `helpful_rate`"
         in flat_section(6)
@@ -690,7 +694,7 @@ def test_contract_c3_models_and_the_router():
         ).groups(),
     )
     assert answer > names.FIS_DELAY_MS // 1000  # the injected delay plus the answer itself
-    assert (low, high) == (timeout + max(answer, send), identity_slow + max(answer, send))
+    assert (low, high) == (identity_one + max(answer, send), identity_slow + max(answer, send))
     assert high < names.ROUTER_TIMEOUT_SECONDS < names.API_GATEWAY_TIMEOUT_SECONDS
     # A queued flush can outlast the router, which is why the join is bounded.
     assert identity_slow + queued > names.ROUTER_TIMEOUT_SECONDS
@@ -801,8 +805,9 @@ def test_contract_c3_agent_tools():
     limits = re.search(
         rf"Names and limits: role `{names.FLAGSMITH_ADMIN_ROLE}`, inline policy "
         rf"`{names.FLAGSMITH_ADMIN_POLICY}`, log group `{log_group}`, 128 MB, and a "
-        rf"{per_request} second timeout per request: a tool makes at most (\d+) requests, "
-        rf"(\d+) seconds, inside the {lambda_timeout} second Lambda timeout\.",
+        rf"{per_request} second timeout on each socket operation: a tool makes at most (\d+) "
+        rf"requests, about (\d+) seconds when each stalls once, inside the {lambda_timeout} second "
+        r"Lambda timeout; a slower tool ends in that timeout\.",
         sec7,
     )
     most, total = (int(g) for g in limits.groups())
@@ -887,6 +892,7 @@ def test_contract_c3_tasks_point_at_the_new_text():
         "Files: `agent/runtime/rm_agent/handlers.py`, `agent/runtime/main.py`, "
         "`agent/tests/test_handlers.py`, and the one `agent/runtime/rm_agent/state.py` helper "
         "below, with its tests in `agent/tests/test_state.py`.",
+        "- Pass: `pytest agent/tests/test_handlers.py agent/tests/test_state.py` green.",
     ):
         assert line in tasks, line
     spec = re.sub(
@@ -2518,12 +2524,13 @@ PINNED_RULE_SENTENCES = (
     "A failed judge hand-off still returns 200, with a warning.",
     "The router's Lambda client makes one attempt.",
     "The SDK's events processor ignores both (it has its own session, a 3 second timeout and up "
-    "to 3 attempts), so one send can take about 12 seconds.",
+    "to 3 attempts), so one send can take about 12 seconds when each attempt times out once (task "
+    "3.2's case), and longer after a slow connect.",
     "So the flush runs beside the answer (section 4, step 6), and the router bounds its join to "
     "Lambda's remaining time minus 1 second (`context.get_remaining_time_in_millis()`). If the "
     "flush is still running then, the router returns anyway and logs one warning that names no "
     "identity. A late flush loses at most that request's exposure. If no thread can be started, "
-    "the router logs one warning and returns without flushing, because the SDK's own flush has no "
+    "the router logs a warning and returns without flushing, because the SDK's own flush has no "
     "timeout; the SDK's 10 second timer or a later flush sends the events.",
     "A request takes about the identity request plus the longer of the answer and the flush.",
     "Packaging (task 3.5): each zip keeps the repo's paths, so a handler is its module's path "
