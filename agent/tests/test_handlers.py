@@ -555,8 +555,11 @@ def test_the_approval_message_shows_the_injected_plan_values(world):
         *plan["guardrail_metrics"],
         plan["recommendation_rule"]["after_incident"],
         f"{round(plan['recommendation_rule']['promote_min_helpful_lift_ci_lower'] * 100)} percent",
-        f"marshal approve {RUN_ID}",
+        f"marshal approve {RUN_ID} {names.AWAITS_LAUNCH}",
         f"marshal decline {RUN_ID}",
+        f"{round(plan['guardrails']['max_cost_ratio'] * 100)} percent",
+        f"{plan['split'][names.VARIANT_CHEAPER]} percent {names.VARIANT_CHEAPER}",
+        "ended in",
     ):
         assert value in message, value
 
@@ -718,7 +721,18 @@ def test_approve_or_check_on_a_planned_run_with_no_pointer_is_illegal(world, act
     response = world.engineer(action)
     assert error_code(response) == names.ERROR_ILLEGAL_IN_STATE
     assert "start a new one" in response["error"]["message"]
+    assert f"marshal decline {RUN_ID}" in response["error"]["message"]
     assert world.run() == before and world.log == [] and world.pointer() is None
+
+
+def test_status_of_a_reset_planned_run_offers_no_approve(world):
+    world.to(names.STATE_PLANNED)
+    drop_pointer(world)
+    message = world.status(RUN_ID)["message"]
+    assert "marshal approve" not in message and f"marshal decline {RUN_ID}" in message
+    put_pointer(world, "r202611271599")  # a run started since
+    message = world.status(RUN_ID)["message"]
+    assert "marshal approve" not in message and f"marshal decline {RUN_ID}" in message
 
 
 def test_decline_ends_a_planned_run_with_no_pointer(world):
@@ -736,7 +750,21 @@ def test_decline_of_a_planned_run_with_no_pointer_and_a_launch_pending_is_pendin
     response = world.engineer("decline")
     assert error_code(response) == names.ERROR_TRANSITION_PENDING
     assert "start a new one" in response["error"]["message"]
+    assert "pending for" in response["error"]["message"]  # with its age
     assert world.run()["state"] == names.STATE_PLANNED and world.log == []
+
+
+def test_a_decline_in_flight_on_a_reset_run_answers_with_its_age_and_decline(world):
+    world.to(names.STATE_PLANNED)
+    state.claim(RUN_ID, names.STATE_PLANNED, names.STATE_ABORTED)  # another decline
+    drop_pointer(world)
+    world.clock.advance(42)
+    response = world.engineer("decline")
+    assert error_code(response) == names.ERROR_TRANSITION_PENDING
+    message = response["error"]["message"]
+    assert "reset" in message and "pending for 42 s" in message
+    assert f"marshal decline {RUN_ID}" in message and "marshal check" not in message
+    assert world.log == []
 
 
 def test_a_repeat_decline_resumes_its_own_stalled_decline_with_no_pointer(world):
@@ -903,11 +931,19 @@ def test_a_report_prose_failure_in_the_guard_is_upstream_failed_with_no_claim(wo
 
 def test_the_report_carries_the_prose_written_before_the_claim(world):
     world.to(names.STATE_RESULTS_READY)
-    body = world.report_body()
+    body = world.report_body()  # what SNS sends starts with the same report
     assert PROSE in body and f"**{names.RECOMMEND_PROMOTE}**" in body
     assert world.run()["report_key"] == names.report_key(RUN_ID)
     (published,) = [p for p in world.publishes() if names.report_key(RUN_ID) in p["Message"]]
-    assert PROSE in published["Message"]
+    message = published["Message"]
+    assert message.startswith(body.rstrip("\n").split("\n")[0])  # the report's title
+    for section in names.REPORT_SECTIONS:
+        assert f"\n## {section}\n" in message, section
+    assert PROSE in message
+    tail = message.split("## Time taken", 1)[1]
+    assert f"marshal approve {RUN_ID} {names.AWAITS_PROMOTION}" in tail
+    assert f"marshal decline {RUN_ID}" in tail
+    assert tail.rstrip().endswith(f"s3://{names.REPORTS_BUCKET}/{names.report_key(RUN_ID)}")
 
 
 def test_tick_in_rolled_back_with_ready_results_does_not_reach_results_ready(world):
@@ -1057,6 +1093,75 @@ def test_approve_in_results_ready_needs_the_experiment_ended(world, status):
 
 
 # ---------------------------------------------------------------------------
+# The hard rule: no launch, resume or promotion without the engineer's approve
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("action", ["tick", "check"])
+@pytest.mark.parametrize(
+    "source", [names.STATE_PLANNED, names.STATE_AWAITING_RESUME, names.STATE_RESULTS_READY]
+)
+def test_no_tick_or_check_launches_resumes_or_promotes(world, source, action):
+    """With every guard passing (alarm OK, the probe passing, the experiment completed),
+    only the engineer's approve moves these states on (CLAUDE.md's hard rule)."""
+    world.to(source)
+    world.alarm = names.ALARM_STATE_OK
+    world.probe = {"passed": True, "max_ms": 900.0, "reason": "ok"}
+    world.flagsmith.status = names.EXPERIMENT_STATUS_ENDED
+    world.clock.advance(EMBARGO + names.RESULTS_REFRESH_MIN_SECONDS)
+    before = world.run()
+    response = world.tick() if action == "tick" else world.engineer("check")
+    assert response["state"] == source and response["error"] is None
+    assert world.run() == before
+    for step in world.log:
+        assert step[0] not in ("ensure_experiment", "start_experiment", "set_default_model")
+        assert step not in (("set_kill_switch", True), ("set_tick", True)), step
+
+
+@pytest.mark.parametrize(
+    "source, pending",
+    [
+        (names.STATE_RESULTS_READY, names.STATE_PROMOTED),
+        (names.STATE_RUNNING, names.STATE_RESULTS_READY),
+        (names.STATE_RUNNING, names.STATE_HELD),
+    ],
+)
+def test_an_alarm_never_takes_over_another_actions_stale_claim(world, source, pending):
+    world.to(source)
+    state.claim(RUN_ID, source, pending)
+    world.clock.advance(STALE + 1)
+    before = world.run()
+    response = world.alarm_event()
+    assert response["error"] is None and response["pending"] == pending
+    assert world.run() == before and world.log == []
+
+
+def test_an_approve_that_loses_its_claim_before_the_commit_is_pending(world):
+    """Another invocation takes the stale claim over while the effects run, so the
+    commit loses the race: TRANSITION_PENDING, with PROMOTED still pending."""
+    world.to(names.STATE_RESULTS_READY)
+
+    def taken_over():
+        world.clock.advance(STALE + 1)
+        held = state.load_run(RUN_ID)
+        state.resume(RUN_ID, names.STATE_RESULTS_READY, names.STATE_PROMOTED, held.pending_at)
+
+    world.flagsmith.on["set_default_model"] = taken_over
+    response = world.engineer("approve")
+    assert error_code(response) == names.ERROR_TRANSITION_PENDING
+    assert response["pending"] == names.STATE_PROMOTED
+    assert world.run()["state"] == names.STATE_RESULTS_READY
+
+
+def test_an_incident_starts_at_the_commit_not_the_claim(world):
+    world.to(names.STATE_RUNNING)
+    claimed_at = names.utc_iso(world.clock())
+    world.flagsmith.on["set_kill_switch"] = lambda: world.clock.advance(5)
+    assert world.alarm_event()["state"] == names.STATE_ROLLED_BACK
+    item = world.run()
+    assert item["incidents"][-1]["started_at"] == item["history"][-1]["at"]
+    assert item["incidents"][-1]["started_at"] != claimed_at
+
+
+# ---------------------------------------------------------------------------
 # Claims: fresh, pending, released, taken over
 # ---------------------------------------------------------------------------
 def test_a_tick_or_a_repeat_during_a_fresh_claim_runs_no_effects(world):
@@ -1108,6 +1213,7 @@ def test_an_effect_that_throws_is_effect_failed_and_a_later_tick_completes_it(wo
     assert error_code(response) == names.ERROR_EFFECT_FAILED
     assert "set_kill_switch" in response["error"]["message"]
     assert f"marshal check {RUN_ID}" in response["error"]["message"]
+    assert "tick" not in response["error"]["message"]
     assert response["pending"] == names.STATE_ROLLED_BACK
     assert world.run()["pending"] == names.STATE_ROLLED_BACK
     world.log.clear()
@@ -1301,28 +1407,6 @@ def test_the_payload_check_agrees_with_invoke_json():
     validator = contracts.validator("invoke")
     for payload in payloads:
         assert handlers.is_invoke_payload(payload) is validator.is_valid(payload), payload
-
-
-# ---------------------------------------------------------------------------
-# state.record_refresh: the conditional write a tick makes when it does not move the run
-# ---------------------------------------------------------------------------
-def test_record_refresh_sets_and_only_moves_last_refresh_at_forward(world):
-    world.to(names.STATE_RUNNING)
-    first, later, earlier = (names.utc_iso(START + timedelta(seconds=s)) for s in (700, 1100, 650))
-    assert state.record_refresh(RUN_ID, first) is True
-    assert world.run()["last_refresh_at"] == first
-    assert state.record_refresh(RUN_ID, earlier) is False  # never backwards
-    assert state.record_refresh(RUN_ID, first) is False  # nor sideways
-    assert state.record_refresh(RUN_ID, later) is True
-    assert world.run()["last_refresh_at"] == later
-
-
-def test_record_refresh_writes_nothing_once_the_run_has_moved_on(world):
-    world.to(names.STATE_ROLLED_BACK)
-    before = world.run()
-    assert state.record_refresh(RUN_ID, names.utc_iso(START + timedelta(hours=1))) is False
-    assert world.run() == before
-    assert state.record_refresh("r202611271599", names.utc_iso(START)) is False
 
 
 # ---------------------------------------------------------------------------

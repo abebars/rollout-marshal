@@ -156,6 +156,11 @@ def _shown(error: BaseException) -> str:
     return f"{type(error).__name__}: {str(error)[:_SHOWN]}"
 
 
+def _approve_command(run_id: str, awaiting: str) -> str:
+    """The command that approves what a run awaits: launch, resume or promotion."""
+    return f"`marshal approve {run_id} {awaiting}`"
+
+
 def _percent(ratio: float) -> int:
     return round(ratio * 100)
 
@@ -186,14 +191,21 @@ def _approval(run: state.Run) -> str:
         f"{_percent(rule['promote_min_helpful_lift_ci_lower'])} percent and both guardrails "
         f"pass; otherwise hold. Promotion also waits for the experiment to be ended in "
         f"Flagsmith, and for your approve.\n"
-        f"Approve with `marshal approve {rid}`, or decline with `marshal decline {rid}`."
+        f"Approve with {_approve_command(rid, names.AWAITS_LAUNCH)}, or decline with "
+        f"`marshal decline {rid}`."
     )
 
 
-def _describe(run: state.Run) -> str:
-    """The run's state in plain words, and what moves it next."""
+def _describe(run: state.Run, *, reset: bool = False) -> str:
+    """The run's state in plain words, and what moves it next. reset: a PLANNED run no
+    pointer names, which can never launch."""
     item, rid = run.item, run.run_id
-    if run.state == names.STATE_PLANNED:
+    if run.state == names.STATE_PLANNED and reset:
+        text = (
+            f"Run {rid} was reset: no pointer names it, so it can never launch. "
+            f"`marshal decline {rid}` ends it; start a new run with `marshal start`."
+        )
+    elif run.state == names.STATE_PLANNED:
         text = _approval(run)
     elif run.state == names.STATE_RUNNING:
         text = (
@@ -209,13 +221,15 @@ def _describe(run: state.Run) -> str:
     elif run.state == names.STATE_AWAITING_RESUME:
         text = (
             f"Run {rid} waits for you: the cheaper model looks healthy again. "
-            f"`marshal approve {rid}` resumes the experiment; `marshal decline {rid}` holds it."
+            f"{_approve_command(rid, names.AWAITS_RESUME)} resumes the experiment; "
+            f"`marshal decline {rid}` holds it."
         )
     elif run.state == names.STATE_RESULTS_READY:
         text = (
             f"Run {rid} has results: the report is at s3://{names.REPORTS_BUCKET}/"
             f"{item.get('report_key')}. To promote, end the experiment in the Flagsmith "
-            f"dashboard, then `marshal approve {rid}`; `marshal decline {rid}` holds it."
+            f"dashboard, then {_approve_command(rid, names.AWAITS_PROMOTION)}; "
+            f"`marshal decline {rid}` holds it."
         )
     elif run.state == names.STATE_PROMOTED:
         text = (
@@ -227,15 +241,20 @@ def _describe(run: state.Run) -> str:
     else:
         text = f"Run {rid} was declined before launch; nothing was created in Flagsmith."
     if run.pending:
-        text += " " + _pending_text(run)
+        text += " " + _pending_text(run, reset=reset)
     return text
 
 
-def _pending_text(run: state.Run) -> str:
+def _pending_text(run: state.Run, *, reset: bool = False) -> str:
+    """What is pending, for how long, and the command that resumes it. On a reset PLANNED
+    run that is decline, never check; a pending launch there can never finish."""
     age = (_now() - datetime.fromisoformat(run.pending_at)).total_seconds()
+    held = f"{run.state} -> {run.pending} has been pending for {age:.0f} s"
+    if reset and run.pending == names.STATE_RUNNING:
+        return f"{held}, but the run was reset, so it can never launch: start a new one."
+    command = f"marshal decline {run.run_id}" if reset else f"marshal check {run.run_id}"
     return (
-        f"{run.state} -> {run.pending} has been pending for {age:.0f} s; "
-        f"`marshal check {run.run_id}` resumes it once the claim is older than "
+        f"{held}; `{command}` resumes it once the claim is older than "
         f"{names.PENDING_STALE_SECONDS} s."
     )
 
@@ -244,10 +263,7 @@ def _pending(run: state.Run, engineer: bool, *, reset: bool = False) -> dict:
     """The status of a run whose transition another invocation holds: TRANSITION_PENDING for
     an engineer action, a no-op for tick and alarm."""
     if reset:
-        text = (
-            f"run {run.run_id} has no pointer, so it was reset while {run.pending} was "
-            "pending: start a new one"
-        )
+        text = f"Run {run.run_id} has no pointer, so it was reset; {_pending_text(run, reset=True)}"
     else:
         text = f"Run {run.run_id}: {_pending_text(run)}"
     return _response(run, text, names.ERROR_TRANSITION_PENDING if engineer else None)
@@ -358,7 +374,8 @@ def _plan(tools: Tools, run: state.Run, target: str, action: str, context: dict)
         body = (
             f"Run {rid}: the cheaper model looks healthy again (the alarm is not in ALARM, and "
             f"{names.PROBE_INVOKES} probes answered under the alarm's threshold). "
-            f"`marshal approve {rid}` resumes the experiment; `marshal decline {rid}` holds it."
+            f"{_approve_command(rid, names.AWAITS_RESUME)} resumes the experiment; "
+            f"`marshal decline {rid}` holds it."
         )
         plan.add(
             "notify",
@@ -407,13 +424,13 @@ def _plan(tools: Tools, run: state.Run, target: str, action: str, context: dict)
         )
 
         def publish() -> str:
-            recommendation = report.recommend(run, context["results"])
-            prose = context["prose"].get(_PROSE_SECTION, "")
+            """The report itself (design.md section 6), then what to do, then where it is."""
             body = (
-                f"Results are ready for run {rid}. The report recommends {recommendation}: "
-                f"s3://{names.REPORTS_BUCKET}/{context['report_key']}\n\n{prose}\n\n"
-                "To promote, end the experiment in the Flagsmith dashboard, then "
-                f"`marshal approve {rid}`. To hold, `marshal decline {rid}`."
+                report.render_report(run, context["results"], context["prose"])
+                + "\nTo promote, end the experiment in the Flagsmith dashboard, then "
+                f"{_approve_command(rid, names.AWAITS_PROMOTION)}. To hold, "
+                f"`marshal decline {rid}`.\n"
+                f"The report: s3://{names.REPORTS_BUCKET}/{context['report_key']}\n"
             )
             return tools.notify(rid, f"Rollout Marshal {rid}: results ready", body, key)
 
@@ -468,26 +485,40 @@ def _lost(run: state.Run, engineer: bool) -> dict:
 
 
 def _effect_failed(rid: str, target: str, step: str, error: Exception, claimed_at: str) -> dict:
+    """Release the claim and say what failed and what resumes it. A tick is not promised:
+    the failed step may have been the tick's own set_tick, and a reset PLANNED run has no
+    tick. check resumes it, or decline for a reset PLANNED run."""
     try:
         released = state.release(rid, claimed_at)
     except Exception:  # noqa: BLE001 - the claim then waits out PENDING_STALE_SECONDS
         released = False
-    if released:
-        when = (
-            f"The claim was released, so the next tick (every {names.TICK_INTERVAL_MINUTES} "
-            f"minutes) or `marshal check {rid}` resumes {target} at once."
-        )
+    try:
+        run = state.load_run(rid)
+        reset = _is_reset(run)
+    except Exception:  # noqa: BLE001 - the answer still names the run
+        run, reset = None, False
+    if reset and target == names.STATE_RUNNING:
+        when = "The run was reset meanwhile, so it can never launch: start a new one."
     else:
+        command = f"marshal decline {rid}" if reset else f"marshal check {rid}"
         when = (
-            f"`marshal check {rid}` resumes {target} once the claim is older than "
+            f"The claim was released, so `{command}` resumes {target} at once."
+            if released
+            else f"`{command}` resumes {target} once the claim is older than "
             f"{names.PENDING_STALE_SECONDS} s."
         )
     message = f"Run {rid}: {step} failed ({_shown(error)}). {when}"
-    try:
-        run = state.load_run(rid)
-    except Exception:  # noqa: BLE001 - the answer still names the run
+    if run is None:
         return _bare(rid, message, names.ERROR_EFFECT_FAILED)
     return _response(run, message, names.ERROR_EFFECT_FAILED)
+
+
+def _is_reset(run: state.Run) -> bool:
+    """A PLANNED run no pointer names: it was reset, and can never launch."""
+    if run.state != names.STATE_PLANNED:
+        return False
+    pointer = state.get_active()
+    return pointer is None or pointer.run_id != run.run_id
 
 
 # ---------------------------------------------------------------------------
@@ -631,7 +662,7 @@ def _status(payload: dict, tools: Tools) -> dict:
             run = state.load_run(run_id)
         except state.NotFound:
             return _bare(run_id, f"no run {run_id}", names.ERROR_NOT_FOUND)
-        return _response(run, _describe(run))
+        return _response(run, _describe(run, reset=_is_reset(run)))
     found = _active_run()
     return found if isinstance(found, dict) else _response(found, _describe(found))
 
@@ -691,8 +722,8 @@ def _engineer(payload: dict, tools: Tools) -> dict:
         if action != names.ACTION_DECLINE:
             return _response(
                 run,
-                f"run {run_id} has no pointer, so it was reset and can never launch: start a "
-                "new one",
+                f"run {run_id} has no pointer, so it was reset and can never launch: "
+                f"`marshal decline {run_id}` ends it; start a new one",
                 names.ERROR_ILLEGAL_IN_STATE,
             )
         if run.pending == names.STATE_RUNNING:  # only a pending launch keeps it PLANNED
@@ -706,16 +737,16 @@ def _engineer(payload: dict, tools: Tools) -> dict:
     if action == names.ACTION_CHECK:
         return _advance(tools, run, action)
     if action == names.ACTION_DECLINE:
-        return _decline(tools, run)
+        return _decline(tools, run, reset=pointer is None and run.state == names.STATE_PLANNED)
     return _approve(tools, run)
 
 
-def _decline(tools: Tools, run: state.Run) -> dict:
+def _decline(tools: Tools, run: state.Run, *, reset: bool = False) -> dict:
     target = names.STATE_ABORTED if run.state == names.STATE_PLANNED else names.STATE_HELD
     if run.pending:  # decline never takes over a transition another action claimed
         if run.pending == target and _stale(run):
             return _transit(tools, run, target, names.ACTION_DECLINE)
-        return _pending(run, engineer=True)
+        return _pending(run, engineer=True, reset=reset)
     return _transit(tools, run, target, names.ACTION_DECLINE)
 
 
@@ -729,7 +760,11 @@ def _approve(tools: Tools, run: state.Run) -> dict:
     if run.state == names.STATE_AWAITING_RESUME:
         outcome, why = _probe(tools)
         if outcome == _ALARM:
-            return _response(run, f"{_describe(run)} Not now: {why}; approve once it is OK again.")
+            return _response(
+                run,
+                f"{_describe(run)} Not now: {why}. "
+                f"{_approve_command(run.run_id, names.AWAITS_RESUME)} once it is OK again.",
+            )
         if outcome == _PASSED:
             return _transit(tools, run, names.STATE_RUNNING, names.ACTION_APPROVE)
         return _transit(tools, run, names.STATE_ROLLED_BACK, names.ACTION_APPROVE, {"why": why})
@@ -742,7 +777,8 @@ def _approve(tools: Tools, run: state.Run) -> dict:
         return _response(
             run,
             f"experiment {run.item['experiment_id']} is {status!r}, not ended: end it in the "
-            f"Flagsmith dashboard, then `marshal approve {run.run_id}` again",
+            f"Flagsmith dashboard, then {_approve_command(run.run_id, names.AWAITS_PROMOTION)} "
+            "again",
             names.ERROR_EXPERIMENT_NOT_ENDED,
         )
     return _transit(tools, run, names.STATE_PROMOTED, names.ACTION_APPROVE)
