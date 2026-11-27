@@ -15,9 +15,11 @@ ends on the two timed numbers.
   between beats and keeps a UTC clock in shot (`scripts/e2e.py`'s timestamps, or the shell
   prompt's), so each cut shows how much time passed. Nothing is re-enacted, and nothing is
   sped up without a caption saying so.
-- **The numbers on the end card** are the two in `docs/time-saved.md`, from run
-  [[5.1: run ID]]. If the recorded run is a different one, the card says the numbers come
-  from 5.1's run.
+- **The numbers on the end card** are the two in `docs/time-saved.md`. The first is the
+  dashboard pass, which an AI agent clicked through in Chrome at Ahmed's instruction, and the
+  card says so: it was not a person. The second is `marshal start` to `RUNNING` in run
+  [[5.1: run ID]]; if the recorded run is a different one, the card says it comes from 5.1's
+  run.
 - **The recommendation** on screen and in the voiceover is the one the recorded run's report
   states. Every planned run injects the fault, so by design it is `hold, re-run`. The video
   says `promote` only if that report did.
@@ -142,9 +144,9 @@ Voiceover:
 | --- | --- |
 | 2:22 to 2:32 | Email client: "Rollout Marshal [[run: run ID]]: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation: **[[run: recommendation, as the report states it]]**. |
 | 2:32 to 2:38 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval. |
-| 2:38 to 2:43 | Flagsmith dashboard: the engineer clicks End Experiment and chooses [[run: rollout decision chosen when the experiment was ended]]. |
-| 2:43 to 2:47 | Terminal: [[run: the decision, either `uv run marshal decline <run_id>` then state `HELD`, or `uv run marshal approve <run_id> promotion` then state `PROMOTED`]]. |
-| 2:47 to 2:55 | End card, two lines: "By hand, in the Flagsmith dashboard: [[6.1: manual setup, mm:ss]]" and "Rollout Marshal, prompt to running: [[5.1: marshal start to RUNNING, mm:ss]], [[5.1: review, plan returned to approve seen, mm:ss]] of it the engineer reading the plan". |
+| 2:38 to 2:42 | Flagsmith dashboard: the engineer clicks End Experiment and chooses [[run: rollout decision chosen when the experiment was ended]]. |
+| 2:42 to 2:45 | Terminal: [[run: the decision, either `uv run marshal decline <run_id>` then state `HELD`, or `uv run marshal approve <run_id> promotion` then state `PROMOTED`]]. |
+| 2:45 to 2:55 | End card, two lines: "Flagsmith dashboard, clicked through in Chrome by an AI agent: about 2:18, primary metric only" and "Rollout Marshal, prompt to running: [[5.1: marshal start to RUNNING, mm:ss]], [[5.1: review, plan returned to approve seen, mm:ss]] of it the engineer reading the plan". |
 
 Voiceover:
 
@@ -154,7 +156,8 @@ Voiceover:
 >
 > I end the experiment in Flagsmith myself, and [[run: the decision, in words]].
 >
-> Setting this experiment up by hand took [[6.1: manual setup, mm:ss]]. Rollout Marshal took
+> An AI agent clicking this setup through Flagsmith's dashboard took about two minutes
+> eighteen, with only the primary metric attached. Rollout Marshal took
 > [[5.1: marshal start to RUNNING, mm:ss]], my review included.
 
 ## Before recording

@@ -17,10 +17,16 @@ Track 2, "AI Agents and Feature Flags". Demo video: [[6.4: video URL]].
 
 | Setting up the experiment | Time |
 | --- | --- |
-| By hand, in the Flagsmith dashboard | [[6.1: manual setup, mm:ss]] |
+| In the Flagsmith dashboard, clicked through in Chrome by an AI agent (the one that led this build) at Ahmed's instruction, not by a person | about 2:18 |
 | With Rollout Marshal, `marshal start` to `RUNNING` | [[5.1: marshal start to RUNNING, mm:ss]] |
 | of which the engineer reads the plan and approves it | [[5.1: review, plan returned to approve seen, mm:ss]] |
 | of which the agent works: it plans, then launches | [[5.1: agent's own time, mm:ss]] |
+
+The dashboard number comes from one pass on 2026-11-27, from the first click to the
+experiment running. The task asked for a person to do it; Ahmed told the lead agent to do it
+instead. So it includes that agent's own time between actions, and a person might be faster
+or slower. The dashboard's experiment form also took only the primary metric, so that
+experiment had one metric where Rollout Marshal's has three.
 
 How each was measured, and what neither number counts: [docs/time-saved.md](docs/time-saved.md).
 
