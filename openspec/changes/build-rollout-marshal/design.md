@@ -156,7 +156,11 @@ idempotently, by the agent at launch:
 
 Router evaluation order, per request:
 
-1. Read the active run pointer (section 6). No active run: read
+1. Read the active run pointer (section 6). With an active run, an
+   `identity` that is not one of that run's (`is_run_identity()`, with the
+   pointer's `run_id` before `-user-`) gets a 400 before any Flagsmith
+   call, so a wrong `--run-id` cannot reuse an old run's identities (Gate
+   1). No active run: read
    `assistant_default_model` from the environment flags (cached 30
    seconds), serve that model, record no exposure and no event, and do not
    invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is
@@ -566,7 +570,7 @@ Three things invoke it:
 | --- | --- | --- |
 | `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials, through the console script `cli.marshal:main` |
 | `rm-invoker` Lambda | `alarm` | EventBridge rule `rm-alarm-to-invoker` on the alarm entering ALARM. Role `rm-invoker-role`. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
-| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it and writes back the same target, input and role, changing only its state |
+| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it with GetSchedule and writes back every field it returned, changing only its state. That passes `rm-scheduler-role` to `scheduler.amazonaws.com`, so the runtime's role needs pass-role on it (task 2.7) |
 
 The CLI reads the runtime's ARN from `/rm/agent-runtime-arn` with the
 engineer's credentials, prints the response, and exits 0 when its error is
@@ -612,7 +616,7 @@ with API-key auth:
 
 | Piece | Name | Notes |
 | --- | --- | --- |
-| Runtime | `rm_agent` | One AgentCore CLI project under `agent/`, deployed from task 1.3 on. The CLI packages only its code folder, which becomes the zip root, so the code lives in `agent/runtime/` (the CLI's `codeLocation` `runtime`, entrypoint `app.py`) as the package `rm_agent`; tests in `agent/tests/` import it through the root pytest `pythonpath`, and task 2.7 gives the folder its own `pyproject.toml`, `uv.lock` and a `contracts` symlink. Task 2.7 redeploys the same runtime, so its ARN and `/rm/agent-runtime-arn` never change |
+| Runtime | `rm_agent` | One AgentCore CLI project under `agent/`, deployed from task 1.3 on. The CLI packages only its code folder, which becomes the zip root, so the code lives in `agent/runtime/` (the CLI's `codeLocation` `runtime`, entrypoint `main.py`, so no test's `import app` finds B's `app/`) as the package `rm_agent`; tests in `agent/tests/` import it through the root pytest `pythonpath`, and task 2.7 gives the folder its own `pyproject.toml`, `uv.lock` and a `contracts` symlink. Task 2.7 redeploys the same runtime, so its ARN and `/rm/agent-runtime-arn` never change |
 | Gateway | `rm-gateway` | Protocol `MCP`, inbound auth `AWS_IAM`, so no Cognito pool. The agent signs with SigV4 through `mcp-proxy-for-aws`, and the runtime's role gets `bedrock-agentcore:InvokeGateway` on the Gateway |
 | Gateway service role | `rm-gateway-role` | Also the outbound auth of the Lambda target, which supports only the service role |
 | Credential provider | `rm-flagsmith-api-key` | Holds the organisation key from `rm/flagsmith/api-key`, passed in the `apiKey` field of `CreateApiKeyCredentialProvider`, never through the CLI's env file |
@@ -761,6 +765,6 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | Gateway API-key credential provider sending `Authorization: Api-Key <key>`, and whether the Gateway adds the space after the prefix itself | 1.3 | corrected: the service stores the prefix trimmed (`Api-Key`) and calls authenticate with either value; that the Gateway adds the space is inferred, not observed |
 | Metric aggregation types available (occurrence, count, sum, mean) | 1.3 | verified |
 | Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the dashboard shows the level, 95 percent), `chance_to_win`; no "not worse" field |
-| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); verified for usage, with a lag: `usage-data/total-count/` read 0 eleven to 25 minutes after 1.2's 150 identity requests (task 1.3) and 150 at 01:10Z the next day (Gate 1), so a read lags by more than 25 minutes |
+| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); verified for usage, with a lag: `usage-data/total-count/` read 0 eleven to 25 minutes after 1.2's 150 identity requests (task 1.3) and 150 at 01:10Z the next day (`evidence/gate-1-review.md`), so a read lags by more than 25 minutes |
 | FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | open |
 | Bedrock prices for the three models | 3.3 | open |
