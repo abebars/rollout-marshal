@@ -610,7 +610,7 @@ their tasks name, not against each other.
     read-only goldfish check finds the API, the four functions, `rm-runs`
     and the reports bucket.
 
-- [ ] 3.6 **Deployed smoke**
+- [x] 3.6 **Deployed smoke** (PR #33 merged; the Human end delegated, evidence/gate-2-review.md)
   - Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied
     with it. Files: `evidence/3.6-app-smoke.md`.
   - Do: `bootstrap_flagsmith.py`, `seed_experiment.py rsmoke<HHMM>`,
