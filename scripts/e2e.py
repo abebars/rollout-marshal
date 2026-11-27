@@ -411,12 +411,16 @@ class Deps:
 # ---------------------------------------------------------------------------
 # What the human types, printed at each pause
 # ---------------------------------------------------------------------------
+HUMAN_RULE = "These are the human's steps (CLAUDE.md): e2e.py and the agents take none of them."
+
+
 def launch_pause(run_id: str) -> list[str]:
     return [
         "PAUSE: review the plan above. To launch it, type in another terminal:",
         f"    {human_command(names.ACTION_APPROVE, run_id, names.AWAITS_LAUNCH)}",
         f"e2e.py approves nothing itself; it reads `{human_command(names.ACTION_STATUS, run_id)}`"
         f" every {POLL_SECONDS} s until the run moves.",
+        HUMAN_RULE,
     ]
 
 
@@ -424,6 +428,7 @@ def resume_pause(run_id: str) -> list[str]:
     return [
         "PAUSE: the cheaper model is healthy again. To resume the experiment, type:",
         f"    {human_command(names.ACTION_APPROVE, run_id, names.AWAITS_RESUME)}",
+        HUMAN_RULE,
     ]
 
 
@@ -432,10 +437,27 @@ def decision_pause(run_id: str) -> list[str]:
         "PAUSE: results are ready. Choose one, in another terminal.",
         "  To hold the run, type:",
         f"    {human_command(names.ACTION_DECLINE, run_id)}",
+        "    then end the experiment in the Flagsmith dashboard: a hold leaves it running.",
         "  Or, to promote it, end the experiment in the Flagsmith dashboard, then type:",
         f"    {human_command(names.ACTION_APPROVE, run_id, names.AWAITS_PROMOTION)}",
         "  Note which metric the dashboard shows as primary, and the rollout decision you"
         " choose: evidence/5.1-e2e.md records both.",
+        HUMAN_RULE,
+    ]
+
+
+def stop_line_lines(record: dict) -> list[str]:
+    """CLAUDE.md's checks after every load (Gate 2's G6), printed with the summary."""
+    sent = record["answers_sent"]
+    this_run = f"this run sent {sent}" if sent is not None else "this run's count is unknown"
+    return [
+        "Stop lines (CLAUDE.md): read both now, before any further load.",
+        "  cost:  uv run python evidence/3.6-scripts/smoke_reads.py cost"
+        f" --answers-sent <all answers since the cutoff; {this_run}>"
+        " --remaining-planned <answers still planned>",
+        "  usage: uv run python evidence/3.6-scripts/smoke_reads.py usage",
+        "         The total lags by about a day: also read usage-data/'s daily rows,"
+        " or the Usage page in the dashboard.",
     ]
 
 
@@ -1085,6 +1107,7 @@ def summary_lines(record: dict) -> list[str]:
     lines.append("SNS message IDs (notified):" if notified else "SNS message IDs: none")
     for key, message_id in sorted((notified or {}).items(), key=lambda kv: _key_order(kv[0])):
         lines.append(f"  {key}: {message_id}")
+    lines.extend(stop_line_lines(record))
     lines.append("")
     return lines
 

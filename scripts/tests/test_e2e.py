@@ -664,12 +664,14 @@ def test_each_pause_prints_exactly_what_the_human_types(harness, capsys):
             f"    marshal approve {RUN_ID} launch",
             f"e2e.py approves nothing itself; it reads `marshal status {RUN_ID}` every 10 s"
             " until the run moves.",
+            e2e.HUMAN_RULE,
         ]
     )
     resume = "\n".join(
         [
             "PAUSE: the cheaper model is healthy again. To resume the experiment, type:",
             f"    marshal approve {RUN_ID} resume",
+            e2e.HUMAN_RULE,
         ]
     )
     decision = "\n".join(
@@ -677,10 +679,12 @@ def test_each_pause_prints_exactly_what_the_human_types(harness, capsys):
             "PAUSE: results are ready. Choose one, in another terminal.",
             "  To hold the run, type:",
             f"    marshal decline {RUN_ID}",
+            "    then end the experiment in the Flagsmith dashboard: a hold leaves it running.",
             "  Or, to promote it, end the experiment in the Flagsmith dashboard, then type:",
             f"    marshal approve {RUN_ID} promotion",
             "  Note which metric the dashboard shows as primary, and the rollout decision you"
             " choose: evidence/5.1-e2e.md records both.",
+            e2e.HUMAN_RULE,
         ]
     )
     for block in (launch, resume, decision):
@@ -705,7 +709,35 @@ def test_the_pause_helpers_build_the_commands_from_names():
     assert e2e.resume_pause(RUN_ID)[1] == f"    marshal approve {RUN_ID} resume"
     decision = e2e.decision_pause(RUN_ID)
     assert decision[2] == f"    marshal decline {RUN_ID}"
-    assert decision[4] == f"    marshal approve {RUN_ID} promotion"
+    assert decision[5] == f"    marshal approve {RUN_ID} promotion"
+
+
+def test_a_hold_says_to_end_the_experiment_and_every_pause_states_the_rule():
+    """design.md section 6: a hold leaves Flagsmith as it is, so the experiment still runs."""
+    decision = e2e.decision_pause(RUN_ID)
+    assert "end the experiment in the Flagsmith dashboard" in decision[3]
+    for pause in (e2e.launch_pause(RUN_ID), e2e.resume_pause(RUN_ID), decision):
+        assert pause[-1] == e2e.HUMAN_RULE
+    assert "CLAUDE.md" in e2e.HUMAN_RULE
+
+
+def test_the_printed_summary_carries_the_stop_line_reads(harness, capsys):
+    harness.run()
+    out = capsys.readouterr().out
+    assert out.index("==== Summary for evidence/5.1-e2e.md ====") < out.index(
+        "Stop lines (CLAUDE.md): read both now, before any further load."
+    )
+
+
+@pytest.mark.parametrize(("sent", "phrase"), [(1500, "this run sent 1500"), (None, "unknown")])
+def test_the_summary_ends_with_the_stop_line_reads(sent, phrase):
+    """Gate 2's G6: CLAUDE.md's cost and usage checks after every load."""
+    lines = e2e.stop_line_lines({"answers_sent": sent})
+    assert lines[0].startswith("Stop lines (CLAUDE.md)")
+    assert "smoke_reads.py cost --answers-sent" in lines[1] and phrase in lines[1]
+    assert "--remaining-planned" in lines[1]
+    assert lines[2].endswith("smoke_reads.py usage")
+    assert "lags" in lines[3]
 
 
 # ---------------------------------------------------------------------------
