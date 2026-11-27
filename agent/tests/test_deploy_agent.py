@@ -11,11 +11,13 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import subprocess
 import zipfile
 from pathlib import Path
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 
 from contracts import names
@@ -296,8 +298,17 @@ def test_deploy_writes_the_arn_and_records_the_version_and_the_commit(tmp_path):
     assert shell.commands() == [
         [names.AGENTCORE_CLI_COMMAND, "--version"],
         ["git", "rev-parse", "HEAD"],
-        ["git", "status", "--porcelain", "--", *dep.CODE_PATHS],
-        ["git", "diff", "--", dep.PACKAGE_JSON],
+        [
+            "git",
+            "status",
+            "--porcelain",
+            "--",
+            "agent/runtime/",
+            "contracts/",
+            "agent/agentcore/agentcore.json",
+            "agent/agentcore/cdk/lib/",
+        ],
+        ["git", "diff", "--", "agent/agentcore/cdk/package.json"],
         [names.AGENTCORE_CLI_COMMAND, "build", "--json"],
         [
             str(dep.CDK_BIN),
@@ -310,8 +321,8 @@ def test_deploy_writes_the_arn_and_records_the_version_and_the_commit(tmp_path):
             names.AGENT_STACK,
         ],
         _deploy_command(),
-        ["git", "diff", "--", dep.PACKAGE_JSON],
-        ["git", "status", "--porcelain", "--", dep.CLI_PROJECT_DIR],
+        ["git", "diff", "--", "agent/agentcore/cdk/package.json"],
+        ["git", "status", "--porcelain", "--", "agent/agentcore/"],
     ]
     assert record["package_json_diff_before"] == '-    "aws-cdk": "~2.1126.0",\n'
     assert record["runtime_before"]["version"] == "3"
@@ -492,6 +503,76 @@ def test_main_writes_the_record_even_when_a_step_fails(tmp_path, monkeypatch, ca
     written = json.loads(path.read_text())
     assert written["plan"] is True and names.ACCOUNT_ID in written["error"]
     assert "error:" in capsys.readouterr().err
+
+
+def test_an_expired_token_still_writes_the_record(tmp_path, monkeypatch, capsys):
+    """A botocore error is no DeployError: main() still writes the record, holding the error."""
+    stubs = Stubs()
+    stubs.sts.add_client_error(
+        "get_caller_identity",
+        service_error_code="ExpiredTokenException",
+        service_message="The security token included in the request is expired",
+        http_status_code=403,
+    )
+    monkeypatch.setattr(dep, "_clients", lambda: stubs.clients)
+    path = tmp_path / "record.json"
+    with stubs:
+        assert dep.main(["--record", str(path)]) == 1
+        stubs.assert_done()
+    written = json.loads(path.read_text())
+    assert written["plan"] is False
+    # STS models the error, so botocore raises its own ClientError subclass by that name.
+    assert written["error"].startswith("ExpiredTokenException: An error occurred")
+    assert "ExpiredTokenException" in capsys.readouterr().err
+
+
+def test_a_token_that_expires_after_the_deploy_leaves_the_deploy_in_the_record(tmp_path):
+    """The record fills as the run goes, so main() writes everything up to the failure."""
+    shell = Shell(tmp_path / "cdk.out")
+    record: dict = {}
+    with Stubs() as stubs:
+        _before(stubs)
+        stubs.control.add_client_error(
+            "list_agent_runtimes", service_error_code="ExpiredTokenException", http_status_code=403
+        )
+        with pytest.raises(ClientError, match="ExpiredTokenException"):
+            dep.run(
+                stubs.clients,
+                shell,
+                record=record,
+                out=lambda _l: None,
+                sleep=lambda _s: None,
+                cdk_out=shell.cdk_out,
+            )
+        stubs.assert_done()
+    assert record["deploy_output"] == DEPLOYED
+    assert record["zip_after"]["zip"] == f"asset.{ASSET_HASH}.zip"
+    assert "parameter_after" not in record  # nothing was written to /rm/agent-runtime-arn
+
+
+def test_a_command_that_times_out_or_is_missing_is_a_result_not_a_raise(monkeypatch):
+    def timed_out(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"], output=b"deploying...\n")
+
+    monkeypatch.setattr(dep.subprocess, "run", timed_out)
+    result = dep.run_command(["agentcore", "deploy"], dep.AGENT_DIR, {})
+    assert result.code == 124
+    assert result.out.startswith("deploying...") and "no exit after 1800 s" in result.out
+
+    def silent(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])  # output None: nothing printed
+
+    monkeypatch.setattr(dep.subprocess, "run", silent)
+    assert dep.run_command(["agentcore", "deploy"], dep.AGENT_DIR, {}) == (
+        124,
+        "agentcore: no exit after 1800 s",
+    )
+
+    def missing(cmd, **kwargs):
+        raise FileNotFoundError(cmd[0])
+
+    monkeypatch.setattr(dep.subprocess, "run", missing)
+    assert dep.run_command(["cdk", "diff"], dep.CDK_DIR, {}) == (127, "cdk: not found")
 
 
 def test_asset_key_is_the_zip_name_without_its_asset_prefix():

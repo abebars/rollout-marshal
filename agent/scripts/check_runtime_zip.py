@@ -5,7 +5,7 @@ agent/agentcore/cdk/cdk.out as a CDK file asset. The CLI packages only the runti
 folder, agent/runtime (codeLocation "runtime"), which becomes the zip's root, following the
 contracts symlink. This check finds that zip and requires, byte for byte, these files:
 - main.py;
-- every file of rm_agent/;
+- every file of rm_agent/, except what the packager skips (EXCLUDED_ENTRIES below);
 - contracts/'s modules and schemas.
 
 It also refuses a zip that carries __pycache__.
@@ -28,6 +28,11 @@ ROOT = Path(__file__).resolve().parents[2]
 CODE = ROOT / "agent" / names.AGENT_CODE_LOCATION  # agent/runtime, the zip's root
 CDK_OUT = ROOT / "agent" / "agentcore" / "cdk" / "cdk.out"
 CONTRACT_FILES = ("contracts/__init__.py", "contracts/dynamo.py", "contracts/names.py")
+# The CodeZip packager skips an entry with one of these names at any depth, so the zip never
+# holds it: @aws/agentcore-cdk 1.3.0, dist/lib/packaging/helpers.js, EXCLUDED_ENTRIES.
+EXCLUDED_ENTRIES = frozenset(
+    {".git", ".venv", "__pycache__", ".pytest_cache", ".DS_Store", "node_modules"}
+)
 
 
 class ZipError(RuntimeError):
@@ -40,7 +45,7 @@ def required_files(code: Path = CODE) -> list[str]:
     files += sorted(
         str(path.relative_to(code))
         for path in (code / names.AGENT_PACKAGE).rglob("*")
-        if path.is_file() and "__pycache__" not in path.parts
+        if path.is_file() and not EXCLUDED_ENTRIES.intersection(path.relative_to(code).parts)
     )
     files += list(CONTRACT_FILES)
     files += sorted(

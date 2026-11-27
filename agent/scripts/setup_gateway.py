@@ -12,7 +12,7 @@ Each piece is found by name and created only when missing, in this order:
 3. Gateway ``rm-gateway``: protocol MCP, inbound auth AWS_IAM.
 4. MCP server target ``flagsmith`` for https://mcp.flagsmith.com, with API-key outbound
    auth in header ``Authorization`` with prefix ``Api-Key`` (the service stores it
-   trimmed, and sends one space between it and the key; task 1.3).
+   trimmed; that it sends one space before the key is inferred, task 1.3).
 5. Lambda target ``flagsmith-admin`` for ``rm-flagsmith-admin`` (task 2.2), with the
    Gateway's service role as its outbound auth, the only kind a Lambda target takes. Its
    tool schema lists the function's five tools, each with its one-line description and

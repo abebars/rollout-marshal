@@ -3,9 +3,10 @@
 
 The policy's statements live in runtime_tools_policy.json.tftpl, rendered by Terraform's
 templatefile(). These tests render the same template with the same names and pin every
-statement, so an action or a resource can neither widen nor drop quietly. A last check ties the
-statements to the boto3 clients the runtime's code makes: a client that no statement (or the
-CLI stack's own grants) covers fails here, not in the deployed runtime.
+statement, so an action or a resource can neither widen nor drop quietly. The last checks tie
+the statements to the boto3 clients the runtime's code makes and to every operation it calls on
+them. A client or an operation that no statement (or the CLI stack's own grants) covers fails
+here, not in the deployed runtime.
 """
 
 from __future__ import annotations
@@ -14,6 +15,9 @@ import json
 import re
 import string
 from pathlib import Path
+
+import botocore.session
+from botocore import xform_name
 
 from contracts import names
 
@@ -150,9 +154,16 @@ COVERED_BY = {
 }
 
 
+def _runtime_sources() -> list[Path]:
+    return [
+        ROOT / "agent/runtime/main.py",
+        *sorted((ROOT / "agent/runtime/rm_agent").rglob("*.py")),
+    ]
+
+
 def _services_in_runtime_code() -> set[str]:
     services = set()
-    for path in [ROOT / "agent/runtime/main.py", *(ROOT / "agent/runtime/rm_agent").rglob("*.py")]:
+    for path in _runtime_sources():
         for match in re.finditer(
             r'boto3\.client\(\s*(?:"([a-z0-9-]+)"|names\.([A-Z_]+))', path.read_text()
         ):
@@ -168,3 +179,58 @@ def test_every_service_the_runtime_reaches_is_granted():
     # The stack's own statements that the Gateway lookup and calls rely on.
     for sid in ("UseRmGateway", "FindRmGateway"):
         assert f"sid: '{sid}'" in STACK_TS
+
+
+# Each boto3 operation the runtime's code calls: its service, the grant that allows it, and the
+# IAM actions that grant must hold. Converse is authorised by bedrock:InvokeModel. A transaction
+# is authorised per item, by each item's own action; no ConditionCheck item is used.
+OPERATIONS = {
+    "get_item": ("dynamodb", "RunsTable", {"dynamodb:GetItem"}),
+    "update_item": ("dynamodb", "RunsTable", {"dynamodb:UpdateItem"}),
+    "transact_write_items": (
+        "dynamodb",
+        "RunsTable",
+        {"dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"},
+    ),
+    "describe_alarms": ("cloudwatch", "LatencyAlarm", {"cloudwatch:DescribeAlarms"}),
+    "invoke": ("lambda", "HealthProbe", {"lambda:InvokeFunction"}),
+    "get_schedule": ("scheduler", "TickSchedule", {"scheduler:GetSchedule"}),
+    "update_schedule": ("scheduler", "TickSchedule", {"scheduler:UpdateSchedule"}),
+    "publish": ("sns", "IncidentNotes", {"sns:Publish"}),
+    "put_object": ("s3", "Reports", {"s3:PutObject"}),
+    "converse": (names.BEDROCK_RUNTIME_SERVICE, "the stack", {"bedrock:InvokeModel"}),
+    "list_gateways": (
+        "bedrock-agentcore-control",
+        "the stack",
+        {"bedrock-agentcore:ListGateways"},
+    ),
+    "get_gateway": ("bedrock-agentcore-control", "the stack", {"bedrock-agentcore:GetGateway"}),
+}
+
+
+def _operations(service: str) -> set[str]:
+    """The service's boto3 method names, from botocore's own model (no credentials needed)."""
+    model = botocore.session.get_session().get_service_model(service)
+    return {xform_name(operation) for operation in model.operation_names}
+
+
+def test_every_operation_the_runtime_calls_is_pinned_and_granted():
+    by_service = {service: _operations(service) for service in _services_in_runtime_code()}
+    every = set().union(*by_service.values())
+    called = set()
+    for path in _runtime_sources():
+        called |= set(re.findall(r"\.([a-z_][a-z0-9_]*)\(", path.read_text())) & every
+    assert called == set(OPERATIONS)  # a new call, such as get_metric_statistics, fails here
+    statements = {statement["Sid"]: statement for statement in rendered()["Statement"]}
+    for operation, (service, grant, actions) in OPERATIONS.items():
+        assert operation in by_service[service], operation
+        if grant == "the stack":
+            continue
+        granted = statements[grant]["Action"]
+        assert actions <= set(granted if isinstance(granted, list) else [granted]), operation
+    # The stack's grants that these calls rely on. cdk-stack.ts names the Gateway's; the
+    # construct's Bedrock grant is read from the deployed role (task 2.7's evidence).
+    for action in ("bedrock-agentcore:GetGateway", "bedrock-agentcore:ListGateways"):
+        assert f"'{action}'" in STACK_TS, action
+    for path in _runtime_sources():  # a ConditionCheck item would need ConditionCheckItem
+        assert not re.search(r'"ConditionCheck"\s*:', path.read_text()), path

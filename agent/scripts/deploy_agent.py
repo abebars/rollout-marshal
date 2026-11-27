@@ -7,8 +7,8 @@ record. Each step stops the run on failure, and nothing after it runs.
 Before the deploy:
 
 1. The caller's account is 818928662830 (STS). The CLI is 1.x, from 1.3.0 on.
-2. The commit. agent/runtime/, contracts/ and agentcore.json must hold no uncommitted change,
-   so that the commit names the code that ships.
+2. The commit. agent/runtime/, contracts/, agentcore.json and the CDK stack's lib/ (its
+   grants ship too) must hold no uncommitted change, so that the commit names what ships.
 3. ``git diff agent/agentcore/cdk/package.json``. The CLI rewrites that file to the versions
    it ships.
 4. ``agentcore build``, the CodeZip check (check_runtime_zip.py), and the CDK diff of the built
@@ -28,7 +28,8 @@ The ARN must not change from one deploy to the next (design.md section 7). If it
 ARN is still written, so callers keep working, and the run ends in an error for the human.
 
 The record is JSON. It holds no secret: it takes named fields from GetAgentRuntime, never the
-runtime's environment variables. With --record, it is written even when a step fails. Run it
+runtime's environment variables. With --record, it is written even when a step fails or a call
+raises, such as an expired token after the minutes-long deploy, or a command's timeout. Run it
 with the human's credentials:
 
     unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
@@ -68,9 +69,16 @@ CDK_DIR = AGENT_DIR / "agentcore" / "cdk"
 CDK_BIN = CDK_DIR / "node_modules" / ".bin" / "cdk"  # the CDK CLI that package.json pins
 PACKAGE_JSON = "agent/agentcore/cdk/package.json"
 CLI_PROJECT_DIR = "agent/agentcore/"
-CODE_PATHS = (names.AGENT_CODE_DIR, "contracts/", "agent/agentcore/agentcore.json")
+CODE_PATHS = (
+    names.AGENT_CODE_DIR,
+    "contracts/",
+    "agent/agentcore/agentcore.json",
+    "agent/agentcore/cdk/lib/",  # the stack's own grants ship too
+)
 CLI_ENV = {"AGENTCORE_TELEMETRY_DISABLED": "1"}  # as in task 1.3
 COMMAND_TIMEOUT_SECONDS = 1800
+TIMEOUT_EXIT = 124  # as coreutils' timeout reports a timed-out command
+NOT_FOUND_EXIT = 127  # as a shell reports a command it cannot find
 READY = "READY"
 SETTLING = frozenset({"CREATING", "UPDATING"})
 WAIT_SECONDS = 300
@@ -103,7 +111,13 @@ def run_command(cmd: Sequence[str], cwd: Path, env: dict[str, str]) -> Result:
             check=False,
         )
     except FileNotFoundError:
-        return Result(127, f"{cmd[0]}: not found")
+        return Result(NOT_FOUND_EXIT, f"{cmd[0]}: not found")
+    except subprocess.TimeoutExpired as exc:
+        # The output so far is bytes whatever text= says, or None when nothing was printed
+        # (the subprocess docs, and a run on Python 3.13.3).
+        partial = exc.output.decode(errors="replace") if isinstance(exc.output, bytes) else ""
+        message = f"{cmd[0]}: no exit after {COMMAND_TIMEOUT_SECONDS} s"
+        return Result(TIMEOUT_EXIT, f"{partial}\n{message}" if partial else message)
     return Result(done.returncode, done.stdout)
 
 
@@ -405,9 +419,9 @@ def main(argv: list[str] | None = None) -> int:
     status = 0
     try:
         run(_clients(), plan_only=args.plan, record=record)
-    except DeployError as exc:
-        record["error"] = str(exc)
-        print(f"error: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 -- any failure still leaves its record
+        record["error"] = f"{type(exc).__name__}: {exc}"
+        print(f"error: {record['error']}", file=sys.stderr)
         status = 1
     text = json.dumps(record, indent=2, default=str)
     if args.record:

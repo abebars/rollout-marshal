@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import tomllib
 import zipfile
 from pathlib import Path
@@ -80,13 +81,15 @@ def test_the_runtime_pins_the_root_environments_versions():
 # ---------------------------------------------------------------------------
 # check_runtime_zip
 # ---------------------------------------------------------------------------
-def _zip(tmp_path: Path, *, drop: str | None = None, change: str | None = None, extra=()) -> Path:
+def _zip(
+    tmp_path: Path, *, drop: str | None = None, change: str | None = None, extra=(), code=CODE
+) -> Path:
     path = tmp_path / "asset.0123.zip"
     with zipfile.ZipFile(path, "w") as archive:
-        for name in check.required_files(CODE):
+        for name in check.required_files(code):
             if name == drop:
                 continue
-            data = (CODE / name).read_bytes()
+            data = (code / name).read_bytes()
             archive.writestr(name, data + b"# changed\n" if name == change else data)
         archive.writestr("boto3/__init__.py", b"")
         for name in extra:
@@ -109,7 +112,36 @@ def test_the_required_files_are_the_runtimes_code():
         "contracts/schemas/response.json",
     ):
         assert name in required, name
-    assert not [name for name in required if "__pycache__" in name]
+    assert not [name for name in required if check.EXCLUDED_ENTRIES & set(Path(name).parts)]
+
+
+def test_the_excluded_entries_are_the_packagers():
+    """@aws/agentcore-cdk 1.3.0's dist/lib/packaging/helpers.js, EXCLUDED_ENTRIES."""
+    assert check.EXCLUDED_ENTRIES == {
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".DS_Store",
+        "node_modules",
+    }
+
+
+@pytest.mark.parametrize("entry", sorted(check.EXCLUDED_ENTRIES))
+def test_what_the_packager_skips_is_never_required(tmp_path, entry):
+    """A stray rm_agent/.DS_Store, which the packager drops, must not block a deploy."""
+    code = tmp_path / "runtime"
+    shutil.copytree(CODE, code, ignore=shutil.ignore_patterns(*check.EXCLUDED_ENTRIES))
+    for folder in (code / names.AGENT_PACKAGE, code / names.AGENT_PACKAGE / "tools"):
+        stray = folder / entry  # at the package's top, and one level down
+        if entry == ".DS_Store":
+            stray.write_bytes(b"\0\0\0\1Bud1")
+        else:
+            (stray / "nested").mkdir(parents=True)
+            (stray / "nested" / "module.py").write_text("x = 1\n")
+    assert check.required_files(code) == check.required_files(CODE)
+    path = _zip(tmp_path, code=code)  # holds only what the packager copies
+    assert check.check_zip(path, code)["checked"] == len(check.required_files(CODE))
 
 
 def test_a_zip_of_this_commits_code_passes(tmp_path):
