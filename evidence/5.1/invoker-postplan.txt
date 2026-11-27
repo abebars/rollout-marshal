@@ -1,0 +1,119 @@
+== post-apply plan at 2026-11-27T10:17:36Z
+module.agent.data.archive_file.flagsmith_admin: Reading...
+module.signals.data.archive_file.invoker: Reading...
+module.agent.data.archive_file.flagsmith_admin: Read complete after 0s [id=cbb45edf58129c9455a20bd35c95cca1a5384c4d]
+module.signals.data.archive_file.invoker: Read complete after 0s [id=88b48ec29d965f464d9a7a5c230fa5470fae466f]
+module.agent.data.aws_secretsmanager_secret.api_key: Reading...
+data.aws_iam_policy_document.review_deny: Reading...
+module.signals.data.aws_iam_policy_document.invoker_trust: Reading...
+module.signals.aws_cloudwatch_event_rule.alarm: Refreshing state... [id=rm-alarm-to-invoker]
+module.app.aws_cloudwatch_log_group.fn["cheaper"]: Refreshing state... [id=/aws/lambda/rm-answer-cheaper]
+module.app.aws_cloudwatch_log_group.fn["judge"]: Refreshing state... [id=/aws/lambda/rm-judge]
+module.app.aws_cloudwatch_log_group.fn["current"]: Refreshing state... [id=/aws/lambda/rm-answer-current]
+module.signals.aws_sns_topic.incidents: Refreshing state... [id=arn:aws:sns:us-east-1:818928662830:rm-incidents]
+module.signals.aws_cloudwatch_metric_alarm.cheaper_latency: Refreshing state... [id=rm-cheaper-latency-p95]
+module.app.aws_s3_bucket.reports: Refreshing state... [id=rm-reports-818928662830]
+module.signals.data.aws_iam_policy_document.invoker_trust: Read complete after 0s [id=2690255455]
+data.aws_iam_policy_document.review_deny: Read complete after 0s [id=2772311899]
+module.app.aws_cloudwatch_log_group.fn["router"]: Refreshing state... [id=/aws/lambda/rm-router]
+module.app.aws_dynamodb_table.runs: Refreshing state... [id=rm-runs]
+module.app.aws_apigatewayv2_api.ask: Refreshing state... [id=<redacted>]
+module.agent.data.aws_iam_policy_document.assume: Reading...
+module.agent.data.aws_iam_policy_document.assume: Read complete after 0s [id=2690255455]
+module.fis.data.aws_ssm_parameter.fis_extension: Reading...
+module.signals.data.aws_iam_policy_document.scheduler_trust: Reading...
+module.signals.data.aws_iam_policy_document.scheduler_trust: Read complete after 0s [id=3358602399]
+module.agent.data.aws_cloudformation_export.runtime_role: Reading...
+module.app.data.aws_iam_policy_document.trust: Reading...
+module.app.data.aws_iam_policy_document.trust: Read complete after 0s [id=2690255455]
+module.agent.aws_cloudwatch_log_group.flagsmith_admin: Refreshing state... [id=/aws/lambda/rm-flagsmith-admin]
+module.agent.data.aws_secretsmanager_secret.api_key: Read complete after 0s [id=arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/api-key-<suffix>]
+module.fis.aws_iam_role.experiment: Refreshing state... [id=rm-fis-role]
+module.signals.aws_cloudwatch_log_group.invoker: Refreshing state... [id=/aws/lambda/rm-invoker]
+data.aws_iam_policy_document.review_trust: Reading...
+data.aws_iam_policy_document.review_trust: Read complete after 0s [id=3295889262]
+module.fis.aws_s3_bucket.config: Refreshing state... [id=rm-fis-config-818928662830]
+module.app.data.aws_secretsmanager_secret.server_key: Reading...
+module.app.data.aws_bedrock_inference_profile.model["us.anthropic.claude-haiku-5-5"]: Reading...
+module.app.data.aws_bedrock_inference_profile.model["us.anthropic.claude-fable-5-1"]: Reading...
+module.app.data.aws_bedrock_inference_profile.model["us.anthropic.claude-sonnet-5"]: Reading...
+module.agent.data.aws_cloudformation_export.runtime_role: Read complete after 0s [id=cloudformation-exports-us-east-1-AgentCore-rm-default-rm-agent-RoleArn]
+module.app.data.aws_iam_policy_document.logs["judge"]: Reading...
+module.app.data.aws_iam_policy_document.logs["judge"]: Read complete after 0s [id=4029088354]
+module.app.data.aws_iam_policy_document.logs["current"]: Reading...
+module.app.data.aws_iam_policy_document.logs["current"]: Read complete after 0s [id=4179053853]
+module.app.data.aws_iam_policy_document.logs["cheaper"]: Reading...
+module.app.data.aws_iam_policy_document.logs["cheaper"]: Read complete after 0s [id=2281054646]
+module.app.data.aws_iam_policy_document.logs["router"]: Reading...
+module.app.data.aws_iam_policy_document.logs["router"]: Read complete after 0s [id=1720987065]
+module.signals.aws_iam_role.invoker: Refreshing state... [id=rm-invoker-role]
+module.app.data.aws_secretsmanager_secret.server_key: Read complete after 0s [id=arn:aws:secretsmanager:us-east-1:818928662830:secret:rm/flagsmith/server-key-<suffix>]
+module.agent.aws_iam_role.flagsmith_admin: Refreshing state... [id=rm-flagsmith-admin-role]
+module.fis.data.aws_ssm_parameter.fis_extension: Read complete after 0s [id=/aws/service/fis/lambda-extension/AWS-FIS-extension-arm64/1.x.x]
+module.signals.aws_sns_topic_subscription.incident_email: Refreshing state... [id=arn:aws:sns:us-east-1:818928662830:rm-incidents:<subscription-id>]
+module.signals.aws_iam_role.scheduler: Refreshing state... [id=rm-scheduler-role]
+module.app.aws_iam_role.fn["cheaper"]: Refreshing state... [id=rm-answer-cheaper-role]
+module.app.data.aws_bedrock_inference_profile.model["us.anthropic.claude-fable-5-1"]: Read complete after 0s
+module.app.aws_iam_role.fn["current"]: Refreshing state... [id=rm-answer-current-role]
+module.app.data.aws_bedrock_inference_profile.model["us.anthropic.claude-sonnet-5"]: Read complete after 0s
+module.app.aws_iam_role.fn["judge"]: Refreshing state... [id=rm-judge-role]
+module.app.data.aws_bedrock_inference_profile.model["us.anthropic.claude-haiku-5-5"]: Read complete after 0s
+module.app.aws_iam_role.fn["router"]: Refreshing state... [id=rm-router-role]
+aws_iam_role.review: Refreshing state... [id=rm-review-readonly]
+module.agent.data.aws_iam_policy_document.flagsmith_admin: Reading...
+module.agent.data.aws_iam_policy_document.flagsmith_admin: Read complete after 0s [id=2578780075]
+module.signals.data.aws_iam_policy_document.invoker: Reading...
+module.signals.data.aws_iam_policy_document.invoker: Read complete after 0s [id=3184843156]
+module.app.data.aws_iam_policy_document.judge: Reading...
+module.app.data.aws_iam_policy_document.judge: Read complete after 0s [id=3529325486]
+module.app.data.aws_iam_policy_document.router: Reading...
+module.app.data.aws_iam_policy_document.router: Read complete after 0s [id=952085696]
+module.app.aws_apigatewayv2_stage.default: Refreshing state... [id=$default]
+module.app.data.aws_iam_policy_document.bedrock["cheaper"]: Reading...
+module.app.data.aws_iam_policy_document.bedrock["cheaper"]: Read complete after 0s [id=311421184]
+module.app.data.aws_iam_policy_document.bedrock["judge"]: Reading...
+module.app.data.aws_iam_policy_document.bedrock["judge"]: Read complete after 0s [id=4172568953]
+module.app.data.aws_iam_policy_document.bedrock["current"]: Reading...
+module.app.data.aws_iam_policy_document.bedrock["current"]: Read complete after 0s [id=1684105013]
+module.fis.aws_iam_role_policy.experiment: Refreshing state... [id=rm-fis-role:rm-fis-actions]
+module.signals.aws_iam_role_policy.invoker: Refreshing state... [id=rm-invoker-role:rm-invoker]
+module.agent.aws_iam_role_policy.flagsmith_admin: Refreshing state... [id=rm-flagsmith-admin-role:rm-flagsmith-admin-policy]
+module.app.data.aws_iam_policy_document.fn["router"]: Reading...
+module.app.data.aws_iam_policy_document.fn["router"]: Read complete after 0s [id=217774719]
+module.app.data.aws_iam_policy_document.fn["judge"]: Reading...
+module.app.data.aws_iam_policy_document.fn["judge"]: Read complete after 0s [id=2222823993]
+module.app.data.aws_iam_policy_document.fn["cheaper"]: Reading...
+module.app.data.aws_iam_policy_document.fn["cheaper"]: Read complete after 0s [id=4062694707]
+module.app.data.aws_iam_policy_document.fn["current"]: Reading...
+module.app.data.aws_iam_policy_document.fn["current"]: Read complete after 0s [id=4238735587]
+module.app.aws_s3_bucket_public_access_block.reports: Refreshing state... [id=rm-reports-818928662830]
+module.agent.aws_iam_role_policy.runtime_tools: Refreshing state... [id=AgentCore-rm-default-ApplicationRuntimeRmAgentRunti-rwUuyzrobL7p:rm-agent-runtime-tools]
+module.agent.aws_lambda_function.flagsmith_admin: Refreshing state... [id=rm-flagsmith-admin]
+module.signals.aws_lambda_function.invoker: Refreshing state... [id=rm-invoker]
+module.app.aws_iam_role_policy.fn["cheaper"]: Refreshing state... [id=rm-answer-cheaper-role:rm-answer-cheaper-policy]
+module.app.aws_iam_role_policy.fn["router"]: Refreshing state... [id=rm-router-role:rm-router-policy]
+module.app.aws_iam_role_policy.fn["current"]: Refreshing state... [id=rm-answer-current-role:rm-answer-current-policy]
+module.app.aws_iam_role_policy.fn["judge"]: Refreshing state... [id=rm-judge-role:rm-judge-policy]
+module.fis.aws_s3_bucket_public_access_block.config: Refreshing state... [id=rm-fis-config-818928662830]
+module.fis.aws_iam_role_policy.config_read: Refreshing state... [id=rm-answer-cheaper-role:rm-fis-config-read]
+module.app.aws_lambda_function.fn["current"]: Refreshing state... [id=rm-answer-current]
+module.app.aws_lambda_function.fn["judge"]: Refreshing state... [id=rm-judge]
+module.app.aws_lambda_function.fn["cheaper"]: Refreshing state... [id=rm-answer-cheaper]
+module.app.aws_lambda_function.fn["router"]: Refreshing state... [id=rm-router]
+aws_iam_role_policy_attachment.review_read_only: Refreshing state... [id=rm-review-readonly/arn:aws:iam::aws:policy/ReadOnlyAccess]
+aws_iam_role_policy.review_deny: Refreshing state... [id=rm-review-readonly:rm-review-deny]
+module.signals.aws_lambda_permission.alarm_rule: Refreshing state... [id=rm-alarm-to-invoker]
+module.signals.data.aws_iam_policy_document.scheduler: Reading...
+module.signals.aws_cloudwatch_event_target.alarm: Refreshing state... [id=rm-alarm-to-invoker-rm-invoker]
+module.signals.data.aws_iam_policy_document.scheduler: Read complete after 0s [id=2815368342]
+module.signals.aws_iam_role_policy.scheduler: Refreshing state... [id=rm-scheduler-role:rm-tick]
+module.signals.aws_scheduler_schedule.tick: Refreshing state... [id=default/rm-tick]
+module.app.aws_lambda_permission.api: Refreshing state... [id=AllowTheAskRoute]
+module.app.aws_apigatewayv2_integration.router: Refreshing state... [id=<redacted>]
+module.fis.aws_fis_experiment_template.delay_cheaper: Refreshing state... [id=EXTB2oxga85m1Pyax]
+module.app.aws_apigatewayv2_route.ask: Refreshing state... [id=<redacted>]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.
