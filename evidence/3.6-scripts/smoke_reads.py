@@ -11,7 +11,9 @@
   CLAUDE.md's stop line of 35,000.
 - latency: AnswerLatencyMs p95 for exactly Variant=cheaper over the load window, as one
   period, which is the baseline 4.1 recalibrates the alarm from. Also each variant's
-  sample count, since the Pass needs datapoints for both.
+  sample count, since the Pass needs datapoints for both, and both variants' p95 and count
+  minute by minute. The window runs from the start's minute to the first whole minute at
+  or after the end: in the live run an end of 08:14:20 dropped the whole 08:14 minute.
 - cost: CLAUDE.md's cost check. For each variant, the Sum and SampleCount of
   AnswerCostMicroUsd since 2026-11-26T02:30:00Z, statistic Sum, period 3600, with every
   datapoint added. An empty result is unknown, not zero. Then tasks.md 3.6's projection:
@@ -150,19 +152,30 @@ def latency_datapoints(cloudwatch, since: datetime, until: datetime) -> dict:
 
 
 def latency_baseline(cloudwatch, start: datetime, end: datetime) -> dict:
-    """AnswerLatencyMs p95 for exactly Variant=cheaper over [start, end] as one period,
-    and each variant's sample count over the same window."""
-    window_start = start.replace(second=0, microsecond=0)  # CloudWatch rounds to the minute
-    period = math.ceil((end - window_start).total_seconds() / 60) * 60
+    """AnswerLatencyMs p95 for exactly Variant=cheaper over [start, end] as one period, each
+    variant's sample count over the same window, and both variants minute by minute.
+
+    The window runs from the start's minute to the first whole minute at or after the end.
+    CloudWatch rounds a StartTime down to the minute itself. In 3.6's live run an EndTime of
+    08:14:20 dropped the whole 08:14 minute (25 cheaper and 17 current samples), and an
+    EndTime of 08:15:00 kept them, so the end rounds up.
+    """
+    window_start = start.replace(second=0, microsecond=0)
+    window_end = end.replace(second=0, microsecond=0)
+    if window_end < end:
+        window_end += timedelta(minutes=1)
+    period = max(int((window_end - window_start).total_seconds()), 60)
     common = {
         "Namespace": names.CW_NAMESPACE,
         "MetricName": names.CW_METRIC_ANSWER_LATENCY_MS,
         "StartTime": window_start,
-        "EndTime": end,
-        "Period": period,
+        "EndTime": window_end,
     }
     reply = cloudwatch.get_metric_statistics(
-        **common, Dimensions=_dimension(names.VARIANT_CHEAPER), ExtendedStatistics=["p95"]
+        **common,
+        Period=period,
+        Dimensions=_dimension(names.VARIANT_CHEAPER),
+        ExtendedStatistics=["p95"],
     )
     points = reply.get("Datapoints", [])
     if len(points) != 1:
@@ -171,18 +184,38 @@ def latency_baseline(cloudwatch, start: datetime, end: datetime) -> dict:
     samples = {}
     for variant in names.VARIANTS:
         counted = cloudwatch.get_metric_statistics(
-            **common, Dimensions=_dimension(variant), Statistics=["SampleCount"]
+            **common, Period=period, Dimensions=_dimension(variant), Statistics=["SampleCount"]
         )
         samples[variant] = sum(p["SampleCount"] for p in counted.get("Datapoints", []))
+    per_minute = {variant: _latency_minutes(cloudwatch, common, variant) for variant in names.VARIANTS}
     threshold, ask = recalibrated_threshold(p95)
     return {
-        "window": [window_start.isoformat(), end.isoformat()],
+        "window": [window_start.isoformat(), window_end.isoformat()],
         "period_seconds": period,
         "p95_ms": p95,
         "samples": samples,
+        "per_minute": per_minute,
         "threshold_ms": threshold,
         "ask_the_human": ask,
     }
+
+
+def _latency_minutes(cloudwatch, common: dict, variant: str) -> list[dict]:
+    """One row per minute of the window, in time order: its sample count and p95. botocore
+    hands timestamps back in local time, so each is written in UTC."""
+    request = {**common, "Period": 60, "Dimensions": _dimension(variant)}
+    rows: dict[datetime, dict] = {}
+    p95s = cloudwatch.get_metric_statistics(**request, ExtendedStatistics=["p95"])
+    for point in p95s.get("Datapoints", []):
+        row = rows.setdefault(point["Timestamp"].astimezone(UTC), {})
+        row["p95_ms"] = point["ExtendedStatistics"]["p95"]
+    counts = cloudwatch.get_metric_statistics(**request, Statistics=["SampleCount"])
+    for point in counts.get("Datapoints", []):
+        rows.setdefault(point["Timestamp"].astimezone(UTC), {})["n"] = point["SampleCount"]
+    return [
+        {"minute": at.isoformat(), "n": row.get("n"), "p95_ms": row.get("p95_ms")}
+        for at, row in sorted(rows.items())
+    ]
 
 
 # ---------------------------------------------------------------------------

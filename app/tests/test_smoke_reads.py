@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import boto3
@@ -155,44 +155,118 @@ def test_a_smoke_well_under_the_limits_needs_no_question():
 # ---------------------------------------------------------------------------
 # The baseline latency
 # ---------------------------------------------------------------------------
-def test_the_baseline_is_p95_of_exactly_variant_cheaper_over_the_window(cloudwatch):
-    start = datetime(2026, 11, 28, 5, 0, 30, tzinfo=UTC)
-    end = datetime(2026, 11, 28, 5, 11, 0, tzinfo=UTC)
-    window_start = datetime(2026, 11, 28, 5, 0, tzinfo=UTC)  # CloudWatch's minute
-    common = {
+def _latency_request(variant: str, start: datetime, end: datetime, period: int) -> dict:
+    return {
         "Namespace": names.CW_NAMESPACE,
         "MetricName": names.CW_METRIC_ANSWER_LATENCY_MS,
-        "StartTime": window_start,
+        "Dimensions": [{"Name": "Variant", "Value": variant}],
+        "StartTime": start,
         "EndTime": end,
-        "Period": 660,  # one bucket for the whole window
+        "Period": period,
     }
+
+
+def _expect_window(cloudwatch, start, end, period, p95, samples) -> None:
+    """The window's three reads: p95 of exactly Variant=cheaper, then each variant's count."""
     cloudwatch.stubber.add_response(
         "get_metric_statistics",
-        {"Datapoints": [{"Timestamp": window_start, "ExtendedStatistics": {"p95": 3_450.0}}]},
-        {
-            **common,
-            "Dimensions": [{"Name": "Variant", "Value": "cheaper"}],
-            "ExtendedStatistics": ["p95"],
-        },
+        {"Datapoints": [{"Timestamp": start, "ExtendedStatistics": {"p95": p95}}]},
+        {**_latency_request(CHEAPER, start, end, period), "ExtendedStatistics": ["p95"]},
     )
     for variant in names.VARIANTS:
         cloudwatch.stubber.add_response(
             "get_metric_statistics",
-            {"Datapoints": [{"Timestamp": window_start, "SampleCount": 150.0}]},
-            {
-                **common,
-                "Dimensions": [{"Name": "Variant", "Value": variant}],
-                "Statistics": ["SampleCount"],
-            },
+            {"Datapoints": [{"Timestamp": start, "SampleCount": samples[variant]}]},
+            {**_latency_request(variant, start, end, period), "Statistics": ["SampleCount"]},
         )
+
+
+def _expect_minutes(cloudwatch, start, end, minutes) -> None:
+    """Each variant's per-minute reads, p95 then count. minutes: {variant: [(at, n, p95)]}."""
+    for variant in names.VARIANTS:
+        rows = minutes.get(variant, [])
+        p95s = [{"Timestamp": at, "ExtendedStatistics": {"p95": p95}} for at, _, p95 in rows]
+        cloudwatch.stubber.add_response(
+            "get_metric_statistics",
+            {"Datapoints": p95s},
+            {**_latency_request(variant, start, end, 60), "ExtendedStatistics": ["p95"]},
+        )
+        cloudwatch.stubber.add_response(
+            "get_metric_statistics",
+            {"Datapoints": [{"Timestamp": at, "SampleCount": n} for at, n, _ in rows]},
+            {**_latency_request(variant, start, end, 60), "Statistics": ["SampleCount"]},
+        )
+
+
+def test_the_baseline_is_p95_of_exactly_variant_cheaper_over_the_window(cloudwatch):
+    start = datetime(2026, 11, 28, 5, 0, 30, tzinfo=UTC)
+    end = datetime(2026, 11, 28, 5, 11, 0, tzinfo=UTC)  # on a whole minute: stays as it is
+    window_start = datetime(2026, 11, 28, 5, 0, tzinfo=UTC)  # CloudWatch's minute
+    samples = {CURRENT: 150.0, CHEAPER: 150.0}
+    _expect_window(cloudwatch, window_start, end, 660, 3_450.0, samples)  # one bucket
+    _expect_minutes(cloudwatch, window_start, end, {CHEAPER: [(window_start, 150.0, 3_450.0)]})
 
     baseline = reads.latency_baseline(cloudwatch, start, end)
 
+    assert baseline["window"] == [window_start.isoformat(), end.isoformat()]
     assert baseline["p95_ms"] == 3_450.0
-    assert baseline["samples"] == {CURRENT: 150.0, CHEAPER: 150.0}
+    assert baseline["samples"] == samples
     # 4.1's recalibration: the p95, plus half the fault, rounded up to the next 1000.
     assert baseline["threshold_ms"] == 9_000
     assert baseline["ask_the_human"] is False
+
+
+def test_the_window_ends_on_the_minute_after_the_end(cloudwatch):
+    """3.6's live run: an EndTime of 08:14:20 dropped the whole 08:14 minute (25 cheaper and
+    17 current samples), and an EndTime of 08:15:00 kept them. So the end rounds up."""
+    start = datetime(2026, 11, 27, 8, 11, 49, tzinfo=UTC)
+    end = datetime(2026, 11, 27, 8, 14, 20, tzinfo=UTC)
+    window_start = datetime(2026, 11, 27, 8, 11, tzinfo=UTC)
+    window_end = datetime(2026, 11, 27, 8, 15, tzinfo=UTC)
+    _expect_window(
+        cloudwatch, window_start, window_end, 240, 4_772.8, {CURRENT: 130.0, CHEAPER: 170.0}
+    )
+    _expect_minutes(cloudwatch, window_start, window_end, {})
+
+    baseline = reads.latency_baseline(cloudwatch, start, end)
+
+    assert baseline["window"] == ["2026-11-27T08:11:00+00:00", "2026-11-27T08:15:00+00:00"]
+    assert baseline["period_seconds"] == 240
+    assert baseline["samples"] == {CURRENT: 130.0, CHEAPER: 170.0}
+    assert baseline["threshold_ms"] == 10_000
+
+
+def test_the_per_minute_rows_come_back_in_utc_and_in_order(cloudwatch):
+    """botocore hands timestamps back in local time; the rows are written in UTC, by minute."""
+    start = datetime(2026, 11, 27, 8, 11, 49, tzinfo=UTC)
+    end = datetime(2026, 11, 27, 8, 13, 0, tzinfo=UTC)
+    window_start = datetime(2026, 11, 27, 8, 11, tzinfo=UTC)
+    est = timezone(timedelta(hours=-5))
+    first = datetime(2026, 11, 27, 3, 11, tzinfo=est)  # 08:11Z
+    second = datetime(2026, 11, 27, 3, 12, tzinfo=est)
+    _expect_window(cloudwatch, window_start, end, 120, 4_400.0, {CURRENT: 2.0, CHEAPER: 77.0})
+    _expect_minutes(
+        cloudwatch,
+        window_start,
+        end,
+        {
+            CURRENT: [(first, 1.0, 6_377.5), (second, 1.0, 7_000.0)],
+            CHEAPER: [(second, 69.0, 4_289.6), (first, 8.0, 5_954.8)],
+        },  # out of order
+    )
+
+    baseline = reads.latency_baseline(cloudwatch, start, end)
+
+    assert baseline["per_minute"] == {
+        CURRENT: [
+            {"minute": "2026-11-27T08:11:00+00:00", "n": 1.0, "p95_ms": 6_377.5},
+            {"minute": "2026-11-27T08:12:00+00:00", "n": 1.0, "p95_ms": 7_000.0},
+        ],
+        CHEAPER: [
+            {"minute": "2026-11-27T08:11:00+00:00", "n": 8.0, "p95_ms": 5_954.8},
+            {"minute": "2026-11-27T08:12:00+00:00", "n": 69.0, "p95_ms": 4_289.6},
+        ],
+    }
 
 
 def test_a_baseline_over_8000_ms_is_flagged_for_the_human():
