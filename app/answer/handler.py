@@ -28,7 +28,8 @@ next contract change records:
   answer_request.
 
 Their messages carry the model, the error's code, its HTTP status and request ID. They
-never carry the question, the reply, the service's own message or a key.
+never carry the question, the reply, the service's own message, a key, or a caller's field
+name.
 
 The chaos_delay_cheaper read (design.md section 9) is not built: task 4.3 adds it only if
 its FIS timebox runs out.
@@ -85,11 +86,16 @@ def bedrock_client():
 
 
 def request_problem(event: object) -> str | None:
-    """Why event is not an answer_request, or None when it is one. Never quotes the question."""
+    """Why event is not an answer_request, or None when it is one. It names only the
+    expected fields that are missing, and counts the others: a caller's key can carry an
+    identity or a question, so it is never quoted, nor is the question."""
     if not isinstance(event, dict):
         return f"a {type(event).__name__}, not an object"
-    if set(event) != set(names.ANSWER_REQUEST_FIELDS):
-        return f"fields {sorted(map(str, event))}, expected {sorted(names.ANSWER_REQUEST_FIELDS)}"
+    expected = set(names.ANSWER_REQUEST_FIELDS)
+    if set(event) != expected:
+        missing = sorted(expected - set(event))
+        unexpected = len(set(event) - expected)
+        return f"fields missing {missing}, and {unexpected} unexpected field(s)"
     question, identity = event[QUESTION_FIELD], event[IDENTITY_FIELD]
     if not isinstance(question, str) or not question:
         return f"{QUESTION_FIELD} must be a non-empty string"

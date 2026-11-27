@@ -293,6 +293,22 @@ def test_a_request_that_is_not_an_answer_request_is_refused_before_bedrock(
     assert fake.calls == []
 
 
+def test_a_callers_key_is_counted_and_never_quoted(monkeypatch, model_id):
+    """Lambda logs the message as errorMessage, and a key can carry an identity or a
+    question."""
+    leaked_identity, leaked_question = names.run_identity("ranswertest1200", 99), "Who else?"
+    fake = _use(monkeypatch, FakeBedrock(_reply()))
+    with pytest.raises(handler.AnswerFailed) as raised:
+        handler.handler({**_event(), leaked_identity: leaked_question}, None)
+
+    message = str(raised.value)
+    assert "1 unexpected field(s)" in message
+    for text in (leaked_identity, leaked_question, IDENTITY):
+        assert text not in message
+    _clean_message(raised.value)
+    assert fake.calls == []
+
+
 @pytest.mark.parametrize("value", [None, "", names.MODEL_JUDGE, "us.anthropic.claude-unknown"])
 def test_model_id_must_name_one_of_the_two_answer_models(monkeypatch, value):
     if value is None:
