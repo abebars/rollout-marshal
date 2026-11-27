@@ -39,7 +39,7 @@ line-length = 100
 target-version = "py313"
 # Ruff 0.17 also formats Python blocks inside Markdown. Keep it to .py files so
 # make lint and make fmt never touch design.md, docs/ or evidence/.
-extend-exclude = ["*.md"]
+extend-exclude = ["*.md", "evidence/"]  # evidence keeps the scripts exactly as they ran
 force-exclude = true
 
 [tool.ruff.lint]

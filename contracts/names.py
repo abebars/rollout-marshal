@@ -61,9 +61,11 @@ FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "topP", "top_k")
 
 ANSWER_MAX_TOKENS = 2000  # caps thinking plus text
 ANSWER_THINKING_EFFORT = "low"
-# Where the effort goes inside additionalModelRequestFields. Unproven until
-# task 1.2 records the exact request fields; 1.4 corrects it if needed.
+# Inside additionalModelRequestFields, as task 1.2 proved: effort low on both answer models
+# and the agent; thinking disabled on the judge (and possible on Sonnet 5, not on Fable 5.1).
 THINKING_EFFORT_FIELD = "output_config.effort"
+THINKING_DISABLED_FIELD = "thinking.type"
+THINKING_DISABLED_VALUE = "disabled"
 ANSWER_MAX_WORDS = 120  # the answer system prompt asks for at most this many words
 JUDGE_MAX_TOKENS = 200  # judge runs with thinking disabled
 AGENT_MAX_TOKENS = 4000
@@ -94,6 +96,7 @@ MODEL_BY_VARIANT = {VARIANT_CURRENT: MODEL_CURRENT, VARIANT_CHEAPER: MODEL_CHEAP
 EXPERIMENT_FEATURE_PREFIX = "assistant_model_"
 EXPERIMENT_FEATURE_KEY_TEMPLATE = "assistant_model_<run_id>"  # multivariate, one per run
 CONTROL_VALUE = VARIANT_CURRENT  # the feature's own value; Flagsmith reserves the control
+CONTROL_LABEL = "control"  # what flag.variant, exposures and results call that arm (task 1.2)
 TREATMENT_OPTION_KEY = VARIANT_CHEAPER  # an option without a key records no exposures
 TREATMENT_OPTION_VALUE = VARIANT_CHEAPER
 TREATMENT_PERCENT = 50
@@ -159,11 +162,23 @@ METRIC_DEFINITIONS = {
 # The expected direction each metric gets when it is attached to an experiment.
 EXPECTED_DIRECTION_NOT_DECREASE = "should not decrease"
 EXPECTED_DIRECTION_NOT_INCREASE = "should not increase"
+# The Admin API and MCP spellings of the directions above (task 1.3).
+METRIC_DIRECTION_API = {METRIC_DIRECTION_HIGHER: "up", METRIC_DIRECTION_LOWER: "down"}
 EXPERIMENT_EXPECTED_DIRECTIONS = {
     METRIC_HELPFUL_RATE: EXPECTED_DIRECTION_NOT_DECREASE,
     METRIC_MEAN_LATENCY_MS: EXPECTED_DIRECTION_NOT_INCREASE,
     METRIC_MEAN_COST_MICRO_USD: EXPECTED_DIRECTION_NOT_INCREASE,
 }
+EXPECTED_DIRECTION_API = {
+    EXPECTED_DIRECTION_NOT_DECREASE: "not_decrease",
+    EXPECTED_DIRECTION_NOT_INCREASE: "not_increase",
+}
+# What Flagsmith's results give per metric (task 1.4's sample): each variant's counts,
+# and for cheaper the inference against control.
+FLAGSMITH_RESULT_VARIANT_FIELDS = ("n", "sum", "sum_squares")
+FLAGSMITH_RESULT_INFERENCE_FIELDS = ("lift", "ci_low", "ci_high", "chance_to_win")
+# A variation's identities: the sum of this field over the results' exposures timeseries.
+FLAGSMITH_EXPOSURES_FIELD = "new_identities"
 # Every Flagsmith name a spike creates starts with this, except task 1.3's experiment
 # feature (experiment_feature_key(scratch_run_id("spike", now))).
 SPIKE_NAME_PREFIX = "spike_"
@@ -178,7 +193,7 @@ FLAGSMITH_SDK_MIN_VERSION = "6.6.0"
 FLAGSMITH_CLIENT_OPTIONS = {"enable_events": True}  # remote evaluation
 # SDK calls; the exact signatures are proven by task 1.2.
 SDK_FLAGS_CALL = "get_identity_flags"  # once per answer, the only identity request
-SDK_EXPOSURE_CALL = "track_exposure_event"  # only when flag.experiment.in_experiment
+SDK_EXPOSURE_CALL = "track_exposure_event"  # only when in the experiment with a variant set
 SDK_OUTCOME_CALL = "track_event"  # with the identity and a numeric value
 SDK_FLUSH_CALL = "flush_events"  # before every handler returns
 SDK_FORBIDDEN_CALL = "get_experiment_flag"  # makes its own identity request
@@ -449,7 +464,11 @@ PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER = -0.05
 # ---------------------------------------------------------------------------
 # Section 7. Invoking the agent
 # ---------------------------------------------------------------------------
-AGENT_RUNTIME_NAME = "rm_agent"
+AGENT_RUNTIME_NAME = "rm_agent"  # the runtime's name inside the AgentCore CLI project
+AGENTCORE_PROJECT_NAME = "rm"
+AGENTCORE_TARGET_NAME = "default"
+# The CLI names a deployed runtime <project>_<target>_<runtime> (task 1.3).
+AGENT_RUNTIME_DEPLOYED_NAME = "rm_default_rm_agent"
 SESSION_ID_PREFIX = "rm-session-"  # + UUID4
 SESSION_ID_MIN_LENGTH = 33
 
@@ -548,7 +567,7 @@ GATEWAY_TARGET_FLAGSMITH_ADMIN = "flagsmith-admin"  # Lambda target, once 2.2 de
 # A target's name shapes the Gateway's tool names, so these never change.
 GATEWAY_TARGETS = (GATEWAY_TARGET_FLAGSMITH, GATEWAY_TARGET_FLAGSMITH_ADMIN)
 GATEWAY_API_KEY_HEADER = "Authorization"
-GATEWAY_API_KEY_PREFIX = "Api-Key "  # whether the Gateway adds the space itself: task 1.3
+GATEWAY_API_KEY_PREFIX = "Api-Key"  # stored trimmed by the Gateway service (task 1.3)
 
 # ---------------------------------------------------------------------------
 # Section 8. Secrets and notifications
@@ -683,6 +702,18 @@ def dedupe_key(history_length: int, to_state: str) -> str:
     if to_state not in STATES:
         raise ValueError(f"not a state: {to_state!r}")
     return f"{history_length}#{to_state}"
+
+
+def api_key_authorization(key: str) -> str:
+    """The Authorization value for Flagsmith's MCP server and Admin API: Api-Key <key>.
+
+    Exactly one space between prefix and key. That Flagsmith refuses two is read in its
+    open-source key parser, not observed; the Gateway service stores the prefix trimmed and
+    authenticates either way (task 1.3).
+    """
+    if not key or key != key.strip():
+        raise ValueError("the key must be non-empty with no surrounding whitespace")
+    return f"{GATEWAY_API_KEY_PREFIX.strip()} {key}"
 
 
 def identity(n: int) -> str:

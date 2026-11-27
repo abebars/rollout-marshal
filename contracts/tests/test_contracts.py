@@ -214,6 +214,12 @@ NOT_A_NAME = {
     "2#ROLLED_BACK": "example of dedupe_key(); test_dedupe_key_matches_design checks it",
     "marshal check <run_id>": "command line: CLI_NAME plus ACTION_CHECK",
     "flag.variant": "SDK attribute the exposure call sends",
+    "flag.value": "SDK attribute: the variant's value, which names the model served",
+    "api_key_authorization()": "helper in contracts.names; test_spike_findings_match_design",
+    "<project>_<target>_<runtime>": (
+        "the AgentCore CLI's naming pattern; see AGENT_RUNTIME_DEPLOYED_NAME"
+    ),
+    "flagsmith___<tool>": "the Gateway's tool-name pattern for target GATEWAY_TARGET_FLAGSMITH",
     "scripts/inject_fault.sh --fallback": "command line of INJECT_FAULT_SCRIPT's flag fallback",
     "agent/": "directory; design.md section 12 owns paths",
     "assistant_model_rspike<HHMM>": (
@@ -1501,11 +1507,12 @@ def test_agentcore_pieces_match_design():
     assert f"from `{names.SECRET_FLAGSMITH_API_KEY}`" in notes["Credential provider"]
     assert notes["MCP server target"] == (
         f"`{names.FLAGSMITH_MCP_URL}`, API-key outbound auth, header "
-        f"`{names.GATEWAY_API_KEY_HEADER}`, prefix `{names.GATEWAY_API_KEY_PREFIX}`"
+        f"`{names.GATEWAY_API_KEY_HEADER}`, prefix `{names.GATEWAY_API_KEY_PREFIX}`; the service "
+        "stores the prefix trimmed (task 1.3)"
     )
     assert notes["Lambda target"].startswith(f"Lambda `{names.FLAGSMITH_ADMIN_FUNCTION}`")
     assert names.FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE == (
-        f"{names.GATEWAY_API_KEY_HEADER}: {names.GATEWAY_API_KEY_PREFIX}<key>"
+        f"{names.GATEWAY_API_KEY_HEADER}: {names.GATEWAY_API_KEY_PREFIX} <key>"
     )
     assert f"its ARN and `{names.AGENT_RUNTIME_ARN_PARAMETER}` never change" in notes["Runtime"]
     roles = re.sub(r"\s+", " ", section(7))
@@ -1823,6 +1830,28 @@ PINNED_RULE_SENTENCES = (
     "that every plan and apply uses; the lead copies it into each worktree it creates.",
     "and do not invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is emitted",
     "a missing flag or a failed read means off",
+    # what the spikes found (task 1.4)
+    "and `flag.variant` is set, record the exposure with `track_exposure_event`.",
+    "The SDK sends the value as a string, and Flagsmith aggregates it as a number (task 1.2)",
+    "a buffer of one item drops events tracked in a row (task 1.2)",
+    "Development and Production use v2 feature versioning: a feature's environment state changes "
+    "through a new version (create it, update its default state, publish it), never in place",
+    "or sends an experiment's status or rollout decision through MCP's experiment create or "
+    "update tools",
+    "The experiment's create carries its whole rollout block",
+    "Flagsmith has no primary-metric flag, so the agent attaches `helpful_rate` first.",
+    "in task 1.2 all events were in by about 2 minutes 15 seconds after the last was sent",
+    "a refresh returns final results, as of the end (task 1.4)",
+    "get-or-create the run's feature, options and experiment through the MCP server, and its "
+    "metrics through the Admin API tool",
+    "A variation's `identities` is the sum of its `new_identities` in the same response's "
+    "exposures timeseries, not `n`",
+    "the credential provider, because the CLI either stores the key in its local env file or takes "
+    "it from a JSON-keyed secret, and `rm/flagsmith/api-key` holds a bare string; and the "
+    "`flagsmith` target, which CLI 1.3.0 cannot create with API-key auth",
+    "Results are read through the Admin API tool; MCP's results read returned nothing before a "
+    "refresh",
+    "that the Gateway adds the space is inferred, not observed",
     "**One run at a time.** `start` is refused while the pointer exists, that is, while a run is "
     "active.",
 )
@@ -1846,6 +1875,10 @@ def test_other_files_repeat_the_rules():
         f"`{names.CW_DIMENSION_VARIANT}={names.VARIANT_CHEAPER}`" in claude
     )
     assert "An empty result means unknown, not zero" in claude
+    assert (
+        "Task 1.3's usage reads returned nothing, so ask the human to read the Usage page after "
+        "each load" in claude
+    )
     spec = re.sub(
         r"\s+",
         " ",
@@ -1857,6 +1890,10 @@ def test_other_files_repeat_the_rules():
         "a second `alarm` action arrives while the run is `ROLLED_BACK` or `AWAITING_RESUME`"
         in spec
     )
+    assert (
+        "and SHALL create the metrics and start the experiment through the Flagsmith Admin API"
+        in spec
+    )
     assert set(names.ALARM_NOOP_STATES) == {names.STATE_ROLLED_BACK, names.STATE_AWAITING_RESUME}
     tasks = re.sub(
         r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
@@ -1866,6 +1903,17 @@ def test_other_files_repeat_the_rules():
         in (tasks)
     )
     assert "`notify(run_id, subject, body, dedupe_key) -> message_id`" in tasks
+    deployed = names.AGENT_RUNTIME_DEPLOYED_NAME
+    assert f"The deployed runtime is `{deployed}`" in tasks
+    assert (
+        f"arn:aws:bedrock-agentcore:{names.REGION}:{names.ACCOUNT_ID}:runtime/{deployed}-*" in tasks
+    )
+    assert (
+        "The agent creates the flag and experiment through the Flagsmith MCP server, and the "
+        "metrics and the start through the Admin API." in tasks
+    )
+    assert "`helpful_lift_ci_lower` from `ci_low`" in tasks
+    assert f"maps the results' `{names.CONTROL_LABEL}` arm to `{names.VARIANT_CURRENT}`" in tasks
     for line in (
         f"`resume` refuses a `pending` younger than {names.PENDING_STALE_SECONDS} seconds",
         "`PLANNED` run with no pointer returns `ILLEGAL_IN_STATE` and changes nothing, while "
@@ -1900,6 +1948,68 @@ def test_console_script_once_the_cli_exists():
     assert scripts.get(names.CLI_NAME) == names.CLI_ENTRY_POINT
 
 
+# ---------------------------------------------------------------------------
+# What the spikes found (task 1.4)
+# ---------------------------------------------------------------------------
+def test_spike_findings_match_design():
+    prose = re.sub(r"\s+", " ", DESIGN)
+    assert (
+        f"effort `{names.ANSWER_THINKING_EFFORT}` is `{names.THINKING_EFFORT_FIELD}` on both "
+        f"answer models, and thinking is disabled with `{names.THINKING_DISABLED_FIELD}` "
+        f"`{names.THINKING_DISABLED_VALUE}`" in prose
+    )
+    assert f"exposures and results label it `{names.CONTROL_LABEL}` (task 1.2)" in prose
+    assert names.CONTROL_LABEL not in names.VARIANTS
+    rows = {r[0]: r[1] for r in table_rows(section(4), "| Thing | Name or value |")}
+    words = {**names.METRIC_DIRECTION_API, **names.EXPECTED_DIRECTION_API}
+    assert rows["API spellings (task 1.3)"] == "; ".join(f"{k}: `{v}`" for k, v in words.items())
+    assert set(names.METRIC_DIRECTION_API) == {
+        d["direction"] for d in names.METRIC_DEFINITIONS.values()
+    }
+    assert set(names.EXPECTED_DIRECTION_API) == set(names.EXPERIMENT_EXPECTED_DIRECTIONS.values())
+    variant = names.FLAGSMITH_RESULT_VARIANT_FIELDS
+    inference = names.FLAGSMITH_RESULT_INFERENCE_FIELDS
+    assert (
+        f"each variant's {listed(variant, 'and')} (the mean is sum / n) and, for `cheaper`, its "
+        f"`{inference[0]}` (relative, a fraction), {listed(inference[1:], 'and')}" in prose
+    )
+    assert f"`helpful_lift_ci_lower` is the `helpful_rate` metric's `{inference[1]}`" in prose
+    sample = json.loads((ROOT / "evidence/1.4-results-sample.json").read_text())
+    metric = sample["results"]["payload"]["metrics"][0]
+    assert set(metric["variants"]) == {names.VARIANT_CHEAPER, names.CONTROL_LABEL}
+    for arm in metric["variants"].values():
+        assert tuple(arm) == variant
+    assert set(metric["inference"][names.VARIANT_CHEAPER]) == set(inference)
+    points = sample["results"]["payload"]["exposures_timeseries"]["points"]
+    exposures = {
+        arm: sum(p[names.FLAGSMITH_EXPOSURES_FIELD].get(arm, 0) for p in points)
+        for arm in (names.VARIANT_CHEAPER, names.CONTROL_LABEL)
+    }
+    assert exposures == {names.VARIANT_CHEAPER: 78, names.CONTROL_LABEL: 72}
+    assert f"sum of its `{names.FLAGSMITH_EXPOSURES_FIELD}` in the same response" in prose
+    assert names.AGENT_RUNTIME_DEPLOYED_NAME == (
+        f"{names.AGENTCORE_PROJECT_NAME}_{names.AGENTCORE_TARGET_NAME}_{names.AGENT_RUNTIME_NAME}"
+    )
+    assert (
+        f"in the AgentCore CLI project `{names.AGENTCORE_PROJECT_NAME}` with target "
+        f"`{names.AGENTCORE_TARGET_NAME}`"
+        in prose
+        and f"so it is `{names.AGENT_RUNTIME_DEPLOYED_NAME}`, and callers use its ARN" in prose
+    )
+    assert "Task 1.2 confirmed that events accept this client-side key" in DESIGN
+    assert names.api_key_authorization("k3y") == "Api-Key k3y"
+    assert names.FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE == (
+        f"{names.GATEWAY_API_KEY_HEADER}: {names.api_key_authorization('<key>')}"
+    )
+    for bad in ("", " k3y", "k3y "):
+        with pytest.raises(ValueError):
+            names.api_key_authorization(bad)
+    assert "with exactly one space; `api_key_authorization()`" in prose
+    assert "Results lag the events" in prose and "refresh returns final results" in prose
+    assert "The MCP server cannot create a metric" in prose
+    assert "| `flagsmith_admin` | get-or-create metrics, start experiment," in DESIGN
+
+
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
@@ -1931,6 +2041,10 @@ TIED_BY = {
     "METRICS": test_definitions_are_consistent,
     "EXPERIMENT_EXPECTED_DIRECTIONS": test_experiment_rollout_and_directions_match_design,
     "GATEWAY_TARGETS": test_agentcore_pieces_match_design,
+    "METRIC_DIRECTION_API": test_spike_findings_match_design,
+    "EXPECTED_DIRECTION_API": test_spike_findings_match_design,
+    "FLAGSMITH_RESULT_VARIANT_FIELDS": test_spike_findings_match_design,
+    "FLAGSMITH_RESULT_INFERENCE_FIELDS": test_spike_findings_match_design,
     "FEATURE_KEYS": test_feature_keys_match_design,
     "JUDGE_PAYLOAD_FIELDS": test_judge_payload_fields_match_design,
     "CW_DIMENSION_SETS": test_cloudwatch_metrics_match_design,
