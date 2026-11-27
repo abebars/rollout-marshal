@@ -3206,3 +3206,96 @@ GOOD_VARIATION = {
 )
 def test_schema_bounds_and_types_are_pinned(schema, instance):
     invalid(schema, instance())
+
+
+def test_contract_c4_fis_names_and_logging():
+    """Contract change c4: section 9's names and module interface, the review role's FIS gap,
+    and the two Flagsmith-calling functions' log level."""
+    sec2, sec5, sec9 = flat_section(2), flat_section(5), flat_section(9)
+    assert (
+        f"Names (task 4.3): the configuration bucket `{names.FIS_CONFIG_BUCKET}`, with the "
+        f"configuration in its `{names.FIS_CONFIG_PREFIX}` folder; the experiment role "
+        f"`{names.FIS_ROLE}`, with inline policy `{names.FIS_ROLE_POLICY}`; and inline policy "
+        f"`{names.FIS_CONFIG_READ_POLICY}` on `{names.FIS_TARGET_FUNCTION}`'s role, which reads "
+        "only that folder." in sec9
+    )
+    assert (
+        f"The FIS module takes the app module's `{names.APP_CHEAPER_FUNCTION_NAME_OUTPUT}` and "
+        f"`{names.APP_CHEAPER_ROLE_NAME_OUTPUT}` outputs and gives back "
+        f"`{names.APP_CHEAPER_EXTRA_LAYERS_INPUT}` and `{names.APP_CHEAPER_EXTRA_ENV_INPUT}`, "
+        "which "
+        f"the app module applies to `{names.FIS_TARGET_FUNCTION}` alone. Neither depends on the "
+        "app module, so the two modules form no cycle." in sec9
+    )
+    assert (
+        "The lead applies both together, before task 3.6, so 3.6's baseline is measured with the "
+        "extension on the function, as the fault run has it." in sec9
+    )
+    assert (
+        f"`{names.INJECT_FAULT_SCRIPT}` starts one experiment from the template, prints its ID and "
+        "its UTC start and end, and never stops it: the fault ends by its duration." in sec9
+    )
+    assert (
+        "An organisation SCP denies it FIS, so the lead reads FIS state with the SSO profile and "
+        f"records the reads, and `{names.INJECT_FAULT_SCRIPT}` runs with that profile" in sec2
+    )
+    assert (
+        f"`{names.ROUTER_FUNCTION}` and `{names.JUDGE_FUNCTION}` log at INFO or above, "
+        "never DEBUG, "
+        "because the Flagsmith SDK logs identifiers at DEBUG (task 3.2's review)." in sec5
+    )
+    assert names.FIS_CONFIG_BUCKET.endswith(
+        f"-{names.ACCOUNT_ID}"
+    )  # as the account's other buckets
+    interface = (
+        names.APP_CHEAPER_FUNCTION_NAME_OUTPUT,
+        names.APP_CHEAPER_ROLE_NAME_OUTPUT,
+        names.APP_CHEAPER_EXTRA_LAYERS_INPUT,
+        names.APP_CHEAPER_EXTRA_ENV_INPUT,
+        names.APP_ASK_URL_OUTPUT,
+    )
+    assert len(set(interface)) == len(interface)
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    for line in (
+        f"- design.md section 5 sets `{names.ROUTER_FUNCTION}`'s and "
+        f"`{names.JUDGE_FUNCTION}`'s log "
+        "level, INFO or above, and section 9 names the module interface the FIS module meets: "
+        f"outputs `{names.APP_CHEAPER_FUNCTION_NAME_OUTPUT}` and "
+        f"`{names.APP_CHEAPER_ROLE_NAME_OUTPUT}`, inputs `{names.APP_CHEAPER_EXTRA_LAYERS_INPUT}` "
+        f"and `{names.APP_CHEAPER_EXTRA_ENV_INPUT}`.",
+        f"- The baseline runs with the FIS extension on `{names.FIS_TARGET_FUNCTION}`, "
+        "as the fault "
+        "run has it: the lead applies the FIS module with the app module first (design.md section "
+        "9).",
+        "- design.md section 9 holds the module's names and interface. An organisation SCP denies "
+        f"FIS to `{names.REVIEW_ROLE}`, so the lead reads FIS state with the SSO profile "
+        "and records "
+        f"it, and `{names.INJECT_FAULT_SCRIPT}` runs with that profile.",
+    ):
+        assert line in tasks, line
+
+
+def test_fis_and_app_module_interfaces():
+    """Each module, once it exists, declares its side of section 9's interface."""
+
+    def declared(module: str) -> str:
+        directory = ROOT / "infra/modules" / module
+        if not directory.is_dir():
+            return ""
+        return "".join(p.read_text() for p in sorted(directory.glob("*.tf")))
+
+    fis, app = declared("fis"), declared("app")
+    takes = (names.APP_CHEAPER_FUNCTION_NAME_OUTPUT, names.APP_CHEAPER_ROLE_NAME_OUTPUT)
+    gives = (names.APP_CHEAPER_EXTRA_LAYERS_INPUT, names.APP_CHEAPER_EXTRA_ENV_INPUT)
+    if fis:
+        for name in takes:
+            assert f'variable "{name}"' in fis, name
+        for name in gives:
+            assert f'output "{name}"' in fis, name
+    if app:
+        for name in (*takes, names.APP_ASK_URL_OUTPUT):
+            assert f'output "{name}"' in app, name
+        for name in gives:
+            assert f'variable "{name}"' in app, name

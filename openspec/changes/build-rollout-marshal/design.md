@@ -27,7 +27,7 @@ changes, and clear output.
 | AgentCore CLI | npm package `@aws/agentcore`, command `agentcore`, version 1.3.0 or later within 1.x. Its project lives under `agent/`; it deploys the runtime through its own CDK stack and bootstraps CDK on the first deploy |
 | Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy. Every plan and apply from `infra/` runs `make build` first, which runs each function's `build.sh` where it has one; a module may package with `archive_file` instead (Gate 1) |
 | Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below. For a task whose Pass needs its own Terraform applied (2.7, 4.3), the lead may apply that branch merged locally with `dev` before it merges, attaches the plan, and re-applies `dev` if it does not merge. While a branch is applied unmerged, every later apply includes it; branches are applied together only from one local merge, and only if they touch different modules |
-| Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review`, always as `--profile rm-review`: exported environment credentials override `AWS_PROFILE`, but not `--profile` |
+| Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review`, always as `--profile rm-review`: exported environment credentials override `AWS_PROFILE`, but not `--profile`. An organisation SCP denies it FIS, so the lead reads FIS state with the SSO profile and records the reads, and `scripts/inject_fault.sh` runs with that profile |
 | Timebox | 90 minutes per task unless the task says otherwise. Past it, stop and tell the lead |
 | Flagsmith | SaaS, organisation 41656, project "Toggle Wars" (ID `55601`), environment "Development" |
 | Flagsmith plan limits | Free: 50,000 API requests a month, 1 project, 1 seat |
@@ -228,6 +228,8 @@ rm-router -> CloudWatch embedded metrics
   the router's exposure, flushed beside the answer (section 4, step 6), is
   the one exception.
   API Gateway's 30 second limit applies to the request path only.
+- `rm-router` and `rm-judge` log at INFO or above, never DEBUG, because
+  the Flagsmith SDK logs identifiers at DEBUG (task 3.2's review).
 - Answer Lambdas return whole responses. No response streaming (FIS Lambda
   faults do not support it).
 - The answer functions take `question` and `identity` and return `answer`,
@@ -837,8 +839,23 @@ invocations, added delay 10000 ms, duration 6 minutes. The function needs
 the FIS extension layer (its arm64 ARN is published in SSM), the S3
 configuration bucket, the IAM policies and the environment variables from
 the AWS FIS Lambda actions guide, with
-`AWS_FIS_SLOW_POLL_INTERVAL_SECONDS=10` so the fault starts quickly. The
-fault can take up to a minute to ramp and the alarm needs two full
+`AWS_FIS_SLOW_POLL_INTERVAL_SECONDS=10` so the fault starts quickly.
+
+Names (task 4.3): the configuration bucket `rm-fis-config-818928662830`,
+with the configuration in its `FisConfigs` folder; the experiment role
+`rm-fis-role`, with inline policy `rm-fis-actions`; and inline policy
+`rm-fis-config-read` on `rm-answer-cheaper`'s role, which reads only that
+folder. The FIS module takes the app module's `cheaper_function_name` and
+`cheaper_role_name` outputs and gives back `cheaper_extra_layers` and
+`cheaper_extra_env`, which the app module applies to `rm-answer-cheaper`
+alone. Neither depends on the app module, so the two modules form no
+cycle. The lead applies both together, before task 3.6, so 3.6's baseline
+is measured with the extension on the function, as the fault run has it.
+`scripts/inject_fault.sh` starts one experiment from the template, prints
+its ID and its UTC start and end, and never stops it: the fault ends by
+its duration.
+
+The fault can take up to a minute to ramp and the alarm needs two full
 one-minute periods, so expect ALARM three to five minutes in. Timebox:
 2 hours. Fallback, built only if task 4.3's timebox runs out: a Flagsmith
 boolean feature `chaos_delay_cheaper` that `rm-answer-cheaper` reads from

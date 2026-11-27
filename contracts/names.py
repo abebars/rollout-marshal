@@ -700,6 +700,19 @@ FIS_DURATION_MINUTES = 6
 FIS_SLOW_POLL_ENV = "AWS_FIS_SLOW_POLL_INTERVAL_SECONDS"
 FIS_SLOW_POLL_SECONDS = 10
 FIS_TIMEBOX_MINUTES = 120
+# Section 9's names (task 4.3, contract change c4). The configuration sits in the
+# bucket's FIS_CONFIG_PREFIX folder; the read policy goes on the cheaper function's role.
+FIS_CONFIG_BUCKET = "rm-fis-config-818928662830"
+FIS_CONFIG_PREFIX = "FisConfigs"  # the AWS FIS Lambda actions guide's example folder
+FIS_ROLE = "rm-fis-role"
+FIS_ROLE_POLICY = "rm-fis-actions"
+FIS_CONFIG_READ_POLICY = "rm-fis-config-read"
+# The app module and the FIS module meet through these (tasks 3.5 and 4.3): the FIS module
+# takes the first two of the app module's outputs and gives back the app module's two inputs.
+APP_CHEAPER_FUNCTION_NAME_OUTPUT = "cheaper_function_name"
+APP_CHEAPER_ROLE_NAME_OUTPUT = "cheaper_role_name"
+APP_CHEAPER_EXTRA_LAYERS_INPUT = "cheaper_extra_layers"
+APP_CHEAPER_EXTRA_ENV_INPUT = "cheaper_extra_env"
 
 # ---------------------------------------------------------------------------
 # Section 10. Report

@@ -592,6 +592,10 @@ their tasks name, not against each other.
     in the evidence, and pins it in a test.
   - Payload format 2.0, the handler paths and what the answer and router zips
     hold are in design.md section 5.
+  - design.md section 5 sets `rm-router`'s and `rm-judge`'s log level, INFO
+    or above, and section 9 names the module interface the FIS module
+    meets: outputs `cheaper_function_name` and `cheaper_role_name`, inputs
+    `cheaper_extra_layers` and `cheaper_extra_env`.
   - Pass: `terraform validate` clean, and the plan from `infra/` lists this
     task's resources to add and destroys nothing outside them. After 3.5 is
     merged and applied: the lead attaches the plan and apply output, and a
@@ -610,6 +614,9 @@ their tasks name, not against each other.
   - `evidence/3.6-results.json` holds the experiment read's
     `experiment_metrics` list (`metric_name`, `metric`) next to the raw
     `results`; 2.2's waiting test reads it.
+  - The baseline runs with the FIS extension on `rm-answer-cheaper`, as the
+    fault run has it: the lead applies the FIS module with the app module
+    first (design.md section 9).
   - Pass, read through the API found in 1.3 (or **Human** on the
     dashboard if none exists): both variations show at least 50
     identities; CloudWatch has `AnswerLatencyMs` datapoints for both
@@ -685,6 +692,10 @@ their tasks name, not against each other.
   - Do: seed a run (`seed_experiment.py rfault<HHMM>`), start
     `load.py --run-id <run_id> --users 150 --questions 2`, then start the fault. The lead
     applies `infra/modules/fis` first.
+  - design.md section 9 holds the module's names and interface. An
+    organisation SCP denies FIS to `rm-review-readonly`, so the lead reads
+    FIS state with the SSO profile and records it, and
+    `scripts/inject_fault.sh` runs with that profile.
   - Pass: the alarm reaches ALARM within 5 minutes of the fault starting
     and leaves ALARM after it ends; times recorded. **Human** ends the
     experiment, then `reset.py` runs. A pre-merge apply of
