@@ -522,7 +522,7 @@ their tasks name, not against each other.
     a bool. 1.2 showed `True` travels as the string `"True"`.
   - Pass: unit tests green.
 
-- [ ] 3.4 **Load script**
+- [x] 3.4 **Load script**
   - Needs: 1.1. Files: `scripts/load.py`, `app/questions.json`, tests.
   - Produces: `scripts/load.py --run-id <run_id> --users N --questions M
     --url <api>`, sending identity `run_identity(run_id, n)` for user n, each
