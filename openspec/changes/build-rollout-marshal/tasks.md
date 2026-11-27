@@ -302,7 +302,9 @@ their tasks name, not against each other.
     After `infra/modules/agent` is applied: `pytest -m live` creates and starts an
     experiment on run ID `rlive<HHMM>`, records how long the start call took
     against `rm-flagsmith-admin`'s 30-second timeout, and reads it back; **Human** ends
-    it; the ID is in the pull request.
+    it; the ID is in the pull request. (Done by the lead under Ahmed's chat
+    delegation: 918 ended 2026-11-27T08:16:42Z, "Roll out control";
+    `evidence/gate-2-review.md`.)
 
 - [x] 2.3 **Planner**
   - Needs: 1.1. Files: `agent/runtime/rm_agent/planner.py`,
@@ -443,7 +445,7 @@ their tasks name, not against each other.
     The contracts test fails on 2.6's branch until then.
   - Pass: unit tests with a fake runtime client green.
 
-- [ ] 2.7 **Deploy the agent**
+- [x] 2.7 **Deploy the agent** (PR #30 merged: build and live halves; runtime role applied before merge)
   - Needs: 2.5, 2.6; 3.5 applied (for `rm-runs`).
   - Files: what the AgentCore CLI generates under `agent/`,
     `infra/modules/agent/runtime_role.tf`, `agent/scripts/setup_gateway.py`
@@ -471,7 +473,8 @@ their tasks name, not against each other.
   - `setup_gateway.py`'s docstring gives the prefix as `Api-Key`.
   - A rewords `evidence/1.3-flagsmith-agent-spike.md` step 12. The lead
     ended 819 in the dashboard at Ahmed's request; that is a one-off,
-    recorded in `evidence/gate-1-review.md`.
+    recorded in `evidence/gate-1-review.md`. (Correction, 2026-11-27, Gate 2:
+    not a one-off; see `evidence/gate-2-review.md`.)
   - Pass: `marshal status` against the deployed runtime prints "no active
     run"; SSM parameter `/rm/agent-runtime-arn` holds the ARN (the
     evidence shows `get-parameter`); the evidence file lists the Gateway
@@ -561,7 +564,7 @@ their tasks name, not against each other.
     directory; the lock frees itself when the script dies.
   - Pass: unit tests green.
 
-- [ ] 3.5 **App infrastructure, bootstrap, seed and reset**
+- [x] 3.5 **App infrastructure, bootstrap, seed and reset**
   - Needs: 3.1, 3.2, 3.3; before its apply review, the lead's
     `rm-review-readonly` role (applied from `infra/review.tf`, its
     `simulate-principal-policy` result recorded) and the human's `rm-review`
@@ -610,7 +613,7 @@ their tasks name, not against each other.
     read-only goldfish check finds the API, the four functions, `rm-runs`
     and the reports bucket.
 
-- [ ] 3.6 **Deployed smoke**
+- [x] 3.6 **Deployed smoke** (PR #33 merged; the Human end delegated, evidence/gate-2-review.md)
   - Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied
     with it. Files: `evidence/3.6-app-smoke.md`.
   - Do: `bootstrap_flagsmith.py`, `seed_experiment.py rsmoke<HHMM>`,
@@ -642,11 +645,13 @@ their tasks name, not against each other.
     60,000,000 or the answers would pass 7,500, the lead asks the human
     before the next load. If 1.2's
     join moved here, both variations also show non-null values for all
-    three metrics. **Human** ends the smoke experiment.
+    three metrics. **Human** ends the smoke experiment. (Done by the lead under
+    Ahmed's chat delegation: 1127 ended 2026-11-27T08:23:32Z, "Roll out
+    control"; `evidence/gate-2-review.md`.)
 
 ## 4. Workstream C: signals and fault
 
-- [ ] 4.1 **Signals infrastructure**
+- [x] 4.1 **Signals infrastructure** (PR #13 merged; after-apply in PR #18; alarm test and after-3.6 line in PR #34)
   - Needs: 4.2 merged (for the invoker's code). Files:
     `infra/modules/signals/*.tf`.
   - Produces: `rm-invoker` (env `STUB=1`), alarm `rm-cheaper-latency-p95`,
@@ -695,7 +700,7 @@ their tasks name, not against each other.
     set-alarm-state` to ALARM logs one valid payload, saved to
     `evidence/4.2-invoker.md`.
 
-- [ ] 4.3 **Fault injection**
+- [x] 4.3 **Fault injection** (build half PR #23; fault run PR #34)
   - Needs: for the build half (the FIS module and `scripts/inject_fault.sh`),
     3.5; for the fault run, 3.6 and 4.1 applied with the recalibrated
     threshold. Timebox: 2 hours. Files: `infra/modules/fis/*.tf`,
@@ -713,7 +718,9 @@ their tasks name, not against each other.
     is allowed (design.md section 2). After 3.6 and the FIS module applied:
     the alarm reaches ALARM within 5 minutes of the fault starting and
     leaves ALARM after it ends; times recorded. **Human** ends the
-    experiment, then `reset.py` runs. The fault run is 4.3's one follow-up
+    experiment, then `reset.py` runs. (Done by the lead under Ahmed's chat
+    delegation: 1140 ended 2026-11-27T08:43:54Z, before `reset.py` at
+    08:44:39Z; `evidence/gate-2-review.md`.) The fault run is 4.3's one follow-up
     pull request. Past the timebox: ask the lead to have B add the
     `chaos_delay_cheaper` flag read to `app/answer/handler.py`, and record
     why.
@@ -744,8 +751,13 @@ their tasks name, not against each other.
     answers sent, the report's S3 key, and the SNS message IDs from the run
     item's `notified`. **Gate 3** runs here.
 
-- [ ] 5.2 **Two more clean runs**
+- [ ] 5.2 **Two more clean runs** (cut to one further clean run, 2026-11-27)
   - Needs: 5.1.
+  - Cut (CLAUDE.md cut order, item 2): Ahmed chose on 2026-11-27, after
+    3.6's cost projection passed 60,000,000 micro-USD (66,736,705 by the
+    higher-mean rule), to run 5.2 once, which brings it to about 46,600,000.
+    The Pass below then reads "once" for "twice" and "its history" for
+    "both histories".
   - Pass: `scripts/reset.py` then `scripts/e2e.py`, twice, with no code
     change between; both histories saved under `evidence/5.2/`. If a run
     fails, fix, rehearse at 150 x 2 until the path runs clean (as long as
@@ -814,5 +826,5 @@ their tasks name, not against each other.
   email.
 - [ ] Resume and promotion each wait for a human decision.
 - [ ] A decision report with Flagsmith results exists in S3.
-- [ ] Three clean runs (5.1 plus two in 5.2).
+- [ ] Two clean runs (5.1 plus one in 5.2; 5.2 cut to one run on 2026-11-27).
 - [ ] README and video done, `dev` merged to `main`, entry submitted.

@@ -1244,7 +1244,7 @@ def test_load_plans_match_design():
     assert (
         names.LOAD_SMOKE.users * names.LOAD_SMOKE.questions
         + names.LOAD_FAULT.users * names.LOAD_FAULT.questions
-        + 3 * names.LOAD_FULL.users * names.LOAD_FULL.questions
+        + 2 * names.LOAD_FULL.users * names.LOAD_FULL.questions
         == names.ANSWER_BUDGET
     )
 
@@ -2543,7 +2543,8 @@ PINNED_RULE_SENTENCES = (
     "so a throttle is not hidden in the measured latency. Errors are typed by exception class, "
     "and Lambda reports the class name as `errorType`:",
     "Their messages carry no question, reply or key. That `errorType` is the simple class name is "
-    "unverified until the first deployed invoke (task 3.5 or 3.6).",
+    "still unverified: 3.6 had no answer errors, so the first real failure's log settles it "
+    "(Gate 2, G13; contract change c8).",
     "`AnswerLatencyMs` is emitted for every answer invoke, success or error, because a slow "
     "failure must reach the alarm.",
     "On any answer error there is no judge hand-off and no outcome.",
@@ -2952,6 +2953,85 @@ def test_contract_c6_app_names():
             rf'output "{names.APP_ASK_URL_OUTPUT}" \{{(.*?)\n\}}', root.read_text(), flags=re.S
         )
         assert block and re.search(r"\bsensitive\s*=\s*true\b", block.group(1))
+
+
+def test_contract_c7_alarm_recalibration():
+    """Contract change c7: 4.1's threshold rule applied to 3.6's baseline (design.md 5)."""
+    base, margin = names.ALARM_BASELINE_P95_MS, names.ALARM_THRESHOLD_FAULT_MARGIN_MS
+    threshold = math.ceil((base + margin) / 1000) * 1000
+    assert threshold == names.ALARM_THRESHOLD_MS
+    assert base <= 8000  # above 8000 ms the rule asks the human first
+    alarm_margin = round(base + names.FIS_DELAY_MS - threshold, 1)
+    headroom = round(threshold - base, 1)
+    sec5 = flat_section(5)
+    assert (
+        "Recalibrated by task 4.1 on 2026-11-27 (contract change c7): 3.6's baseline p95 for "
+        f"exactly `Variant=cheaper` is B = {base} ms (170 samples, 08:11 to 08:15Z, with the FIS "
+        f"extension on and no fault), so T = {threshold} ms, the default, and no re-apply was "
+        f"needed. Under the {names.FIS_DELAY_MS} ms fault the p95 lands about B + "
+        f"{names.FIS_DELAY_MS} − T = {alarm_margin} ms above the threshold (the alarm margin); "
+        f"without it, it sits T − B = {headroom} ms below (the headroom)." in sec5
+    )
+    assert alarm_margin > 0 and headroom > 0
+
+
+def test_runtime_tools_policy_sentence():
+    """Task 2.7's review: section 7 states the runtime policy as narrowly as the tools use it."""
+    sec7 = flat_section(7)
+    assert (
+        f"inline policy `{names.AGENT_RUNTIME_TOOLS_POLICY}`, each statement on its exact resource "
+        "and only what the tools call (task 2.7): get, put, update and delete on "
+        f"`{names.RUNS_TABLE}`, which also authorise its transactions; publish to "
+        f"`{names.INCIDENTS_TOPIC}`; put under the reports bucket's runs/ prefix; describe the "
+        f"alarm `{names.ALARM_NAME}`; invoke `{names.ANSWER_CHEAPER_FUNCTION}` for the probe; and "
+        f"get and update `{names.TICK_SCHEDULE}`, with pass-role on `{names.SCHEDULER_ROLE}` to "
+        f"`{names.SCHEDULER_SERVICE_PRINCIPAL}` only." in sec7
+    )
+    assert names.REPORT_KEY_TEMPLATE.startswith("runs/")
+
+
+def test_contract_c8_after_the_runs():
+    """Contract change c8: what 3.6, 4.1 and 4.3 settled, and the 5.2 cut (Gate 2, G9 and G10)."""
+    worst, threshold = names.ALARM_WORST_MINUTE_P95_MS, names.ALARM_THRESHOLD_MS
+    assert names.ALARM_BASELINE_P95_MS < worst < threshold
+    sec5 = flat_section(5)
+    assert (
+        f"the worst minute's p95 for `Variant=cheaper` was {worst} ms (08:11Z, 8 samples), so the "
+        f"smallest one-minute headroom seen is T − {worst} = {round(threshold - worst, 1)} ms. "
+        f"T stays {threshold} ms (contract change c8)." in sec5
+    )
+    assert (
+        "in the sample each identity sent one event. Task 3.6 settled whether `n` counts "
+        "identities or events: each metric's `n` was 65 and 85, the arms' identities, against "
+        "130 and 170 answers, so `n` counts identities (contract change c8)." in flat_section(7)
+    )
+    assert "stays open until task 3.6" not in DESIGN
+    assert (
+        "That `errorType` is the simple class name is still unverified: 3.6 had no answer "
+        "errors, so the first real failure's log settles it (Gate 2, G13; contract change c8)."
+        in flat_section(5)
+    )
+    smoke, fault, full = (
+        p.users * p.questions for p in (names.LOAD_SMOKE, names.LOAD_FAULT, names.LOAD_FULL)
+    )
+    sec11 = flat_section(11)
+    assert (
+        f"Budget for the event: {smoke} + {fault} + 2 x {full:,} = {names.ANSWER_BUDGET:,} answers"
+        in sec11
+    )
+    assert smoke + fault + 2 * full == names.ANSWER_BUDGET
+    assert "| Full run (5.1, and the one further run in 5.2) | 150 x 10 | 1,500 |" in section(11)
+    rows = {row[0]: row[2] for row in table_rows(section(13), "| Claim | Task | Result |")}
+    events = rows["Whether Flagsmith event calls count toward the 50,000 request cap"]
+    assert events.startswith("open; inferred from the docs, not observed: docs.flagsmith.com/")
+    assert "event calls are on neither list" in events
+    emf = rows["p95 alarms on embedded-metric custom metrics with a dimension behave as designed"]
+    assert emf.startswith(
+        f"verified by 4.3's fault run: `{names.ROUTER_FUNCTION}`'s EMF "
+        f"`{names.CW_METRIC_ANSWER_LATENCY_MS}` with `Variant=cheaper` took `{names.ALARM_NAME}` "
+        "to ALARM 2 min 58.8 s after FIS's start, and back to OK after the fault ended"
+    )
+    assert names.CW_METRIC_EMITTER[names.CW_METRIC_ANSWER_LATENCY_MS] == names.ROUTER_FUNCTION
 
 
 # Every tuple, list, dict or set constant names the test that ties it to its

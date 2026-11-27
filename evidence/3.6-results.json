@@ -1,0 +1,128 @@
+{
+  "experiment_id": 1127,
+  "read_at": "2026-11-27T08:17:39.841670+00:00",
+  "results": {
+    "as_of": "2026-11-27T08:17:39.033947Z",
+    "last_error_at": null,
+    "refresh_requested_at": "2026-11-27T08:17:38.983647Z",
+    "payload": {
+      "metrics": [
+        {
+          "variants": {
+            "cheaper": {
+              "n": 85,
+              "sum": 85.0,
+              "sum_squares": 85.0
+            },
+            "control": {
+              "n": 65,
+              "sum": 64.5,
+              "sum_squares": 64.25
+            }
+          },
+          "inference": {
+            "cheaper": {
+              "lift": 0.007751937984496096,
+              "ci_low": -0.007559360494574065,
+              "ci_high": 0.023063236463566256,
+              "chance_to_win": 0.8394762739765443
+            }
+          },
+          "metric_id": 966,
+          "conversions_timeseries": null
+        },
+        {
+          "variants": {
+            "cheaper": {
+              "n": 85,
+              "sum": 317533.7030354999,
+              "sum_squares": 1196591189.625563
+            },
+            "control": {
+              "n": 65,
+              "sum": 387754.1616154998,
+              "sum_squares": 2327994630.463698
+            }
+          },
+          "inference": {
+            "cheaper": {
+              "lift": -0.37377876346987887,
+              "ci_low": -0.3913363852420173,
+              "ci_high": -0.35622114169774044,
+              "chance_to_win": 1.0
+            }
+          },
+          "metric_id": 967,
+          "conversions_timeseries": null
+        },
+        {
+          "variants": {
+            "cheaper": {
+              "n": 85,
+              "sum": 229908.0,
+              "sum_squares": 629441622.5
+            },
+            "control": {
+              "n": 65,
+              "sum": 874010.5,
+              "sum_squares": 11814935464.75
+            }
+          },
+          "inference": {
+            "cheaper": {
+              "lift": -0.7988445218907553,
+              "ci_low": -0.8048057189152216,
+              "ci_high": -0.792883324866289,
+              "chance_to_win": 1.0
+            }
+          },
+          "metric_id": 968,
+          "conversions_timeseries": null
+        }
+      ],
+      "srm_p_value": null,
+      "exposures_timeseries": {
+        "points": [
+          {
+            "bucket": "2026-11-27T08:00:00+00:00",
+            "new_identities": {
+              "cheaper": 85,
+              "control": 65
+            }
+          }
+        ],
+        "granularity": "hour"
+      }
+    },
+    "is_final": false
+  },
+  "experiment_metrics": [
+    {
+      "id": 1350,
+      "metric": 966,
+      "metric_name": "helpful_rate",
+      "aggregation": "mean",
+      "direction": "up",
+      "expected_direction": "not_decrease",
+      "created_at": "2026-11-27T08:11:33.281018Z"
+    },
+    {
+      "id": 1351,
+      "metric": 967,
+      "metric_name": "mean_latency_ms",
+      "aggregation": "mean",
+      "direction": "down",
+      "expected_direction": "not_increase",
+      "created_at": "2026-11-27T08:11:33.281035Z"
+    },
+    {
+      "id": 1352,
+      "metric": 968,
+      "metric_name": "mean_cost_micro_usd",
+      "aggregation": "mean",
+      "direction": "down",
+      "expected_direction": "not_increase",
+      "created_at": "2026-11-27T08:11:33.281042Z"
+    }
+  ]
+}

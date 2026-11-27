@@ -267,8 +267,8 @@ Lambda reports the class name as `errorType`:
   reply, a malformed event and an unknown `MODEL_ID`.
 
 Their messages carry no question, reply or key. That `errorType` is the
-simple class name is unverified until the first deployed invoke (task 3.5
-or 3.6).
+simple class name is still unverified: 3.6 had no answer errors, so the
+first real failure's log settles it (Gate 2, G13; contract change c8).
 
 `rm-router` is the Lambda integration of the HTTP API's route (`POST /ask`,
 section 11), with payload format version `2.0`, and answers:
@@ -378,6 +378,19 @@ it stops and asks the human first. The threshold reaches Terraform as the
 signals module's variable `alarm_threshold_ms`, which the root fills from
 `contracts/names.json`, so a recalibration is a contract change plus the
 lead's re-apply.
+
+Recalibrated by task 4.1 on 2026-11-27 (contract change c7): 3.6's
+baseline p95 for exactly `Variant=cheaper` is B = 4772.8 ms (170 samples,
+08:11 to 08:15Z, with the FIS extension on and no fault), so T =
+10000 ms, the default, and no re-apply was needed. Under the 10000 ms
+fault the p95 lands about B + 10000 − T = 4772.8 ms above the threshold
+(the alarm margin); without it, it sits T − B = 5227.2 ms below (the
+headroom).
+
+The alarm evaluates one-minute p95s, and B is a 240-second one. In the
+same window the worst minute's p95 for `Variant=cheaper` was 5954.8 ms
+(08:11Z, 8 samples), so the smallest one-minute headroom seen is
+T − 5954.8 = 4045.2 ms. T stays 10000 ms (contract change c8).
 
 ## 6. State
 
@@ -729,8 +742,10 @@ mean is sum / n) and, for `cheaper`, its `lift` (relative, a fraction),
 metric's `ci_low`. Flagsmith has no "not worse" probability, so the
 shape carries none. A variation's `identities` is the sum of its
 `new_identities` in the same response's exposures timeseries, not `n`:
-in the sample each identity sent one event, so whether `n` counts
-identities or events stays open until task 3.6. Results are read through
+in the sample each identity sent one event. Task 3.6 settled whether `n`
+counts identities or events: each metric's `n` was 65 and 85, the arms'
+identities, against 130 and 170 answers, so `n` counts identities
+(contract change c8). Results are read through
 the Admin API tool; MCP's results read returned nothing before a refresh
 (task 1.3).
 Task 2.2 maps Flagsmith's result fields onto this shape, starting from the
@@ -774,7 +789,7 @@ Agent tools:
 | Flagsmith MCP tools | features, multivariate options, experiments | AgentCore Gateway MCP target, API key from AgentCore Identity |
 | `flagsmith_admin` | get-or-create metrics, start experiment, refresh and read results, read experiment status | Lambda `rm-flagsmith-admin` as a Gateway target |
 | `state` | `rm-runs` | boto3 in the agent |
-| `signals` | alarm state, CloudWatch metric statistics | boto3 in the agent |
+| `signals` | the latency alarm's state and threshold (DescribeAlarms) | boto3 in the agent |
 | `probe` | 5 direct invokes of `rm-answer-cheaper` | boto3 in the agent |
 | `schedule` | enable or disable the `rm-tick` schedule | boto3 in the agent |
 | `notify` | SNS topic `rm-incidents` | boto3 in the agent |
@@ -856,10 +871,13 @@ The runtime's role is the CLI stack's own: `AgentCore-rm-default` creates
 it with the Bedrock, logging and Gateway grants. Task 2.7's Terraform reads
 its ARN from the stack's export `AgentCore-rm-default-rm-agent-RoleArn` and
 attaches
-inline policy `rm-agent-runtime-tools`: read and write on `rm-runs`,
-publish to `rm-incidents`, get and put on the reports bucket, read alarms
-and metrics, invoke `rm-answer-cheaper` for the probe, and get and update
-`rm-tick` with pass-role on `rm-scheduler-role`.
+inline policy `rm-agent-runtime-tools`, each statement on its exact
+resource and only what the tools call (task 2.7): get, put, update and
+delete on `rm-runs`, which also authorise its transactions; publish to
+`rm-incidents`; put under the reports bucket's runs/ prefix; describe the
+alarm `rm-cheaper-latency-p95`; invoke `rm-answer-cheaper` for the probe;
+and get and update `rm-tick`, with pass-role on `rm-scheduler-role` to
+`scheduler.amazonaws.com` only.
 
 A target's name shapes the tool names the Gateway gives its tools, so these
 names never change: the Flagsmith tools appear as `flagsmith___<tool>`, all
@@ -954,9 +972,10 @@ itself if the script dies, and never runs unattended.
 | --- | --- | --- |
 | Task 3.6 smoke | 150 x 2 | 300 |
 | Task 4.3 fault test | 150 x 2 | 300 |
-| Full run (5.1, and each of the two further runs in 5.2) | 150 x 10 | 1,500 |
+| Full run (5.1, and the one further run in 5.2) | 150 x 10 | 1,500 |
 
-Budget for the event: 300 + 300 + 3 x 1,500 = 5,100 answers. Stop and ask the human before
+Budget for the event: 300 + 300 + 2 x 1,500 = 3,600 answers (5.2 was cut
+to one further run on 2026-11-27; contract change c8). Stop and ask the human before
 exceeding 7,500. Every answer the load script sends counts toward that,
 and each run's evidence records its sent count. After a failed 5.1 or 5.2
 attempt, the lead rehearses at 150 x 2 until the path runs clean, before
@@ -1005,8 +1024,8 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | The API spellings of a metric's direction and of an experiment metric's expected direction | 1.3 | verified: `up`, `down`, `informational`; `increase`, `decrease`, `not_increase`, `not_decrease` |
 | Whether the AgentCore CLI can add an MCP server target with API-key outbound auth | 1.3 | verified: no (CLI 1.3.0 refuses it); `agent/scripts/setup_gateway.py` uses the AWS API |
 | How a feature's state changes in an environment with v2 feature versioning (added by 1.4) | 1.3 | verified: create a version, update its default state, publish it (four MCP calls, in `evidence/1.3-flagsmith-agent-spike.md`) |
-| Whether Flagsmith event calls count toward the 50,000 request cap | 3.6 | open |
-| p95 alarms on embedded-metric custom metrics with a dimension behave as designed | 4.1 | open |
+| Whether Flagsmith event calls count toward the 50,000 request cap | 3.6 | open; inferred from the docs, not observed: docs.flagsmith.com/administration-and-security/billing-api-usage lists `/flags`, `/identities` and `/environment-document` as billable, and Admin API, SDK Flag Analytics and real-time stream requests as not billable; event calls are on neither list. 3.6's before-and-after read could not show it: by 08:45Z neither the total nor the daily rows had taken in the smoke (the total had taken in nothing from 2026-11-27; it may add each day only after it closes, not proven). The lead re-reads the closed 2026-11-27 daily row after 5.2 (contract change c8) |
+| p95 alarms on embedded-metric custom metrics with a dimension behave as designed | 4.1 | verified by 4.3's fault run: `rm-router`'s EMF `AnswerLatencyMs` with `Variant=cheaper` took `rm-cheaper-latency-p95` to ALARM 2 min 58.8 s after FIS's start, and back to OK after the fault ended (`evidence/4.3-fis.md`). 4.1's own test used `put-metric-data` (`evidence/4.1-alarm.md`) (contract change c8) |
 | Admin API paths for starting an experiment and refreshing results | 1.3 | verified: `start/` with name and hypothesis; `results/refresh/` (202, then 429 inside 5 minutes); `results/` |
 | Whether an experiment can be ended through any API | 1.3 | documented, not exercised: Flagsmith's published spec lists `complete/`; no agent calls it |
 | Whether the feature is locked while its experiment runs, and what "locked" blocks | 1.3 | corrected: the API accepted all three writes 1.3 tried on a running experiment's feature (its option, state and description) and 1.3 put them back; the experiment's rollout read back unchanged |

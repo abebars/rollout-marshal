@@ -286,7 +286,8 @@ ANSWER_RESPONSE_FIELDS = ("answer", "input_tokens", "output_tokens", "model_id")
 ANSWER_HANDLER = "app.answer.handler.handler"
 ANSWER_MODEL_ENV = "MODEL_ID"  # the model each deployment asks
 # The exception classes the answer handler raises. Lambda reports the class name as
-# errorType (the simple-name form is unverified until the first deployed invoke).
+# errorType (still unverified: no answer has failed yet, so the first real failure's log
+# settles it).
 ANSWER_ERROR_THROTTLED = "AnswerThrottled"  # Bedrock's ThrottlingException, by its error code
 ANSWER_ERROR_FAILED = "AnswerFailed"  # any other error, max_tokens, no text, a bad event
 ROUTER_HANDLER = "app.router.handler.handler"
@@ -333,7 +334,11 @@ ALARM_PERIOD_SECONDS = 60
 ALARM_EVALUATION_PERIODS = 2
 ALARM_DATAPOINTS_TO_ALARM = 2
 ALARM_TREAT_MISSING_DATA = "notBreaching"
-ALARM_THRESHOLD_MS = 10_000  # default; task 4.1 recalibrates it and records it in design.md
+# Task 4.1's recalibration (contract change c7): 3.6's baseline p95 for Variant=cheaper,
+# 4772.8 ms, plus ALARM_THRESHOLD_FAULT_MARGIN_MS, rounded up to the next 1000: unchanged.
+ALARM_THRESHOLD_MS = 10_000
+ALARM_BASELINE_P95_MS = 4772.8  # task 3.6, 170 samples, 08:11 to 08:15Z on 2026-11-27
+ALARM_WORST_MINUTE_P95_MS = 5954.8  # task 3.6, that window's worst minute (08:11Z, 8 samples)
 # Recalibration: baseline p95 (3.6, Variant=cheaper) + half the injected delay, rounded up
 # to the next 1000; stop and ask if the baseline is above ALARM_BASELINE_STOP_MS.
 ALARM_THRESHOLD_FAULT_MARGIN_MS = 5_000
@@ -791,8 +796,8 @@ class LoadPlan(NamedTuple):
 
 LOAD_SMOKE = LoadPlan(150, 2)  # task 3.6
 LOAD_FAULT = LoadPlan(150, 2)  # task 4.3
-LOAD_FULL = LoadPlan(150, 10)  # 5.1 and each of the two runs in 5.2
-ANSWER_BUDGET = 5_100  # 300 + 300 + 3 x 1,500
+LOAD_FULL = LoadPlan(150, 10)  # 5.1 and the one further run in 5.2
+ANSWER_BUDGET = 3_600  # 300 + 300 + 2 x 1,500 (5.2 cut to one run, 2026-11-27; c8)
 ANSWER_HARD_STOP = 7_500  # stop and ask the human before exceeding
 
 # ---------------------------------------------------------------------------

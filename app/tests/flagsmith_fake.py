@@ -34,6 +34,9 @@ class FakeFlagsmith:
         self.fail: dict[tuple[str, str], int] = {}  # (method, path regex) -> status
         self.experiment_page_size = 0  # 0: one page; n: pages of n, linked by `next`
         self.experiment_next: str | None = None  # the one page's `next`, when there are no pages
+        self.usage_count = 150  # GET .../usage-data/total-count/
+        self.results: dict[int, list[dict]] = {}  # experiment ID -> its results replies, in turn
+        self.refreshes: list[int] = []
         self._ids = itertools.count(306400)
 
     # -- setup helpers ----------------------------------------------------------------
@@ -75,6 +78,10 @@ class FakeFlagsmith:
         return self._route(method, parts.path, parse_qs(parts.query), body)
 
     def _route(self, method, path, query, body):
+        if method == "GET" and path == (
+            f"/api/v1/organisations/{names.FLAGSMITH_ORGANISATION_ID}/usage-data/total-count/"
+        ):
+            return 200, {"count": self.usage_count}
         if method == "GET" and path == "/api/v1/environments/":
             assert query == {"project": [str(names.FLAGSMITH_PROJECT_ID)]}
             return 200, {
@@ -195,4 +202,17 @@ class FakeFlagsmith:
             [experiment] = [e for e in self.experiments if e["id"] == int(match[1])]
             experiment["status"] = "running"
             return 200, copy.deepcopy(experiment)
+        match = re.fullmatch(r"experiments/(\d+)/", rest)
+        if match and method == "GET":
+            found = [e for e in self.experiments if e["id"] == int(match[1])]
+            return (200, copy.deepcopy(found[0])) if found else (404, {"detail": "not found"})
+        match = re.fullmatch(r"experiments/(\d+)/results/refresh/", rest)
+        if match and method == "POST":
+            self.refreshes.append(int(match[1]))
+            return 202, None
+        match = re.fullmatch(r"experiments/(\d+)/results/", rest)
+        if match and method == "GET":
+            replies = self.results.get(int(match[1])) or [{"results": None}]
+            reply = replies.pop(0) if len(replies) > 1 else replies[0]  # the last one repeats
+            return 200, copy.deepcopy(reply)
         return 404, {"detail": "not found"}
