@@ -13,7 +13,7 @@ find or use real credentials. FakeApi keeps each request as it arrived, and the 
 recompute its signature from those bytes by the algorithm AWS documents.
 
 Identities are <run_id>-user-001 to <run_id>-user-150, so every run's are new to Flagsmith
-(the lead's Gate 1 decision, contract change c). Until that change widens the identity
+(the lead's Gate 1 decision, contract change c1). Until that change widens the identity
 pattern in contracts/schemas/answer_request.json, which still allows only user-001 to
 user-150, a body is checked field by field: its question against the schema's question
 rule, its identity against the run-identity spelling.
@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import importlib.util
+import inspect
 import json
 import os
 import re
@@ -85,7 +86,7 @@ load = _import_load()
 
 
 def _run_identity_spelling(run_id: str) -> re.Pattern:
-    """^<run_id>-user-NNN$, the spelling contract change c gives a run's identities."""
+    """^<run_id>-user-NNN$, the spelling contract change c1 gives a run's identities."""
     return re.compile(rf"^{re.escape(run_id)}-user-\d{{3}}$")
 
 
@@ -299,7 +300,9 @@ def _check_signed(received: Received, token: str | None = None) -> None:
     amz_date = received.headers["x-amz-date"]
     assert re.fullmatch(r"\d{8}T\d{6}Z", amz_date)
     assert authorization["Credential"] == (
-        f"{ACCESS_KEY}/{amz_date[:8]}/{names.REGION}/{load.API_SIGV4_SERVICE}/aws4_request"
+        # The service spelled out, not load's constant, so a wrong constant fails here.
+        # It becomes names.API_SIGV4_SERVICE after c1.
+        f"{ACCESS_KEY}/{amz_date[:8]}/{names.REGION}/execute-api/aws4_request"
     )
     signed = authorization["SignedHeaders"].split(";")
     assert signed == sorted(signed)
@@ -583,6 +586,28 @@ def test_bad_arguments_exit_as_a_usage_error(argv, capsys):
         assert argv[argv.index("--url") + 1] not in err  # never printed, even when refused
 
 
+PASTED_URL = "https://abc1234567.execute-api.us-east-1.amazonaws.com/ask"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--run-id", PASTED_URL, "--users", "1", "--questions", "1", "--url", PASTED_URL],
+        ["--run-id", RUN_ID, "--users", PASTED_URL, "--questions", "1", "--url", PASTED_URL],
+        ["--run-id", RUN_ID, "--users", "1", "--questions", PASTED_URL, "--url", PASTED_URL],
+        ["--run-id", RUN_ID, "--users", "1", "--questions", "1", "--url", PASTED_URL, PASTED_URL],
+        ["--run-id", RUN_ID, "--users", "1", "--questions", "1", f"--u={PASTED_URL}"],
+    ],
+    ids=["as --run-id", "as --users", "as --questions", "a stray argument", "an abbreviation"],
+)
+def test_a_url_in_the_wrong_place_is_refused_and_never_printed(argv, capsys):
+    with pytest.raises(SystemExit) as exited:
+        load.parse_args(argv)  # parsing only: nothing is sent
+    assert exited.value.code == load.EXIT_USAGE
+    printed = capsys.readouterr()
+    assert "abc1234567" not in printed.out + printed.err
+
+
 def test_good_arguments_parse():
     args = load.parse_args([*GOOD_ARGS, "--run-id", RUN_ID])
     assert (args.users, args.questions, args.run_id) == (1, 1, RUN_ID)
@@ -747,6 +772,9 @@ def test_a_request_with_no_reply_times_out_and_counts_as_failed(fake_api):
     assert (tally.sent, tally.ok, tally.failed) == (2, 0, 2)
     assert tally.reasons == Counter({"timeout": 2})
     assert load.REQUEST_TIMEOUT_SECONDS == names.API_GATEWAY_TIMEOUT_SECONDS
+    # And that is what a load waits when no timeout is passed.
+    default = inspect.signature(load.run_load).parameters["timeout"].default
+    assert default == names.API_GATEWAY_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -879,7 +907,16 @@ def test_the_lock_frees_itself_when_the_holding_load_is_killed(temp_repo, fake_a
     assert _summary(after.out) == "sent=1 ok=1 failed=0"
 
 
-def test_ctrl_c_sends_nothing_more_and_still_prints_what_was_sent(temp_repo, fake_api, loads):
+STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+
+@pytest.mark.parametrize("first", STOP_SIGNALS, ids=["SIGINT", "SIGTERM", "SIGHUP"])
+def test_a_stop_signal_drains_the_load_holds_the_lock_and_prints_what_was_sent(
+    temp_repo, fake_api, loads, first
+):
+    """Ctrl-C, a harness's SIGTERM and a closed terminal's SIGHUP each stop a load the same
+    way: nothing more is sent, the ten in flight finish, and the counts are printed. More
+    signals during that drain change nothing, and the lock stays held until it ends."""
     fake_api.gate = threading.Event()
     proc = loads.start(temp_repo.main, users=20, questions=1)
     assert fake_api.wait_for(names.LOAD_MAX_CONCURRENCY)  # ten held at the server
@@ -895,8 +932,16 @@ def test_ctrl_c_sends_nothing_more_and_still_prints_what_was_sent(temp_repo, fak
 
     reader = threading.Thread(target=read_stderr, daemon=True)
     reader.start()
-    proc.send_signal(signal.SIGINT)
+    proc.send_signal(first)
     assert stopping.wait(WAIT_SECONDS), stderr_lines  # it has cancelled what was not sent
+
+    # Every stop signal again, mid-drain: none may cut the drain short or free the lock.
+    for again in STOP_SIGNALS:
+        proc.send_signal(again)
+    time.sleep(0.5)
+    assert proc.poll() is None, stderr_lines  # still draining
+    refused = loads.refused(temp_repo.second, users=1, questions=1)
+    assert refused.code == load.EXIT_REFUSED, refused  # the lock is still held
 
     fake_api.gate.set()
     proc.wait(WAIT_SECONDS)
@@ -907,7 +952,7 @@ def test_ctrl_c_sends_nothing_more_and_still_prints_what_was_sent(temp_repo, fak
     assert proc.returncode == load.EXIT_INTERRUPTED, stderr_lines
     assert _summary(out) == f"sent={sent} ok={sent} failed=0"
     assert f"interrupted: sent {sent} of 20" in out
-    assert len(fake_api.received) == sent
+    assert len(fake_api.received) == sent  # the refused start sent nothing
 
 
 def test_outside_a_git_repository_it_refuses_to_start(tmp_path, fake_api, loads):

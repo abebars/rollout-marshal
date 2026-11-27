@@ -5,7 +5,7 @@
 It sends N x M requests, then stops: identities <run_id>-user-001 to <run_id>-user-N each
 ask M different questions from app/questions.json. No identity is used by two runs:
 nothing shows that Flagsmith counts only an experiment's own events for an identity, so
-each run's are new to it (the lead's Gate 1 decision, contract change c). Requests go out
+each run's are new to it (the lead's Gate 1 decision, contract change c1). Requests go out
 round by round (every user's first question, then every user's second, and so on), at most
 10 in flight at once. Each is sent once, with no retries. The last line it prints is:
 
@@ -35,12 +35,14 @@ start is refused with exit status 3 and sends nothing; so is a start that cannot
 lock at all. The kernel drops the lock when the holding process ends, however it ends, so a
 killed load leaves no stale lock. The file stays; only the lock on it counts.
 
-Ctrl-C stops a load: nothing more is sent, the requests in flight finish, and the counts
-are printed. The script never runs unattended (design.md section 11): someone watches every
-load until it ends.
+Ctrl-C stops a load, and so do SIGTERM (a harness's timeout) and SIGHUP (a closed
+terminal): nothing more is sent, the requests in flight finish, and the counts are
+printed. Further stop signals during that drain are ignored, so the lock is held until the
+last request ends. The script never runs unattended (design.md section 11): someone
+watches every load until it ends.
 
 Exit status: 0 every request ok, 1 some failed, 2 bad arguments or no AWS credentials,
-3 refused (the lock), 130 interrupted.
+3 refused (the lock), 130 stopped by a signal.
 """
 
 from __future__ import annotations
@@ -100,7 +102,10 @@ EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_USAGE = 2  # argparse's own status for bad arguments
 EXIT_REFUSED = 3
-EXIT_INTERRUPTED = 130  # 128 + SIGINT, the shell's convention
+EXIT_INTERRUPTED = 130  # 128 + SIGINT, the shell's convention; for SIGTERM and SIGHUP too
+# Each stops a load the same way (run_load); the handler main installs turns each into
+# KeyboardInterrupt.
+STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
 
 class LoadRefused(RuntimeError):
@@ -359,8 +364,9 @@ def run_load(
     """Send every body once, signed, at most LOAD_MAX_CONCURRENCY at a time, and count the
     outcomes.
 
-    Ctrl-C cancels every request not yet sent, waits for the ones in flight, and returns the
-    tally marked interrupted.
+    A stop signal (Ctrl-C, SIGTERM, SIGHUP) cancels every request not yet sent, ignores any
+    further stop signal, waits for the ones in flight, and returns the tally marked
+    interrupted.
     """
     region = signing_region(url)
     tally = Tally()
@@ -375,6 +381,10 @@ def run_load(
         while pending:
             _, pending = wait(pending, timeout=WAIT_POLL_SECONDS)
     except KeyboardInterrupt:
+        # First, before anything else: a second signal must not cut the drain short, which
+        # would free the lock while requests are still in flight.
+        for stop in STOP_SIGNALS:
+            signal.signal(stop, signal.SIG_IGN)
         tally.interrupted = True
         pool.shutdown(wait=False, cancel_futures=True)  # nothing more is sent from here
         print(
@@ -389,13 +399,15 @@ def run_load(
 # ---------------------------------------------------------------------------
 # The command line
 # ---------------------------------------------------------------------------
+# No argument error quotes the value it refuses, so a URL pasted in the wrong place is
+# never printed.
 def _count(value: str) -> int:
     try:
         number = int(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"not a whole number: {value!r}") from None
+        raise argparse.ArgumentTypeError("not a whole number") from None
     if number < 1:
-        raise argparse.ArgumentTypeError(f"must be at least 1: {number}")
+        raise argparse.ArgumentTypeError("must be at least 1")
     return number
 
 
@@ -430,16 +442,16 @@ def _api_url(value: str) -> str:
 
 
 def _run_id(value: str) -> str:
-    try:
-        return _require_run_id(value)
-    except ValueError as err:
-        raise argparse.ArgumentTypeError(str(err)) from None
+    if not names.is_run_id(value):
+        raise argparse.ArgumentTypeError(f"not a run ID (expected {names.RUN_ID_PATTERN})")
+    return value
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="load.py",
         description="Send users x questions requests to the assistant API, then stop.",
+        allow_abbrev=False,  # argparse quotes an ambiguous abbreviation, value and all
     )
     parser.add_argument(
         "--run-id",
@@ -469,13 +481,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _parse(parser: argparse.ArgumentParser, argv: list[str] | None) -> argparse.Namespace:
+    """parse_args, except that unrecognized arguments are counted, not quoted."""
+    args, unrecognized = parser.parse_known_args(argv)
+    if unrecognized:
+        parser.error(f"{len(unrecognized)} unrecognized argument(s), not shown")
+    return args
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    return build_parser().parse_args(argv)
+    return _parse(build_parser(), argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = _parse(parser, argv)
     try:
         bodies = plan(args.run_id, args.users, args.questions, load_questions())
     except ValueError as err:
@@ -498,8 +518,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"load.py: refused to start: {err}", file=sys.stderr)
         return EXIT_REFUSED
 
-    # Ctrl-C stops a load even when whatever started it was ignoring SIGINT.
-    signal.signal(signal.SIGINT, signal.default_int_handler)
+    # Ctrl-C, SIGTERM and SIGHUP each stop a load (run_load), even when whatever started it
+    # was ignoring one of them.
+    for stop in STOP_SIGNALS:
+        signal.signal(stop, signal.default_int_handler)
     with lock:
         print(
             f"load: {len(bodies)} requests, {args.users} users x {args.questions} questions"
