@@ -659,7 +659,7 @@ their tasks name, not against each other.
     pull request with the threshold rule of design.md section 5; it records
     B, T, the alarm margin (B + 10000 - T) and the headroom (T - B).
 
-- [ ] 4.2 **Invoker** (PR #4 merged; only its after-apply line waits, for 4.1)
+- [x] 4.2 **Invoker** (PR #4 merged; after-apply line in PR #18)
   - Needs: 1.1. Files: `signals/invoker/handler.py`, tests.
   - Produces: maps an alarm state-change event to the `alarm` payload and
     a schedule event to `tick`; reads the runtime ARN from
