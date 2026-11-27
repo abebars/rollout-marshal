@@ -282,6 +282,12 @@ NOT_A_NAME = {
     "app/__init__.py": "a file in the answer and router zips (section 12 owns paths)",
     "app/answer/": "the answer functions' code, in their zip (section 12 owns paths)",
     "app/router/": "rm-router's code, in its zip (section 12 owns paths)",
+    "app/judge/": "rm-judge's code, in its zip (section 12 owns paths)",
+    "app/bedrock_fields.py": "a file in the answer and judge zips (section 12 owns paths)",
+    "RECORD": "a wheel's dist-info file, left out of the zips (contract change c6)",
+    "<function>-role": "pattern: a function name plus APP_ROLE_SUFFIX (contract change c6)",
+    "<function>-policy": "pattern: a function name plus APP_POLICY_SUFFIX (contract change c6)",
+    "/aws/lambda/<function>": "pattern: APP_LOG_GROUP_PREFIX plus a function name (c6)",
     "contracts/__init__.py": "a file in the answer and router zips (section 12 owns paths)",
     "contracts/names.py": "this module, in the answer and router zips",
     '{"answer": <text>}': "rm-router's 200 body; test_contract_c3 checks the table",
@@ -2548,7 +2554,7 @@ PINNED_RULE_SENTENCES = (
     "A request takes about the identity request plus the longer of the answer and the flush.",
     "Packaging (task 3.5): each zip keeps the repo's paths, so a handler is its module's path "
     "plus the function. The answer functions' zip holds `app/__init__.py`, `app/answer/`, "
-    "`contracts/__init__.py` and `contracts/names.py`.",
+    "`app/bedrock_fields.py`, `contracts/__init__.py` and `contracts/names.py`.",
     # contract change c3: what task 2.1 settled (section 6)
     "A commit's `actor` must equal the Actor column of its row, and its `reason` must be a "
     "non-empty string; otherwise it is refused before any write.",
@@ -2832,9 +2838,77 @@ def test_contract_c5_approve_names_what_it_approves():
     )
 
 
+def test_contract_c6_app_names():
+    """Contract change c6: task 3.5's names (design.md section 5), and that the module, the
+    build and the scripts still carry them once they exist."""
+    sec5 = flat_section(5)
+    answer_zip, router_zip, judge_zip = names.APP_ZIPS
+    assert (
+        f"`{names.JUDGE_FUNCTION}`'s holds `app/__init__.py`, `app/judge/`, "
+        f"`app/bedrock_fields.py`, `{names.PRICES_FILE}`, the same two `contracts` files and the "
+        f"same SDK, for handler `{names.JUDGE_HANDLER}`." in sec5
+    )
+    assert (
+        f"Names (task 3.5): each app function's role is `<function>{names.APP_ROLE_SUFFIX}`, with "
+        f"inline policy `<function>{names.APP_POLICY_SUFFIX}`, and its log group "
+        f"`{names.APP_LOG_GROUP_PREFIX}<function>`, as `{names.INVOKER_FUNCTION}`'s are. The HTTP "
+        f"API is `{names.API_NAME}`, with stage `{names.API_STAGE}` (auto-deploy) and the Lambda "
+        f"permission statement `{names.API_PERMISSION_STATEMENT}`. Each app function has "
+        f"{names.APP_FUNCTION_MEMORY_MB} MB, task 1.2's size. `make build` writes `{answer_zip}`, "
+        f"`{router_zip}` and `{judge_zip}` into `{names.APP_BUILD_DIR}`, and leaves out each "
+        "dependency's `RECORD`, whose shebang hashes would tie the zips to the build's path. The "
+        f"root module outputs `{names.APP_ASK_URL_OUTPUT}`, marked sensitive, so plan and apply "
+        "output never shows it. The scripts call the Admin API at "
+        f"`{names.FLAGSMITH_API_BASE_URL}`, and exit {names.SCRIPT_EXIT_OK} when done, "
+        f"{names.SCRIPT_EXIT_FAILED} on a failure and {names.SCRIPT_EXIT_REFUSED} when they "
+        f'refuse. `{names.SEED_EXPERIMENT_SCRIPT}` gives its experiment the hypothesis "'
+        f'{names.SEED_HYPOTHESIS}", and each metric it creates the description "<name>'
+        f'{names.SEED_METRIC_DESCRIPTION_SUFFIX}".' in sec5
+    )
+    assert names.INVOKER_ROLE == names.INVOKER_FUNCTION + names.APP_ROLE_SUFFIX
+    assert names.JUDGE_HANDLER.startswith("app.judge.")
+    assert len(set(names.APP_ZIPS)) == len(names.APP_ZIPS)
+    assert {names.SCRIPT_EXIT_OK, names.SCRIPT_EXIT_FAILED, names.SCRIPT_EXIT_REFUSED} == {0, 1, 3}
+
+    def text(*parts: str) -> str:
+        files = [ROOT / p for p in parts]
+        return "".join(f.read_text() for f in files if f.is_file())
+
+    module = "".join(p.read_text() for p in sorted((ROOT / "infra/modules/app").glob("*.tf")))
+    if module:  # task 3.5
+        for value in (
+            f'"{names.API_NAME}"',
+            f'"{names.API_STAGE}"',
+            f'"{names.API_PERMISSION_STATEMENT}"',
+            f"= {names.APP_FUNCTION_MEMORY_MB}",
+            f'{names.APP_ROLE_SUFFIX}"',
+            f'{names.APP_POLICY_SUFFIX}"',
+            names.APP_LOG_GROUP_PREFIX,
+            *names.APP_ZIPS,
+        ):
+            assert value in module, value
+        build = text("app/build_zips.py")
+        for value in (*names.APP_ZIPS, '"app/bedrock_fields.py"', "app/judge/handler.py"):
+            assert value in build, value
+    bootstrap = text("scripts/bootstrap_flagsmith.py")  # the scripts' shared Admin API client
+    if bootstrap:  # task 3.5
+        assert f'API_BASE_URL = "{names.FLAGSMITH_API_BASE_URL}"' in bootstrap
+        exits = (names.SCRIPT_EXIT_OK, names.SCRIPT_EXIT_FAILED, names.SCRIPT_EXIT_REFUSED)
+        assert "EXIT_OK, EXIT_FAILED, EXIT_REFUSED = {}, {}, {}".format(*exits) in bootstrap
+    seed = ROOT / names.SEED_EXPERIMENT_SCRIPT
+    if seed.is_file():
+        found = re.sub(r'"\s*\n\s*"', "", seed.read_text())  # join implicit concatenation
+        assert names.SEED_HYPOTHESIS in found
+        assert names.SEED_METRIC_DESCRIPTION_SUFFIX in found
+    root = text("infra/app.tf")
+    if root:
+        assert f'output "{names.APP_ASK_URL_OUTPUT}"' in root and "sensitive = true" in root
+
+
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
+    "APP_ZIPS": test_contract_c6_app_names,
     "PRICES_FIELDS": test_contract_c4_judge,
     "PRICE_FIELDS": test_contract_c4_judge,
     "MODEL_DISPLAY_NAMES": test_contract_c3_models_and_the_router,
@@ -3361,9 +3435,11 @@ def test_contract_c4_fis_names_and_logging():
         f"records the reads, and `{names.INJECT_FAULT_SCRIPT}` runs with that profile" in sec2
     )
     assert (
-        f"`{names.ROUTER_FUNCTION}` and `{names.JUDGE_FUNCTION}` log at INFO or above, "
-        "never DEBUG, because at DEBUG the Flagsmith SDK logs identifiers and botocore logs "
-        "response bodies, the server key among them (tasks 3.2 and 3.3's reviews)." in sec5
+        f"`{names.ROUTER_FUNCTION}` and `{names.JUDGE_FUNCTION}` log JSON at exactly INFO. "
+        "Never DEBUG: at DEBUG the Flagsmith SDK logs identifiers and botocore logs response "
+        "bodies, the server key among them. Never WARN: Lambda gives a printed line with no "
+        "level, such as an EMF metric line, the level INFO, and drops it under WARN (tasks 3.2, "
+        "3.3 and 3.5's reviews)." in sec5
     )
     assert (
         "the FIS extension layer (its arm64 ARN is published in SSM; the module pins "
@@ -3392,7 +3468,8 @@ def test_contract_c4_fis_names_and_logging():
     for line in (
         f"- design.md section 5 sets `{names.ROUTER_FUNCTION}`'s and "
         f"`{names.JUDGE_FUNCTION}`'s log "
-        "level, INFO or above, and section 9 names the module interface the FIS module meets: "
+        "level, exactly INFO, and holds this task's names (contract change c6); section 9 "
+        "names the module interface the FIS module meets: "
         f"outputs `{names.APP_CHEAPER_FUNCTION_NAME_OUTPUT}` and "
         f"`{names.APP_CHEAPER_ROLE_NAME_OUTPUT}`, inputs `{names.APP_CHEAPER_EXTRA_LAYERS_INPUT}` "
         f"and `{names.APP_CHEAPER_EXTRA_ENV_INPUT}`.",
