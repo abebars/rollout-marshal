@@ -228,9 +228,12 @@ rm-router -> CloudWatch embedded metrics
   the router's exposure, flushed beside the answer (section 4, step 6), is
   the one exception.
   API Gateway's 30 second limit applies to the request path only.
-- `rm-router` and `rm-judge` log at INFO or above, never DEBUG, because at
+- `rm-router` and `rm-judge` log JSON at exactly INFO. Never DEBUG: at
   DEBUG the Flagsmith SDK logs identifiers and botocore logs response
-  bodies, the server key among them (tasks 3.2 and 3.3's reviews).
+  bodies, the server key among them. Never WARN: Lambda gives a printed
+  line with no level, such as an EMF metric line, the level INFO, and
+  drops it under WARN (Lambda's "Log-level filtering" page; tasks 3.2, 3.3
+  and 3.5's reviews).
 - `rm-judge` judges and parses the reply (field `helpful`) before any
   write, then writes CloudWatch, then tracks the three events and flushes.
   A failure before the first event is tracked raises, so Lambda's async
@@ -316,11 +319,34 @@ Also on the request path:
 
 Packaging (task 3.5): each zip keeps the repo's paths, so a handler is its
 module's path plus the function. The answer functions' zip holds
-`app/__init__.py`, `app/answer/`, `contracts/__init__.py` and
-`contracts/names.py`. `rm-router`'s holds `app/__init__.py`, `app/router/`,
-the same two `contracts` files, and the `flagsmith` SDK with its
-dependencies as `uv.lock` pins them, for handler
-`app.router.handler.handler`.
+`app/__init__.py`, `app/answer/`, `app/bedrock_fields.py`,
+`contracts/__init__.py` and `contracts/names.py`. `rm-router`'s holds
+`app/__init__.py`, `app/router/`, the same two `contracts` files, and the
+`flagsmith` SDK with its dependencies as `uv.lock` pins them, for handler
+`app.router.handler.handler`. `rm-judge`'s holds `app/__init__.py`,
+`app/judge/`, `app/bedrock_fields.py`, `app/prices.json`, the same two
+`contracts` files and the same SDK, for handler `app.judge.handler.handler`.
+boto3 comes from the python3.13 runtime (task 1.2 read 1.42.97 there).
+
+Names (task 3.5): each app function's role is `<function>-role`, with
+inline policy `<function>-policy`, and its log group
+`/aws/lambda/<function>`, as `rm-flagsmith-admin`'s are. The HTTP API is `rm-api`,
+with stage `$default` (auto-deploy) and the Lambda permission statement
+`AllowTheAskRoute`. Each app function has 256 MB, task 1.2's size.
+`make build` writes `rm-answer.zip`, `rm-router.zip` and `rm-judge.zip`
+into `app/build/`, and leaves out each dependency's console scripts and
+`RECORD`, whose shebangs and hashes would tie the zips to the build's
+path. The root module outputs `ask_url`, marked sensitive, so plan and
+apply output never prints the URL as an output.
+`scripts/bootstrap_flagsmith.py`, `scripts/seed_experiment.py` and
+`scripts/reset.py` call the Admin API at `https://api.flagsmith.com`, and
+exit 0 when done, 1 on a failure, 2 on bad arguments and 3 when they
+refuse.
+`scripts/seed_experiment.py` gives its experiment the hypothesis "Claude Sonnet 5
+answers support questions as helpfully as Claude Fable 5.1, at no more
+latency or cost. Seeded by scripts/seed_experiment.py, without the
+agent.", and each metric it creates the description "<name>, Rollout
+Marshal".
 
 CloudWatch namespace `RolloutMarshal`, dimension `Variant` = `current` or
 `cheaper` (the variant actually served):

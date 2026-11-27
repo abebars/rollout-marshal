@@ -597,10 +597,11 @@ their tasks name, not against each other.
   - **v2 over REST.** v2 versioning was run only through MCP in 1.3. 3.5
     runs its REST path once against a scratch `spike_` feature, records it
     in the evidence, and pins it in a test.
-  - Payload format 2.0, the handler paths and what the answer and router zips
-    hold are in design.md section 5.
-  - design.md section 5 sets `rm-router`'s and `rm-judge`'s log level, INFO
-    or above, and section 9 names the module interface the FIS module
+  - Payload format 2.0, the handler paths and what the answer, router and
+    judge zips hold are in design.md section 5.
+  - design.md section 5 sets `rm-router`'s and `rm-judge`'s log level,
+    exactly INFO, and holds this task's names (contract change c6); section
+    9 names the module interface the FIS module
     meets: outputs `cheaper_function_name` and `cheaper_role_name`, inputs
     `cheaper_extra_layers` and `cheaper_extra_env`.
   - Pass: `terraform validate` clean, and the plan from `infra/` lists this
