@@ -66,7 +66,7 @@ tasks.md now says, in 2.2, 3.6 and 4.3, who ended each experiment and when. The 
 | G7 | 3.6 called documented things unverified | PR #33 (P33-3) |
 | G8 | `helpful_rate` is at its ceiling, so its interval rests on one judged answer | PR #33 (P33-4). Carried to 6.2's Known bias and the README: D |
 | G9 | The contract has not taken in what 3.6, 4.1 and 4.3 settled | Contract change c8, after PR #33 merges: `n` counts identities; the EMF row closes from 4.3's run; c7 gets the worst per-minute p95 beside B, with T unchanged; G10's row; section 11's budget and `ANSWER_BUDGET` after the 5.2 cut |
-| G10 | The billable-events row has no owner and no next step | In c8: "documented: event calls are not on the billable list; not yet observed". The lead re-reads the 2026-11-27 daily row after 5.2 |
+| G10 | The billable-events row has no owner and no next step | In c8: open, inferred from the docs and not observed. Flagsmith's billing page lists what is billable and what is not, and event calls are on neither list. The lead re-reads the 2026-11-27 daily row after 5.2 |
 | G11 | Nothing written says how to pass `--url` without printing it | `infra/app.tf`'s comment (this pull request) and `load.py`'s docstring (PR #33). e2e.py finds the URL itself and never prints it |
 | G12 | A newcomer cannot set up review access or a Terraform run | docs/REVIEW.md gets the `rm-review` profile, and `infra/terraform.tfvars.example` is added (this pull request) |
 | G13 | Lambda's `errorType` is still unverified | Accepted. No answer has failed. 3.6 lists it as not verified, and the first real failure's log settles it |
@@ -116,10 +116,21 @@ $ aws lambda get-function-configuration --region us-east-1 --function-name rm-in
 5.1's apply sets `STUB` to `0`. 5.1's evidence records the hash after it.
 
 ## Closing
-Filled in when Gate 2 closes:
-- the re-review goldfish's verdict on PR #33's and PR #30's fixes;
-- the merges of PRs #33, #30 and #34, and the ticks of 2.7, 3.6, 4.1 and 4.3;
-- Ahmed's approval: his 08:13:51Z words, as Gate 1 recorded his 01:04:32Z words.
+Gate 2 closed on 2026-11-27 at about 10:15Z.
+
+| Pull request | Second goldfish | Its items | Merged into `dev` |
+| --- | --- | --- | --- |
+| #34, 4.3's fault run and 4.1's after-3.6 line | None: the fixes (dac022b) changed no number, so docs/REVIEW.md asks for none | Two blockers and seven nits from the first review, all fixed by C | 09:49:33Z, as 8982e92 |
+| #30, 2.7's live half | A new goldfish, about 09:41Z to 09:57Z: `approve`. It reran 27 of the evidence's reads as `rm-review-readonly`: 23 matched, 2 legitimately changed after later writes, and 2 were CloudTrail lookups an organisation SCP denies to that role | Four nits, fixed by the lead in 9dd67f9: the lead reran the two CloudTrail lookups, row 5's code span keeps its backticks, P30-5 cites 3.6's command table, and 2.2's correction marks its read | 10:01:39Z, as 135258a, with one test conflict resolved by keeping both tests |
+| #33, 3.6's smoke | A new goldfish, about 09:47Z to 10:07Z: `approve`. It reran 14 reads as `rm-review-readonly`, the lead's Flagsmith reruns matched, and 15 of 18 mutations failed a test | Four nits, fixed by the lead in fbb41d2: each `smoke_reads.py` row names its version, row 6 gives the endpoint check as it ran, row 14's end is accounted for, the deviation line says where this file is, and a test now fails if `--expected-failures` comes back | 10:09:16Z, as e3c70d6 |
+
+The ticks: 4.1 and 4.3 (615200f), 2.7 (54569d9) and 3.6 (667bb45).
+
+The lead's own commits on workstream branches are 6a9a446 and 0cb3b6a (PR #30's attachments and 918's record), 9dd67f9 (PR #30's re-review nits) and fbb41d2 (PR #33's re-review nits). Each is records only, apart from fbb41d2's one test argument.
+
+Contract change c8 (PR #35), G9 and G10's follow-up, is not a condition of this gate. Its first review found three blockers: a conflict with `dev`, the wrong emitter in the EMF row, and "documented" for what the docs leave unsaid. All three were fixed in 5aa09d0, and a second goldfish reviews it before it merges.
+
+**Ahmed's approval:** his 08:13:51Z words, "Approve to continue all tasks that you need", as Gate 1 recorded his 01:04:32Z words. Integration (5.1) starts.
 
 ## Cleanup list, additions
 These join `evidence/gate-1-review.md`'s list, under the same rule: each removal waits for the end of judging and Ahmed's yes.
