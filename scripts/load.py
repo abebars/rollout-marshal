@@ -2,6 +2,12 @@
 
     uv run python scripts/load.py --run-id <run_id> --users N --questions M --url <api>
 
+One form that never prints the URL, from the repository root: the shell puts terraform's
+output straight into the argument, and nothing echoes it.
+
+    uv run python scripts/load.py --run-id <run_id> --users N --questions M \
+        --url "$(terraform -chdir=infra output -raw ask_url)"
+
 It sends N x M requests, then stops: identities <run_id>-user-001 to <run_id>-user-N each
 ask M different questions from app/questions.json. No identity is used by two runs:
 nothing shows that Flagsmith counts only an experiment's own events for an identity, so
