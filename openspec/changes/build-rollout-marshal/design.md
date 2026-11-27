@@ -27,7 +27,7 @@ changes, and clear output.
 | AgentCore CLI | npm package `@aws/agentcore`, command `agentcore`, version 1.3.0 or later within 1.x. Its project lives under `agent/`; it deploys the runtime through its own CDK stack and bootstraps CDK on the first deploy |
 | Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy. Every plan and apply from `infra/` runs `make build` first, which runs each function's `build.sh` where it has one; a module may package with `archive_file` instead (Gate 1) |
 | Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below. For a task whose Pass needs its own Terraform applied (2.7, 4.3), the lead may apply that branch merged locally with `dev` before it merges, attaches the plan, and re-applies `dev` if it does not merge. While a branch is applied unmerged, every later apply includes it; branches are applied together only from one local merge, and only if they touch different modules |
-| Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review`, always as `--profile rm-review`: exported environment credentials override `AWS_PROFILE`, but not `--profile` |
+| Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review`, always as `--profile rm-review`: exported environment credentials override `AWS_PROFILE`, but not `--profile`. An organisation SCP denies it FIS, so the lead reads FIS state with the SSO profile and records the reads, and `scripts/inject_fault.sh` runs with that profile |
 | Timebox | 90 minutes per task unless the task says otherwise. Past it, stop and tell the lead |
 | Flagsmith | SaaS, organisation 41656, project "Toggle Wars" (ID `55601`), environment "Development" |
 | Flagsmith plan limits | Free: 50,000 API requests a month, 1 project, 1 seat |
@@ -52,6 +52,15 @@ file, and the destroy runs before the pull request is reviewed.
 
 All calls use the `bedrock-runtime` Converse API. Do not send sampling
 parameters to any model.
+
+Display names, for the planner's move check (task 2.3):
+`us.anthropic.claude-fable-5-1` is `Claude Fable 5.1`,
+`us.anthropic.claude-sonnet-5` is `Claude Sonnet 5` and
+`us.anthropic.claude-haiku-5-5` is `Claude Haiku 5.5`. The planner gives its
+model that list, and the model reports the move it read as two model IDs
+from it, from and to. Code compares the pair with
+(`us.anthropic.claude-fable-5-1`, `us.anthropic.claude-sonnet-5`); any other
+pair, or none, is `BAD_REQUEST` before any write.
 
 These models think by default, and `maxTokens` caps thinking plus text, so
 a small budget returns no text at all:
@@ -91,7 +100,7 @@ seconds.
 | Flags call | `get_identity_flags`, once per answer |
 | Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when the flag is enabled, `flag.experiment.in_experiment` and `flag.variant` is set |
 | Outcome call | `track_event`, with the identity and a numeric `value`. The SDK sends the value as a string, and Flagsmith aggregates it as a number (task 1.2) |
-| Flush | `flush_events()` before every handler returns. Buffer settings alone do not survive a Lambda freeze, and a buffer of one item drops events tracked in a row (task 1.2) |
+| Flush | `flush_events()` before every handler returns; `rm-router` bounds how long it waits for it, and skips it when no thread can be started (section 5). Buffer settings alone do not survive a Lambda freeze, and a buffer of one item drops events tracked in a row (task 1.2) |
 
 Available metric aggregations are occurrence, count, sum and mean. There
 is no "rate"; occurrence counts an identity once, which is useless at 10
@@ -154,7 +163,8 @@ idempotently, by the agent at launch:
 - `assistant_cheaper_enabled` (boolean kill switch, default enabled).
 - `assistant_default_model` (string value, `current` or `cheaper`, default
   `current`). This is what "promote" changes. It is never part of an
-  experiment, so it is never locked.
+  experiment, so it is never locked. It is created with `default_enabled`
+  true, so its value is served.
 
 Router evaluation order, per request:
 
@@ -166,20 +176,31 @@ Router evaluation order, per request:
    `assistant_default_model` from the environment flags (cached 30
    seconds), serve that model, record no exposure and no event, and do not
    invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is
-   emitted.
+   emitted. If the SDK key or that flag cannot be read, or the feature is
+   missing or holds anything but `current` or `cheaper`, serve `current`,
+   with a 200.
 2. Call `get_identity_flags` once. Both the experiment feature and the
    kill switch are read from that one result. Do not call
-   `get_experiment_flag`; it makes its own identity request.
+   `get_experiment_flag`; it makes its own identity request. If the result
+   has no experiment feature, or its value is neither `current` nor
+   `cheaper`, serve `current`, record no exposure and no event, do not
+   invoke `rm-judge`, and log one warning that names no identity.
 3. If the experiment feature reports the identity is in the experiment,
    the flag is enabled and `flag.variant` is set, record the exposure with
    `track_exposure_event`, as the SDK's own `get_experiment_flag` would
    (task 1.2's finding 7).
-4. If `assistant_cheaper_enabled` is disabled, serve `current` whatever the
-   variation says, and set `served=current`. `assigned` is always the
-   experiment feature's value for the identity (`current` or `cheaper`),
-   not `flag.variant`; the exposure call sends `flag.variant`.
+4. If `assistant_cheaper_enabled` is disabled, or missing from the result,
+   serve `current` whatever the variation says, and set `served=current`.
+   `assigned` is always the experiment feature's value for the identity
+   (`current` or `cheaper`), not `flag.variant`; the exposure call sends
+   `flag.variant`.
 5. Otherwise serve the assigned variation.
-6. `flush_events()` before returning.
+6. `flush_events()` before returning. `rm-router` starts it on a thread
+   right after step 3, so it runs while the answer invoke runs, and a
+   `finally` joins that thread before every return, error paths included,
+   waiting at most Lambda's remaining time minus 1 second (section 5).
+   If no thread can be started, it returns without flushing (section 5).
+   The router tracks nothing else while the answer runs.
 
 Results can be refreshed at most once every 5 minutes. The run item keeps
 `last_refresh_at`; a tick inside that window reads the last results
@@ -203,13 +224,103 @@ rm-router -> CloudWatch embedded metrics
 - `rm-router` hands `rm-judge` this payload: `{run_id, identity, assigned,
   served, model_id, question, answer, input_tokens, output_tokens,
   latency_ms}`.
-- Judging and Flagsmith events happen in `rm-judge`, off the request path.
+- Judging and outcome events happen in `rm-judge`, off the request path;
+  the router's exposure, flushed beside the answer (section 4, step 6), is
+  the one exception.
   API Gateway's 30 second limit applies to the request path only.
+- `rm-router` and `rm-judge` log at INFO or above, never DEBUG, because at
+  DEBUG the Flagsmith SDK logs identifiers and botocore logs response
+  bodies, the server key among them (tasks 3.2 and 3.3's reviews).
+- `rm-judge` judges and parses the reply (field `helpful`) before any
+  write, then writes CloudWatch, then tracks the three events and flushes.
+  A failure before the first event is tracked raises, so Lambda's async
+  retries, its default 2, run it again: `JudgeThrottled` for Bedrock's
+  `ThrottlingException`, `JudgeFailed` for the judge's other failures
+  before the CloudWatch write, and a failed CloudWatch write or first
+  track its own error; a retry may count the cost twice
+  in CloudWatch, the safe side for the budget check. Once an event is
+  tracked, nothing raises, so no retry the judge causes sends the events
+  twice. Its Bedrock client makes one attempt and waits at most 5 seconds
+  to connect and 10 to read, and before the CloudWatch write it needs 13
+  seconds of Lambda's time left, one SDK send and 1 second more, or it
+  raises `JudgeFailed` with nothing written. Lambda may still deliver an
+  event twice, and a flush slower than 13 seconds may meet the timeout;
+  both are rare and accepted (task 3.3's review).
 - Answer Lambdas return whole responses. No response streaming (FIS Lambda
   faults do not support it).
 - The answer functions take `question` and `identity` and return `answer`,
   `input_tokens`, `output_tokens` and `model_id` (schemas `answer_request`
   and `answer_response`).
+
+The answer functions are one handler, `app.answer.handler.handler`,
+deployed twice, with the model from env `MODEL_ID`. Each answer makes one
+Bedrock attempt (botocore `total_max_attempts` 1), so a throttle is not
+hidden in the measured latency. Errors are typed by exception class, and
+Lambda reports the class name as `errorType`:
+
+- `AnswerThrottled` for Bedrock's `ThrottlingException`, judged by its
+  error code, not its HTTP status;
+- `AnswerFailed` for every other error, a `max_tokens` stop, an empty
+  reply, a malformed event and an unknown `MODEL_ID`.
+
+Their messages carry no question, reply or key. That `errorType` is the
+simple class name is unverified until the first deployed invoke (task 3.5
+or 3.6).
+
+`rm-router` is the Lambda integration of the HTTP API's route (`POST /ask`,
+section 11), with payload format version `2.0`, and answers:
+
+| Case | Status | Body |
+| --- | --- | --- |
+| An answer | 200 | `{"answer": <text>}` |
+| Bad input, including another run's identity (section 4, step 1) | 400 | `{"error": "bad_request"}` |
+| The answer's `errorType` is `AnswerThrottled` | 503 | `{"error": "AnswerThrottled"}` |
+| Any other `errorType`, including Lambda's own timeout, an invoke exception, or a reply that is not the served arm's `answer_response` | 502 | `{"error": <errorType or "invoke_failed">}` |
+| A failed `rm-runs` read or a launched pointer whose `run_id` is not a run ID; with an active run, a failed read of the key or the identity flags | 502 | `{"error": "upstream_failed"}` |
+
+With no active run, a failed key read or default-model read is not a 502:
+the router serves `current` with a 200 (section 4, step 1).
+
+Also on the request path:
+
+- `AnswerLatencyMs` is emitted for every answer invoke, success or error,
+  because a slow failure must reach the alarm.
+- On any answer error there is no judge hand-off and no outcome.
+- A failed judge hand-off still returns 200, with a warning.
+- The router's Lambda client makes one attempt.
+- The router's Flagsmith client sets `request_timeout_seconds=3` and
+  urllib3 `Retry(total=1, backoff_factor=0)`. They bound the identity
+  request, a POST that urllib3 does not retry after a read error: about 6
+  seconds (requests applies the 3 seconds to the connect and to the read),
+  or about 9 seconds if a connect error is retried.
+- The SDK's events processor ignores both (it has its own session, a 3
+  second timeout and up to 3 attempts), so one send can take about 12
+  seconds when each attempt times out once (task 3.2's case), and longer
+  after a slow connect. A flush queued behind the SDK's own 10 second timer send waits
+  for that send and then one more: about 24 seconds (task 3.2 measured
+  19.88 and 22.67 seconds). So the flush runs beside the answer (section
+  4, step 6), and the router bounds its join to Lambda's remaining time
+  minus 1 second (`context.get_remaining_time_in_millis()`). If the flush is still
+  running then, the router returns anyway and logs one warning that names
+  no identity. A late flush loses at most that request's exposure. If no
+  thread can be started, the router logs a warning and returns without
+  flushing, because the SDK's own flush has no timeout; the SDK's 10 second
+  timer or a later flush sends the events.
+- A request takes about the identity request plus the longer of the answer
+  and the flush. With one send, that is about 19 to 22 seconds with the
+  cheaper answer under the fault (about 13 seconds), inside the router's
+  29 second timeout; for a slower flush, the join's bound stops the wait
+  before that timeout. An answer that runs to its own 25 second timeout is
+  a 502 and may still meet the router's limit; that is accepted. Task 3.2
+  measures it.
+
+Packaging (task 3.5): each zip keeps the repo's paths, so a handler is its
+module's path plus the function. The answer functions' zip holds
+`app/__init__.py`, `app/answer/`, `contracts/__init__.py` and
+`contracts/names.py`. `rm-router`'s holds `app/__init__.py`, `app/router/`,
+the same two `contracts` files, and the `flagsmith` SDK with its
+dependencies as `uv.lock` pins them, for handler
+`app.router.handler.handler`.
 
 CloudWatch namespace `RolloutMarshal`, dimension `Variant` = `current` or
 `cheaper` (the variant actually served):
@@ -223,7 +334,13 @@ CloudWatch namespace `RolloutMarshal`, dimension `Variant` = `current` or
 Cost per answer = input tokens x input price + output tokens x output
 price, in millionths of a US dollar, from `app/prices.json`. Prices are
 copied from the AWS Bedrock pricing page at build time with the page URL
-and date in the file. Do not invent prices.
+and date in the file. Do not invent prices. The file holds `source_url`,
+`retrieved_on`, `currency` and `per_million_tokens`, a map from each model
+ID to its `input` and `output` prices in US dollars per million tokens, so
+tokens times price is micro-USD; `rm-judge` rounds the sum to an integer.
+Task 3.3 resolved the prices from the page's own price files, from US East
+(N. Virginia)'s "Geo and In-region Cross-region Inference" table, not the
+cheaper Global one (section 13).
 
 Alarm `rm-cheaper-latency-p95`: `AnswerLatencyMs`, `Variant=cheaper`,
 statistic p95, period 60 seconds, 2 of 2 datapoints above the threshold,
@@ -249,18 +366,23 @@ only inside the same `TransactWriteItems` as the run-item write it mirrors:
   the run item on the same condition. A failed pointer condition means
   `RUN_ACTIVE`, naming the run the old item names. A failed run-item
   condition alone means the run ID is in use: `start` returns
-  `BAD_REQUEST`, "start again next minute", and writes nothing.
-- Launch commit: the commit into `RUNNING`, plus an update that sets the
-  pointer's `feature_key` on condition its `run_id` is this run.
+  `BAD_REQUEST`, "start again next minute", and writes nothing. A create
+  cancelled by a colliding write re-reads the pointer: `RUN_ACTIVE` if one
+  exists, otherwise the error goes back unchanged, as `UPSTREAM_FAILED`. It
+  does not retry.
+- Launch commit: the `PLANNED -> RUNNING` commit only (a resume's commit
+  into `RUNNING` is not one), plus an update that sets the pointer's
+  `feature_key` on condition its `run_id` is this run.
 - Terminal commit (`PROMOTED`, `HELD`, `ABORTED`): the commit, plus
   `clear_active`, a delete of the pointer on condition it is absent or
   names this run.
 
 A transaction cancelled by a colliding write is a lost race: re-read, and
-retry a commit once if the claim is still this invocation's. The router
-treats a pointer without `feature_key` as "no active run". The router
-caches the pointer for 30 seconds, so for up to 30 seconds after a terminal
-state it may still serve the old run; that is accepted. A pointer whose run
+retry a commit once if the claim is still this invocation's. A commit the
+pointer's condition cancels is not a lost race: it is `EFFECT_FAILED`.
+The router treats a pointer without `feature_key` as "no active run". The
+router caches the pointer for 30 seconds, so for up to 30 seconds after a
+terminal state it may still serve the old run; that is accepted. A pointer whose run
 item is missing also counts as no active run for `status`, `tick` and
 `alarm`: a no-op whose message starts "no active run" and names the
 pointer's run and `scripts/reset.py`. `start` still refuses it with
@@ -398,10 +520,11 @@ How a transition is applied (guard, claim, effect, commit):
    Takeover: a `pending` older than 360 seconds may be taken over by one
    conditional write that sets `pending_at = <now>` on condition
    `state = <from>`, `pending = <to>` and `pending_at` still holding the
-   value read. Only the winner runs the effects. `tick` and `check` may
-   take over any transition; any other action only one its row lists as a
-   trigger. `decline` never takes over a transition another action
-   claimed.
+   value read. Older means strictly older: a `pending` exactly 360
+   seconds old may not be taken over. Only the winner runs the effects.
+   `tick` and `check` may take over any transition; any other action only
+   one its row lists as a trigger. `decline` never takes over a transition
+   another action claimed.
 2. Effects: run the side effects below. Every effect is idempotent
    (get-or-create by key, set-to-value, publish unless its key is already
    in `notified`).
@@ -409,22 +532,32 @@ How a transition is applied (guard, claim, effect, commit):
    condition `state = <from>`, `pending = <to>` and `pending_at` holding
    the value this invocation wrote. If the condition fails, re-read and
    return the current status, with `TRANSITION_PENDING` for an engineer
-   action while the transition is still pending.
+   action while the transition is still pending. A commit's `actor` must
+   equal the Actor column of its row, and its `reason` must be a non-empty
+   string; otherwise it is refused before any write. Every commit checks
+   that a `feature_key` it sets is the run's own. A commit's updates may
+   set any attribute except those the create writes once (`pk`, `run_id`,
+   `prompt`, `plan`, `created_at`), those the state store keeps itself
+   (`state`, `pending`, `pending_at`, `history`, `updated_at`), and
+   `notified`, which only the notify tool (task 2.4) records, one dedupe
+   key at a time.
 
 If an effect throws, the invocation releases its own claim, moving
 `pending_at` back by 360 seconds on condition the claim is still its own,
 and returns `EFFECT_FAILED`. Its message names the failed effect, the
-command `marshal check <run_id>`, and when that will act. Any later
-`tick`, `check` or repeat of the same action that finds `pending` older
-than 360 seconds resumes from step 2 for that same target state; only an
-invocation that died leaves a claim to wait out. A resumed
+command `marshal check <run_id>`, and when that will act. The release
+retries once on a transaction conflict while the claim is still its own.
+Any later `tick`, `check` or repeat of the same action that finds
+`pending` older than 360 seconds resumes from step 2 for that same target
+state; only an invocation that died leaves a claim to wait out. A resumed
 `RUNNING -> RESULTS_READY` reads the last results again and writes the
 report prose inside the effect.
 
 What each transition does (the pointer changes are in the commits above):
 
 - `(none) -> PLANNED`: the create transaction: the run item, with
-  `notified` empty, and the pointer.
+  `notified` empty, and the pointer. The first history entry's `reason`
+  is `start`.
 - `PLANNED -> RUNNING` (launch): enable the tick schedule; get-or-create
   the two permanent features; set `assistant_cheaper_enabled` enabled;
   get-or-create the run's feature, options and experiment through the MCP
@@ -571,7 +704,7 @@ Three things invoke it:
 | Caller | Sends | How |
 | --- | --- | --- |
 | `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials, through the console script `cli.marshal:main` |
-| `rm-invoker` Lambda | `alarm` | EventBridge rule `rm-alarm-to-invoker` on the alarm entering ALARM. Role `rm-invoker-role`. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
+| `rm-invoker` Lambda | `alarm`, and `tick` as `rm-tick`'s target | EventBridge rule `rm-alarm-to-invoker` on the alarm entering ALARM. Role `rm-invoker-role`. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
 | `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it with GetSchedule and writes back every field it returned that UpdateSchedule takes (all but Arn, CreationDate and LastModificationDate), changing only its state. That passes `rm-scheduler-role` to `scheduler.amazonaws.com`, so the runtime's role needs pass-role on it (task 2.7) |
 
 The CLI reads the runtime's ARN from `/rm/agent-runtime-arn` with the
@@ -607,6 +740,61 @@ Agent tools:
 | `schedule` | enable or disable the `rm-tick` schedule | boto3 in the agent |
 | `notify` | SNS topic `rm-incidents` | boto3 in the agent |
 | `report` | S3 `rm-reports-818928662830` | boto3 in the agent |
+
+`rm-flagsmith-admin` (task 2.2) makes the Admin API calls the MCP server
+cannot. Its tools, which the Gateway lists as `flagsmith-admin___<tool>`,
+are `ensure_metrics`, `start_experiment`, `refresh_results`, `get_results`
+and `get_experiment`. Each takes `environment_api_key` (string), and each
+but `ensure_metrics` also takes `experiment_id` (integer). Each has a
+one-line `description` in its Gateway tool schema, which the Gateway
+requires.
+
+- Answers: `{"ok": true, "result": ...}` or `{"ok": false, "error": {"type": "refused"|"failed"|"internal", "message": ...}}`. The handler never raises.
+- Direct invoke: `{"tool": "<tool>", "arguments": {...}}`.
+- Through the Gateway: the event is the tool's arguments, and the tool
+  name is `context.client_context.custom["bedrockAgentCoreToolName"]`, as
+  `flagsmith-admin___<tool>`.
+- Routes: GET on the metrics search, the experiment read and `results/`;
+  POST on the metric create, `start/` and `results/refresh/`.
+- The environment key: the agent passes `environment_api_key`, which it
+  already holds for its MCP calls. The Lambda never logs it or returns it.
+- Names and limits: role `rm-flagsmith-admin-role`, inline policy
+  `rm-flagsmith-admin-policy`, log group `/aws/lambda/rm-flagsmith-admin`,
+  128 MB, and a 4 second timeout on each socket operation: a tool makes at
+  most 6 requests, about 24 seconds when each stalls once, inside the 30
+  second Lambda timeout; a slower tool ends in that timeout.
+
+The agent's side: `get_results(id, metric_ids, refreshed_at=None)`, given a
+refresh time, raises `ResultsNotCurrent` until the read is current (without
+one, a read with no results comes back not ready), and
+`refresh_results(id, last_refresh_at)` returns the new refresh time, or
+None when it skipped one (within 300 seconds of the last refresh, or on a
+429). A read is current after a refresh asked for at `refreshed_at` when
+all three hold:
+
+1. `refresh_requested_at` is at or after `refreshed_at` minus 60 seconds,
+   which allows for the two clocks;
+2. `is_final` is true, or `as_of` is at or after `refresh_requested_at`;
+3. `last_error_at` is null or earlier than `refresh_requested_at`. This
+   condition is inferred from the field's name, not observed.
+
+A read Flagsmith has not computed yet (`{"results": null}`) is not current
+either. The agent treats `ResultsNotCurrent` as results not ready, not as
+a failure.
+
+The Flagsmith spellings the tools rely on, as task 1.3 sent or read them
+(steps of `evidence/1.3-flagsmith-agent-spike.md`):
+
+| What | Spelling | Where |
+| --- | --- | --- |
+| A multivariate feature's type | `MULTIVARIATE` | step 6, the feature create |
+| A standard feature's type | `STANDARD` | step 6, the kill switch's create |
+| A multivariate option's type | `unicode` | step 6, the option create |
+| The type of the experiment rollout's value | `string` | step 6, the experiment create; step 8, read back |
+| The type of a v2 version state's value | `unicode` | step 9, the version state read |
+| MCP's name for a path ID that clashes with a body field | `id__path` | step 4, the live schemas; step 9 |
+| An experiment's status after its create, and after its start | `created`, `running` | step 6; step 8 |
+| The version in a metric's definition | `1` | step 6, the metric create that returned 201 |
 
 AgentCore pieces. `agent/scripts/setup_gateway.py` gets or creates each one
 by name, so it is safe to repeat; the CLI's gateway commands may be used
@@ -672,11 +860,29 @@ lead copies it into each worktree it creates.
 FIS experiment template `rm-delay-cheaper`: action
 `aws:lambda:invocation-add-delay` on `rm-answer-cheaper`, 100 percent of
 invocations, added delay 10000 ms, duration 6 minutes. The function needs
-the FIS extension layer (its arm64 ARN is published in SSM), the S3
+the FIS extension layer (its arm64 ARN is published in SSM; the module
+pins `arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441`,
+task 4.3's read, and warns when SSM moves on, so no new release changes
+the cheaper function alone mid-project), the S3
 configuration bucket, the IAM policies and the environment variables from
 the AWS FIS Lambda actions guide, with
-`AWS_FIS_SLOW_POLL_INTERVAL_SECONDS=10` so the fault starts quickly. The
-fault can take up to a minute to ramp and the alarm needs two full
+`AWS_FIS_SLOW_POLL_INTERVAL_SECONDS=10` so the fault starts quickly.
+
+Names (task 4.3): the configuration bucket `rm-fis-config-818928662830`,
+with the configuration in its `FisConfigs` folder; the experiment role
+`rm-fis-role`, with inline policy `rm-fis-actions`; and inline policy
+`rm-fis-config-read` on `rm-answer-cheaper`'s role, which reads only that
+folder. The FIS module takes the app module's `cheaper_function_name` and
+`cheaper_role_name` outputs and gives back `cheaper_extra_layers` and
+`cheaper_extra_env`, which the app module applies to `rm-answer-cheaper`
+alone. Neither depends on the app module, so the two modules form no
+cycle. The lead applies both together, before task 3.6, so 3.6's baseline
+is measured with the extension on the function, as the fault run has it.
+`scripts/inject_fault.sh` starts one experiment from the template, prints
+its ID and its UTC start and end, and never stops it: the fault ends by
+its duration.
+
+The fault can take up to a minute to ramp and the alarm needs two full
 one-minute periods, so expect ALARM three to five minutes in. Timebox:
 2 hours. Fallback, built only if task 4.3's timebox runs out: a Flagsmith
 boolean feature `chaos_delay_cheaper` that `rm-answer-cheaper` reads from
@@ -769,5 +975,5 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | Metric aggregation types available (occurrence, count, sum, mean) | 1.3 | verified |
 | Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the dashboard shows the level, 95 percent), `chance_to_win`; no "not worse" field |
 | An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); verified for usage, with a lag: `usage-data/total-count/` read 0 eleven to 25 minutes after 1.2's 150 identity requests (task 1.3) and 150 at 01:10Z the next day (`evidence/gate-1-review.md`), so a read lags by more than 25 minutes |
-| FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | open |
-| Bedrock prices for the three models | 3.3 | open |
+| FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | verified: `invocationPercentage`, `startupDelayMilliseconds`, `duration` and target key `Functions` (`aws fis get-action`); layer `aws-fis-extension-arm64:441` from SSM (`evidence/4.3-fis.md`, PR #23) |
+| Bedrock prices for the three models | 3.3 | verified: resolved from the pricing page's own price files, not seen displayed (`evidence/3.3-prices.md`) |

@@ -263,6 +263,58 @@ NOT_A_NAME = {
     "scripts/load.py --run-id <run_id> --users N --questions M --url <api>": (
         "command line of LOAD_SCRIPT, owned by task 3.4"
     ),
+    # contract change c3 (tasks 2.1 and 2.2 settled, 3.1 built, 3.2 measured)
+    "default_enabled": "Flagsmith's feature-create field (task 1.3, step 6)",
+    "finally": "the Python clause in which rm-router joins its flush thread",
+    "request_timeout_seconds=3": (
+        "the SDK client's argument; the value is FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS"
+    ),
+    "Retry(total=1, backoff_factor=0)": (
+        "urllib3's retry object for rm-router's SDK client; its total is FLAGSMITH_SDK_RETRIES"
+    ),
+    "context.get_remaining_time_in_millis()": (
+        "the Lambda context's time left, which bounds rm-router's wait for its flush"
+    ),
+    "ThrottlingException": "Bedrock's error code for a throttled request",
+    "errorType": "Lambda's name for a function error's type; see ANSWER_ERROR_THROTTLED",
+    "app/__init__.py": "a file in the answer and router zips (section 12 owns paths)",
+    "app/answer/": "the answer functions' code, in their zip (section 12 owns paths)",
+    "app/router/": "rm-router's code, in its zip (section 12 owns paths)",
+    "contracts/__init__.py": "a file in the answer and router zips (section 12 owns paths)",
+    "contracts/names.py": "this module, in the answer and router zips",
+    '{"answer": <text>}': "rm-router's 200 body; test_contract_c3 checks the table",
+    '{"error": "bad_request"}': "rm-router's 400 body; test_contract_c3 checks the table",
+    '{"error": "AnswerThrottled"}': "rm-router's 503 body; test_contract_c3 checks the table",
+    '{"error": <errorType or "invoke_failed">}': (
+        "rm-router's 502 body for an answer error; test_contract_c3 checks the table"
+    ),
+    '{"error": "upstream_failed"}': "rm-router's other 502 body; test_contract_c3 checks it",
+    "flagsmith-admin___<tool>": (
+        "the Gateway's tool-name pattern for target GATEWAY_TARGET_FLAGSMITH_ADMIN"
+    ),
+    "environment_api_key": "Flagsmith's argument name for an environment key; the tools reuse it",
+    "description": "the Gateway tool schema's field, required on each admin tool",
+    '{"ok": true, "result": ...}': "rm-flagsmith-admin's answer; test_contract_c3 pins it",
+    '{"ok": false, "error": {"type": "refused"|"failed"|"internal", "message": ...}}': (
+        "rm-flagsmith-admin's error answer; test_contract_c3 pins it"
+    ),
+    '{"tool": "<tool>", "arguments": {...}}': "rm-flagsmith-admin's direct-invoke event",
+    'context.client_context.custom["bedrockAgentCoreToolName"]': (
+        "where AgentCore Gateway puts the tool name in a Lambda target's context"
+    ),
+    "results/": "Admin API path under an experiment (task 1.3, step 10)",
+    "start/": "Admin API path under an experiment (task 1.3, step 8)",
+    "results/refresh/": "Admin API path under an experiment (task 1.3, step 10)",
+    "get_results(id, metric_ids, refreshed_at=None)": "task 2.2's results read, in the agent",
+    "refresh_results(id, last_refresh_at)": "task 2.2's results refresh, in the agent",
+    "ResultsNotCurrent": "the exception task 2.2's get_results raises; it means not ready",
+    "refreshed_at": "get_results's argument: when the agent asked for the refresh",
+    "refresh_requested_at": "a field of Flagsmith's results read (evidence/1.4-logs/)",
+    "as_of": "a field of Flagsmith's results read (evidence/1.4-logs/)",
+    "is_final": "a field of Flagsmith's results read (evidence/1.4-logs/)",
+    "last_error_at": "a field of Flagsmith's results read (evidence/1.4-logs/)",
+    '{"results": null}': "Flagsmith's results read before it has computed any",
+    "evidence/1.3-flagsmith-agent-spike.md": "task 1.3's evidence, which the spellings cite",
 }
 PLACEHOLDER = re.compile(r"^<[a-z_]+>$|^\(none\)$")
 
@@ -480,8 +532,18 @@ def test_contract_c2():
     assert "topK" in names.FORBIDDEN_SAMPLING_PARAMETERS
     spec = ROOT / "openspec/changes/build-rollout-marshal/specs/experiment-agent/spec.md"
     assert (
-        "the lower bound of the 95 percent credible interval for the lift on `helpful_rate` is "
-        "at or above -0.05, and both guardrails pass" in spec.read_text()
+        f"the lower bound of the {names.CREDIBLE_INTERVAL_PERCENT} percent credible interval for "
+        "the lift on `helpful_rate` is at or above -0.05, and both guardrails pass"
+        in spec.read_text()
+    )
+    assert (
+        f"Flagsmith's {names.CREDIBLE_INTERVAL_PERCENT} percent credible interval for the relative "
+        "lift" in re.sub(r"\s+", " ", section(7))
+    )
+    assert (
+        f"recommend `promote` only if the lower bound of the {names.CREDIBLE_INTERVAL_PERCENT} "
+        "percent credible interval that Flagsmith gives for the lift on `helpful_rate`"
+        in flat_section(6)
     )
     sec7 = re.sub(r"\s+", " ", section(7))
     assert f"`{names.AGENT_STACK}` creates it with the Bedrock, logging and Gateway grants" in sec7
@@ -491,6 +553,372 @@ def test_contract_c2():
         f"exits {names.CLI_EXIT_OK} when its error is null, {names.CLI_EXIT_ERROR} when it "
         f"carries an error code, and {names.CLI_EXIT_USAGE} for a usage error" in sec7
     )
+
+
+def flat_section(n: int) -> str:
+    return re.sub(r"\s+", " ", section(n))
+
+
+def test_contract_c3_models_and_the_router():
+    """Contract change c3, sections 3 to 5: display names, the answer functions, rm-router."""
+    sec3, sec4, sec5 = flat_section(3), flat_section(4), flat_section(5)
+    pairs = [f"`{model}` is `{shown}`" for model, shown in names.MODEL_DISPLAY_NAMES.items()]
+    assert (
+        f"Display names, for the planner's move check (task 2.3): {', '.join(pairs[:-1])} and "
+        f"{pairs[-1]}." in sec3
+    )
+    assert (
+        f"Code compares the pair with (`{names.MODEL_CURRENT}`, `{names.MODEL_CHEAPER}`); any "
+        f"other pair, or none, is `{names.ERROR_BAD_REQUEST}` before any write." in sec3
+    )
+    assert set(names.MODEL_DISPLAY_NAMES) == {
+        ticks(model)[0] for _, model, _ in table_rows(section(3), "| Role |")
+    }
+    kickoff = re.sub(r"\s+", " ", (ROOT / "KICKOFF.md").read_text())
+    shown = names.MODEL_DISPLAY_NAMES
+    assert f"from {shown[names.MODEL_CURRENT]} to {shown[names.MODEL_CHEAPER]}." in kickoff
+
+    # Section 4: the router's fallbacks and its flush.
+    either = listed(names.DEFAULT_MODEL_VALUES, "or")
+    current, cheaper = names.VARIANT_CURRENT, names.VARIANT_CHEAPER
+    assert (
+        f"If the SDK key or that flag cannot be read, or the feature is missing or holds "
+        f"anything but {either}, serve `{current}`, with a 200." in sec4
+    )
+    assert (
+        f"If the result has no experiment feature, or its value is neither `{current}` nor "
+        f"`{cheaper}`, serve `{current}`, record no exposure and no event, do not invoke "
+        f"`{names.JUDGE_FUNCTION}`, and log one warning that names no identity." in sec4
+    )
+    assert (
+        f"If `{names.KILL_SWITCH_FEATURE}` is disabled, or missing from the result, serve "
+        f"`{current}` whatever the variation says" in sec4
+    )
+
+    # Section 5: the answer functions.
+    assert (
+        f"The answer functions are one handler, `{names.ANSWER_HANDLER}`, deployed twice, with "
+        f"the model from env `{names.ANSWER_MODEL_ENV}`." in sec5
+    )
+    assert "Each answer makes one Bedrock attempt (botocore `total_max_attempts` 1)" in sec5
+    assert (
+        f"- `{names.ANSWER_ERROR_THROTTLED}` for Bedrock's `ThrottlingException`, judged by its "
+        "error code, not its HTTP status;" in sec5
+    )
+    assert (
+        f"- `{names.ANSWER_ERROR_FAILED}` for every other error, a "
+        f"`{names.STOP_REASON_MAX_TOKENS}` stop, an empty reply, a malformed event and an "
+        f"unknown `{names.ANSWER_MODEL_ENV}`." in sec5
+    )
+    assert names.ANSWER_HANDLER.startswith("app.answer.")  # tasks.md 3.1's app/answer/handler.py
+    assert names.ROUTER_HANDLER.startswith("app.router.")  # tasks.md 3.2's app/router/handler.py
+
+    # Section 5: what rm-router answers.
+    assert (
+        f"`{names.ROUTER_FUNCTION}` is the Lambda integration of the HTTP API's route "
+        f"(`{names.API_ROUTE_KEY}`, section 11), with payload format version "
+        f"`{names.API_PAYLOAD_FORMAT_VERSION}`, and answers:" in sec5
+    )
+
+    def body(error: str) -> str:
+        return f'`{{"error": "{error}"}}`'
+
+    answer_field = names.ANSWER_RESPONSE_FIELDS[0]  # the answer function's own field
+    assert table_rows(section(5), "| Case | Status | Body |") == [
+        ["An answer", "200", f'`{{"{answer_field}": <text>}}`'],
+        [
+            "Bad input, including another run's identity (section 4, step 1)",
+            "400",
+            body(names.ROUTER_ERROR_BAD_REQUEST),
+        ],
+        [
+            f"The answer's `errorType` is `{names.ANSWER_ERROR_THROTTLED}`",
+            "503",
+            body(names.ANSWER_ERROR_THROTTLED),
+        ],
+        [
+            "Any other `errorType`, including Lambda's own timeout, an invoke exception, or a "
+            "reply that is not the served arm's `answer_response`",
+            "502",
+            f'`{{"error": <errorType or "{names.ROUTER_ERROR_INVOKE_FAILED}">}}`',
+        ],
+        [
+            f"A failed `{names.RUNS_TABLE}` read or a launched pointer whose `run_id` is not a run "
+            "ID; with an active run, a failed read of the key or the identity flags",
+            "502",
+            body(names.ROUTER_ERROR_UPSTREAM_FAILED),
+        ],
+    ]
+    assert (
+        "With no active run, a failed key read or default-model read is not a 502: the router "
+        f"serves `{current}` with a 200 (section 4, step 1)." in sec5
+    )
+    errors = (
+        names.ROUTER_ERROR_BAD_REQUEST,
+        names.ROUTER_ERROR_INVOKE_FAILED,
+        names.ROUTER_ERROR_UPSTREAM_FAILED,
+    )
+    assert len(set(errors)) == len(errors) and names.ANSWER_ERROR_THROTTLED not in errors
+    assert not set(errors) & set(names.ERROR_CODES)  # the router's strings, not the agent's
+
+    # Section 5: the SDK settings and the time budget.
+    timeout, retries = names.FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS, names.FLAGSMITH_SDK_RETRIES
+    # requests applies the one value to the connect and to the read, and urllib3 retries no read
+    # error on a POST, so one attempt is a connect plus a read; a retried connect adds one more.
+    identity_one = 2 * timeout
+    identity_slow = identity_one + retries * timeout
+    assert (
+        f"The router's Flagsmith client sets `request_timeout_seconds={timeout}` and urllib3 "
+        f"`Retry(total={retries}, backoff_factor=0)`. They bound the identity request, a POST "
+        f"that urllib3 does not retry after a read error: about {identity_one} seconds (requests "
+        f"applies the {timeout} seconds to the connect and to the read), or about {identity_slow} "
+        "seconds if a connect error is retried." in sec5
+    )
+    send = int(re.search(r"so one send can take about (\d+) seconds", sec5).group(1))
+    queued = int(
+        re.search(
+            r"A flush queued behind the SDK's own \d+ second timer send waits for that send and "
+            r"then one more: about (\d+) seconds",
+            sec5,
+        ).group(1)
+    )
+    assert queued == 2 * send
+    low, high, answer = map(
+        int,
+        re.search(
+            r"With one send, that is about (\d+) to (\d+) seconds with the cheaper answer under "
+            rf"the fault \(about (\d+) seconds\), inside the router's "
+            rf"{names.ROUTER_TIMEOUT_SECONDS} second timeout; for a slower flush, the join's "
+            "bound stops the wait before that timeout.",
+            sec5,
+        ).groups(),
+    )
+    assert answer > names.FIS_DELAY_MS // 1000  # the injected delay plus the answer itself
+    assert (low, high) == (identity_one + max(answer, send), identity_slow + max(answer, send))
+    assert high < names.ROUTER_TIMEOUT_SECONDS < names.API_GATEWAY_TIMEOUT_SECONDS
+    # A queued flush can outlast the router, which is why the join is bounded.
+    assert identity_slow + queued > names.ROUTER_TIMEOUT_SECONDS
+    assert (
+        f"An answer that runs to its own {names.ANSWER_TIMEOUT_SECONDS} second timeout is a 502 "
+        "and may still meet the router's limit; that is accepted. Task 3.2 measures it." in sec5
+    )
+    assert names.ANSWER_TIMEOUT_SECONDS + timeout < names.ROUTER_TIMEOUT_SECONDS
+    assert names.ANSWER_TIMEOUT_SECONDS + identity_slow > names.ROUTER_TIMEOUT_SECONDS
+
+    # Section 5: packaging.
+    assert (
+        f"`{names.ROUTER_FUNCTION}`'s holds `app/__init__.py`, `app/router/`, the same two "
+        f"`contracts` files, and the `{names.FLAGSMITH_SDK_PACKAGE}` SDK with its dependencies "
+        f"as `uv.lock` pins them, for handler `{names.ROUTER_HANDLER}`." in sec5
+    )
+    # Both handlers are merged (tasks 3.1 and 3.2), so each path names a real function, and the
+    # answer handler defines the typed errors and reads the model from the named variable.
+    sources = {}
+    for handler in (names.ANSWER_HANDLER, names.ROUTER_HANDLER):
+        module, function = handler.rsplit(".", 1)
+        sources[handler] = (ROOT / (module.replace(".", "/") + ".py")).read_text()
+        assert f"\ndef {function}(" in sources[handler], handler
+    answer_source = sources[names.ANSWER_HANDLER]
+    for error in (names.ANSWER_ERROR_THROTTLED, names.ANSWER_ERROR_FAILED):
+        assert f"\nclass {error}(Exception):" in answer_source, error
+    assert f'"{names.ANSWER_MODEL_ENV}"' in answer_source
+
+
+def test_contract_c3_state():
+    """Contract change c3, section 6: what task 2.1 settled (PR #10)."""
+    sec6 = flat_section(6)
+    assert (
+        "A create cancelled by a colliding write re-reads the pointer: "
+        f"`{names.ERROR_RUN_ACTIVE}` if one exists, otherwise the error goes back unchanged, as "
+        f"`{names.ERROR_UPSTREAM_FAILED}`. It does not retry." in sec6
+    )
+    assert (
+        f"Launch commit: the `{names.STATE_PLANNED} -> {names.STATE_RUNNING}` commit only (a "
+        f"resume's commit into `{names.STATE_RUNNING}` is not one)" in sec6
+    )
+    launches = [t for t in names.TRANSITIONS if t.target == names.STATE_RUNNING]
+    assert {t.source for t in launches} == {names.STATE_PLANNED, names.STATE_AWAITING_RESUME}
+    assert (
+        "A commit the pointer's condition cancels is not a lost race: it is "
+        f"`{names.ERROR_EFFECT_FAILED}`." in sec6
+    )
+    assert (
+        "Older means strictly older: a `pending` exactly "
+        f"{names.PENDING_STALE_SECONDS} seconds old may not be taken over." in sec6
+    )
+    updates = re.search(
+        r"A commit's updates may set any attribute except those the create writes once "
+        r"\((.*?)\), those the state store keeps itself \((.*?)\), and `(\w+)`, which only the "
+        r"notify tool \(task 2\.4\) records, one dedupe key at a time\.",
+        sec6,
+    )
+    once, kept = set(ticks(updates.group(1))), set(ticks(updates.group(2)))
+    by_notify = {updates.group(3)}
+    item = set(names.RUN_ITEM_ATTRIBUTES) | {names.PARTITION_KEY}
+    assert once | kept | by_notify <= item
+    assert not (once & kept or once & by_notify or kept & by_notify)
+    # The create writes the schema's required attributes; of those, the state store keeps
+    # some and notify owns notified, so the rest are written once.
+    required = set(contracts.load_schema("run_item")["required"])
+    assert once == required - kept - by_notify
+    assert kept == {"state", "pending", "pending_at", "history", "updated_at"}
+    assert by_notify == {"notified"}
+    assert f"The first history entry's `reason` is `{names.ACTION_START}`." in sec6
+    first = contracts.load_schema("run_item")["$defs"]["history_first"]["properties"]
+    assert first["reason"] == {"const": names.ACTION_START}
+    invalid("run_item", run_item(history=[{**run_item()["history"][0], "reason": "approve"}]))
+    later = {
+        "at": "2026-11-27T15:31:00.000000Z",
+        "from": "PLANNED",
+        "to": "RUNNING",
+        "actor": "engineer",
+        "reason": "",
+    }
+    invalid("run_item", run_item(state="RUNNING", history=[run_item()["history"][0], later]))
+
+
+def test_contract_c3_agent_tools():
+    """Contract change c3, section 7: the callers, rm-flagsmith-admin and the spellings."""
+    sec7 = flat_section(7)
+    assert (
+        f"| `{names.INVOKER_FUNCTION}` Lambda | `{names.ACTION_ALARM}`, and `{names.ACTION_TICK}` "
+        f"as `{names.TICK_SCHEDULE}`'s target |" in DESIGN
+    )
+    target = names.GATEWAY_TARGET_FLAGSMITH_ADMIN
+    tools = names.FLAGSMITH_ADMIN_TOOLS
+    assert (
+        f"Its tools, which the Gateway lists as `{target}___<tool>`, are {listed(tools, 'and')}."
+        in sec7
+    )
+    assert (
+        "Each takes `environment_api_key` (string), and each but "
+        f"`{tools[0]}` also takes `experiment_id` (integer)." in sec7
+    )
+    assert len(set(tools)) == len(tools)
+    function = names.FLAGSMITH_ADMIN_FUNCTION
+    assert names.FLAGSMITH_ADMIN_ROLE == f"{function}-role"
+    assert names.FLAGSMITH_ADMIN_POLICY == f"{function}-policy"
+    assert names.FLAGSMITH_ADMIN_LOG_GROUP == f"/aws/lambda/{function}"
+    per_request = names.FLAGSMITH_ADMIN_REQUEST_TIMEOUT_SECONDS
+    lambda_timeout = names.FLAGSMITH_ADMIN_TIMEOUT_SECONDS
+    log_group = re.escape(names.FLAGSMITH_ADMIN_LOG_GROUP)
+    limits = re.search(
+        rf"Names and limits: role `{names.FLAGSMITH_ADMIN_ROLE}`, inline policy "
+        rf"`{names.FLAGSMITH_ADMIN_POLICY}`, log group `{log_group}`, 128 MB, and a "
+        rf"{per_request} second timeout on each socket operation: a tool makes at most (\d+) "
+        rf"requests, about (\d+) seconds when each stalls once, inside the {lambda_timeout} second "
+        r"Lambda timeout; a slower tool ends in that timeout\.",
+        sec7,
+    )
+    most, total = (int(g) for g in limits.groups())
+    assert total == most * per_request < lambda_timeout
+    routes = re.search(r"Routes: (.*?)\.", sec7).group(1)
+    assert routes == (
+        "GET on the metrics search, the experiment read and `results/`; POST on the metric "
+        "create, `start/` and `results/refresh/`"
+    )
+    assert set(names.FLAGSMITH_ADMIN_METHODS) == set(re.findall(r"\b[A-Z]{3,}\b", routes))
+    assert not any(p in routes for p in names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS)
+    assert "exposures/" not in routes  # the lead dropped it (PR #15's review)
+    assert (
+        "`refresh_results(id, last_refresh_at)` returns the new refresh time, or None when it "
+        f"skipped one (within {names.RESULTS_REFRESH_MIN_SECONDS} seconds of the last refresh, "
+        "or on a 429)." in sec7
+    )
+    assert (
+        "1. `refresh_requested_at` is at or after `refreshed_at` minus "
+        f"{names.REFRESH_CLOCK_ALLOWANCE_SECONDS} seconds, which allows for the two clocks;" in sec7
+    )
+    assert names.REFRESH_CLOCK_ALLOWANCE_SECONDS < names.RESULTS_REFRESH_MIN_SECONDS
+
+    # The spellings: each one as design.md lists it, and as task 1.3 sent or read it.
+    rows = {r[0]: r[1] for r in table_rows(section(7), "| What | Spelling | Where |")}
+    assert rows == {
+        "A multivariate feature's type": f"`{names.API_FEATURE_MULTIVARIATE}`",
+        "A standard feature's type": f"`{names.API_FEATURE_STANDARD}`",
+        "A multivariate option's type": f"`{names.API_OPTION_TYPE}`",
+        "The type of the experiment rollout's value": f"`{names.API_ROLLOUT_VALUE_TYPE}`",
+        "The type of a v2 version state's value": f"`{names.API_VERSION_VALUE_TYPE}`",
+        "MCP's name for a path ID that clashes with a body field": f"`{names.API_PATH_ID}`",
+        "An experiment's status after its create, and after its start": (
+            f"`{names.EXPERIMENT_STATUS_CREATED}`, `{names.EXPERIMENT_STATUS_RUNNING}`"
+        ),
+        "The version in a metric's definition": f"`{names.API_METRIC_DEFINITION_VERSION}`",
+    }
+    spike = (ROOT / "evidence/1.3-flagsmith-agent-spike.md").read_text()
+    for recorded in (
+        f'"name": "assistant_model_rspike2235", "type": "{names.API_FEATURE_MULTIVARIATE}"',
+        f'"name": "spike_kill_switch", "type": "{names.API_FEATURE_STANDARD}"',
+        f'"type": "{names.API_OPTION_TYPE}", "string_value": "{names.TREATMENT_OPTION_VALUE}"',
+        f'"feature_state_value": {{"type": "{names.API_ROLLOUT_VALUE_TYPE}", "value": '
+        f'"{names.CONTROL_VALUE}"}}',
+        f'{{"type": "{names.API_VERSION_VALUE_TYPE}", "string_value": "{names.CONTROL_VALUE}"}}',
+        f"`{names.API_PATH_ID} 1883398, enabled false`",
+        f'`status "{names.EXPERIMENT_STATUS_CREATED}"`',
+        f'"status": "{names.EXPERIMENT_STATUS_RUNNING}", "started_at"',
+        f'"definition": {{"version": {names.API_METRIC_DEFINITION_VERSION}, "event": '
+        '"spike_event"}',
+    ):
+        assert recorded in spike, recorded
+    statuses = (names.EXPERIMENT_STATUS_CREATED, names.EXPERIMENT_STATUS_RUNNING)
+    assert set(statuses) <= set(names.FLAGSMITH_EXPERIMENT_STATUSES)
+    assert names.EXPERIMENT_STATUS_ENDED not in statuses
+
+
+def test_contract_c3_tasks_point_at_the_new_text():
+    """Each consuming task has one line that points at what c3 recorded."""
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    for line in (
+        f"- design.md section 7 now holds `{names.FLAGSMITH_ADMIN_FUNCTION}`'s interface, the "
+        "freshness rule, the spellings, and the `get_results` and `refresh_results` signatures, "
+        "which replace the two above.",
+        "- The display names the planner gives its model are in design.md section 3.",
+        f"- The typed errors, `{names.ANSWER_ERROR_THROTTLED}` and `{names.ANSWER_ERROR_FAILED}`, "
+        "are in design.md section 5.",
+        "- The response contract, the flag fallbacks, the flush thread and the SDK settings are "
+        "in design.md sections 4 and 5.",
+        f"- Payload format {names.API_PAYLOAD_FORMAT_VERSION}, the handler paths and what the "
+        "answer and router zips hold are in design.md section 5.",
+        f"- The router's 400 for another run's identity is the router's HTTP answer "
+        f"(`{names.ROUTER_ERROR_BAD_REQUEST}`, design.md section 5), not the agent's "
+        f"`{names.ERROR_BAD_REQUEST}`.",
+        "- `evidence/3.6-results.json` holds the experiment read's `experiment_metrics` list "
+        "(`metric_name`, `metric`) next to the raw `results`; 2.2's waiting test reads it.",
+        "- A tick that refreshes results without moving the run records `last_refresh_at` "
+        "through a conditional update. 2.5 adds that helper to `agent/runtime/rm_agent/state.py`, "
+        "beside 2.1's writes, since no commit carries it then.",
+        "Files: `agent/runtime/rm_agent/handlers.py`, `agent/runtime/main.py`, "
+        "`agent/tests/test_handlers.py`, and the one `agent/runtime/rm_agent/state.py` helper "
+        "below, with its tests in `agent/tests/test_state.py`.",
+        "- Pass: `pytest agent/tests/test_handlers.py agent/tests/test_state.py` green.",
+    ):
+        assert line in tasks, line
+    spec = re.sub(
+        r"\s+",
+        " ",
+        (ROOT / "openspec/changes/build-rollout-marshal/specs/assistant-api/spec.md").read_text(),
+    )
+    assert (
+        "The one exception is the router's exposure flush: the router waits for it only while "
+        "Lambda has time left, and skips it when no thread can be started (design.md sections 4 "
+        "and 5). A flush still running then, or skipped, is logged, and loses at most that "
+        "request's exposure." in spec
+    )
+
+
+def test_router_flush_numbers_match_the_sdk():
+    """design.md section 5's flush figures are the installed SDK's own events settings."""
+    analytics = pytest.importorskip("flagsmith.analytics")
+    sec5 = flat_section(5)
+    timeout, attempts = analytics.EVENTS_REQUEST_TIMEOUT_SECONDS, analytics.EVENTS_MAX_ATTEMPTS
+    assert (
+        f"it has its own session, a {timeout:g} second timeout and up to {attempts} attempts"
+        in sec5
+    )
+    interval = analytics.EventProcessorConfig().flush_interval_seconds
+    assert f"A flush queued behind the SDK's own {interval:g} second timer send" in sec5
 
 
 def test_not_a_name_entries_still_exist_in_design():
@@ -2074,6 +2502,62 @@ PINNED_RULE_SENTENCES = (
     "that the Gateway adds the space is inferred, not observed",
     "**One run at a time.** `start` is refused while the pointer exists, that is, while a run is "
     "active.",
+    # contract change c3: the planner, the router, the answer functions (sections 3 to 5)
+    "The planner gives its model that list, and the model reports the move it read as two model "
+    "IDs from it, from and to.",
+    "It is created with `default_enabled` true, so its value is served.",
+    "`rm-router` starts it on a thread right after step 3, so it runs while the answer invoke "
+    "runs, and a `finally` joins that thread before every return, error paths included, waiting "
+    "at most Lambda's remaining time minus 1 second (section 5). If no thread can be started, it "
+    "returns without flushing (section 5). The router tracks nothing else while the answer runs.",
+    "`flush_events()` before every handler returns; `rm-router` bounds how long it waits for it, "
+    "and skips it when no thread can be started (section 5).",
+    "Judging and outcome events happen in `rm-judge`, off the request path; the router's exposure, "
+    "flushed beside the answer (section 4, step 6), is the one exception.",
+    "so a throttle is not hidden in the measured latency. Errors are typed by exception class, "
+    "and Lambda reports the class name as `errorType`:",
+    "Their messages carry no question, reply or key. That `errorType` is the simple class name is "
+    "unverified until the first deployed invoke (task 3.5 or 3.6).",
+    "`AnswerLatencyMs` is emitted for every answer invoke, success or error, because a slow "
+    "failure must reach the alarm.",
+    "On any answer error there is no judge hand-off and no outcome.",
+    "A failed judge hand-off still returns 200, with a warning.",
+    "The router's Lambda client makes one attempt.",
+    "The SDK's events processor ignores both (it has its own session, a 3 second timeout and up "
+    "to 3 attempts), so one send can take about 12 seconds when each attempt times out once (task "
+    "3.2's case), and longer after a slow connect.",
+    "So the flush runs beside the answer (section 4, step 6), and the router bounds its join to "
+    "Lambda's remaining time minus 1 second (`context.get_remaining_time_in_millis()`). If the "
+    "flush is still running then, the router returns anyway and logs one warning that names no "
+    "identity. A late flush loses at most that request's exposure. If no thread can be started, "
+    "the router logs a warning and returns without flushing, because the SDK's own flush has no "
+    "timeout; the SDK's 10 second timer or a later flush sends the events.",
+    "A request takes about the identity request plus the longer of the answer and the flush.",
+    "Packaging (task 3.5): each zip keeps the repo's paths, so a handler is its module's path "
+    "plus the function. The answer functions' zip holds `app/__init__.py`, `app/answer/`, "
+    "`contracts/__init__.py` and `contracts/names.py`.",
+    # contract change c3: what task 2.1 settled (section 6)
+    "A commit's `actor` must equal the Actor column of its row, and its `reason` must be a "
+    "non-empty string; otherwise it is refused before any write.",
+    "Every commit checks that a `feature_key` it sets is the run's own.",
+    "The release retries once on a transaction conflict while the claim is still its own.",
+    # contract change c3: rm-flagsmith-admin (section 7, task 2.2's PR #15 and its review)
+    "Each has a one-line `description` in its Gateway tool schema, which the Gateway requires.",
+    '- Answers: `{"ok": true, "result": ...}` or `{"ok": false, "error": {"type": '
+    '"refused"|"failed"|"internal", "message": ...}}`. The handler never raises.',
+    '- Direct invoke: `{"tool": "<tool>", "arguments": {...}}`.',
+    "the event is the tool's arguments, and the tool name is "
+    '`context.client_context.custom["bedrockAgentCoreToolName"]`, as `flagsmith-admin___<tool>`.',
+    "The environment key: the agent passes `environment_api_key`, which it already holds for its "
+    "MCP calls. The Lambda never logs it or returns it.",
+    "`get_results(id, metric_ids, refreshed_at=None)`, given a refresh time, raises "
+    "`ResultsNotCurrent` until the read is current (without one, a read with no results comes "
+    "back not ready)",
+    "2. `is_final` is true, or `as_of` is at or after `refresh_requested_at`;",
+    "3. `last_error_at` is null or earlier than `refresh_requested_at`. This condition is inferred "
+    "from the field's name, not observed.",
+    'A read Flagsmith has not computed yet (`{"results": null}`) is not current either. The agent '
+    "treats `ResultsNotCurrent` as results not ready, not as a failure.",
 )
 
 
@@ -2242,9 +2726,67 @@ def test_spike_findings_match_design():
     assert "| `flagsmith_admin` | get-or-create metrics, start experiment," in DESIGN
 
 
+def test_contract_c4_judge():
+    """Contract change c4: task 3.3's judge (section 5) and its prices file."""
+    sec5 = flat_section(5)
+    sources, prices = names.PRICES_FIELDS, names.PRICE_FIELDS
+    assert (
+        f"The file holds `{sources[0]}`, `{sources[1]}`, `{sources[2]}` and `{sources[3]}`, a map "
+        f"from each model ID to its `{prices[0]}` and `{prices[1]}` prices in US dollars per "
+        f"million tokens, so tokens times price is micro-USD; `{names.JUDGE_FUNCTION}` rounds the "
+        "sum to an integer." in sec5
+    )
+    assert (
+        "Task 3.3 resolved the prices from the page's own price files, from US East "
+        '(N. Virginia)\'s "Geo and In-region Cross-region Inference" table, not the cheaper Global '
+        "one (section 13)." in sec5
+    )
+    connect = names.JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS
+    read = names.JUDGE_BEDROCK_READ_TIMEOUT_SECONDS
+    reserve = names.JUDGE_FLUSH_RESERVE_SECONDS
+    assert (
+        f"`{names.JUDGE_FUNCTION}` judges and parses the reply (field `{names.JUDGE_REPLY_FIELD}`) "
+        "before any write, then writes CloudWatch, then tracks the three events and flushes. A "
+        "failure before the first event is tracked raises, so Lambda's async retries, its default "
+        f"2, run it again: `{names.JUDGE_ERROR_THROTTLED}` for Bedrock's `ThrottlingException`, "
+        f"`{names.JUDGE_ERROR_FAILED}` for the judge's other failures before the CloudWatch write, "
+        "and a failed CloudWatch write or first track its own error; a retry may count the cost "
+        "twice in CloudWatch, "
+        "the safe side for the budget check. Once an event is tracked, nothing raises, so no retry "
+        "the judge causes sends the events twice. Its Bedrock client makes one attempt and waits "
+        f"at most {connect} seconds to connect and {read} to read, and before the CloudWatch write "
+        f"it needs {reserve} seconds of Lambda's time left, one SDK send and 1 second more, or it "
+        f"raises `{names.JUDGE_ERROR_FAILED}` with nothing written. Lambda may still deliver an "
+        f"event twice, and a flush slower than {reserve} seconds may meet the timeout; both are "
+        "rare and accepted (task 3.3's review)." in sec5
+    )
+    send = int(re.search(r"so one send can take about (\d+) seconds", sec5).group(1))
+    assert reserve == send + 1
+    assert connect + read + reserve < names.JUDGE_TIMEOUT_SECONDS
+    assert names.JUDGE_ERROR_THROTTLED != names.ANSWER_ERROR_THROTTLED
+    prices_file = ROOT / names.PRICES_FILE
+    if prices_file.exists():  # task 3.3 adds it
+        data = json.loads(prices_file.read_text())
+        assert tuple(data) == sources
+        for model in (names.MODEL_CURRENT, names.MODEL_CHEAPER, names.MODEL_JUDGE):
+            assert tuple(data[sources[3]][model]) == prices, model
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    assert (
+        "- design.md section 5 holds the judge's write order, its typed errors, its Bedrock "
+        f"timeouts, the {reserve} second reserve and the prices file's shape; section 13 records "
+        "the price check." in tasks
+    )
+
+
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
+    "PRICES_FIELDS": test_contract_c4_judge,
+    "PRICE_FIELDS": test_contract_c4_judge,
+    "MODEL_DISPLAY_NAMES": test_contract_c3_models_and_the_router,
+    "FLAGSMITH_ADMIN_TOOLS": test_contract_c3_agent_tools,
     "FLAGSMITH_ADMIN_FORBIDDEN_PATHS": test_contract_c2,
     "FLAGSMITH_ADMIN_METHODS": test_contract_c2,
     "FLAGSMITH_EXPERIMENT_STATUSES": test_contract_c2,
@@ -2727,3 +3269,116 @@ GOOD_VARIATION = {
 )
 def test_schema_bounds_and_types_are_pinned(schema, instance):
     invalid(schema, instance())
+
+
+def test_contract_c4_fis_names_and_logging():
+    """Contract change c4: section 9's names and module interface, the review role's FIS gap,
+    and the two Flagsmith-calling functions' log level."""
+    sec2, sec5, sec9 = flat_section(2), flat_section(5), flat_section(9)
+    assert (
+        f"Names (task 4.3): the configuration bucket `{names.FIS_CONFIG_BUCKET}`, with the "
+        f"configuration in its `{names.FIS_CONFIG_PREFIX}` folder; the experiment role "
+        f"`{names.FIS_ROLE}`, with inline policy `{names.FIS_ROLE_POLICY}`; and inline policy "
+        f"`{names.FIS_CONFIG_READ_POLICY}` on `{names.FIS_TARGET_FUNCTION}`'s role, which reads "
+        "only that folder." in sec9
+    )
+    assert (
+        f"The FIS module takes the app module's `{names.APP_CHEAPER_FUNCTION_NAME_OUTPUT}` and "
+        f"`{names.APP_CHEAPER_ROLE_NAME_OUTPUT}` outputs and gives back "
+        f"`{names.APP_CHEAPER_EXTRA_LAYERS_INPUT}` and `{names.APP_CHEAPER_EXTRA_ENV_INPUT}`, "
+        "which "
+        f"the app module applies to `{names.FIS_TARGET_FUNCTION}` alone. Neither depends on the "
+        "app module, so the two modules form no cycle." in sec9
+    )
+    assert (
+        "The lead applies both together, before task 3.6, so 3.6's baseline is measured with the "
+        "extension on the function, as the fault run has it." in sec9
+    )
+    assert (
+        f"`{names.INJECT_FAULT_SCRIPT}` starts one experiment from the template, prints its ID and "
+        "its UTC start and end, and never stops it: the fault ends by its duration." in sec9
+    )
+    assert (
+        "An organisation SCP denies it FIS, so the lead reads FIS state with the SSO profile and "
+        f"records the reads, and `{names.INJECT_FAULT_SCRIPT}` runs with that profile" in sec2
+    )
+    assert (
+        f"`{names.ROUTER_FUNCTION}` and `{names.JUDGE_FUNCTION}` log at INFO or above, "
+        "never DEBUG, because at DEBUG the Flagsmith SDK logs identifiers and botocore logs "
+        "response bodies, the server key among them (tasks 3.2 and 3.3's reviews)." in sec5
+    )
+    assert (
+        "the FIS extension layer (its arm64 ARN is published in SSM; the module pins "
+        f"`{names.FIS_EXTENSION_LAYER_ARN}`, task 4.3's read, and warns when SSM moves on, so no "
+        "new release changes the cheaper function alone mid-project)" in sec9
+    )
+    layer = names.FIS_EXTENSION_LAYER_ARN.split(":")
+    pin = ":".join(layer[-2:])  # aws-fis-extension-arm64:441, as section 13 records it
+    sec13 = re.sub(r"\s+", " ", section(13))
+    assert f"layer `{pin}` from SSM (`evidence/4.3-fis.md`, PR #23)" in sec13
+    assert layer[3] == names.REGION and layer[6] == f"aws-fis-extension-{names.LAMBDA_ARCHITECTURE}"
+    assert names.FIS_CONFIG_BUCKET.endswith(
+        f"-{names.ACCOUNT_ID}"
+    )  # as the account's other buckets
+    interface = (
+        names.APP_CHEAPER_FUNCTION_NAME_OUTPUT,
+        names.APP_CHEAPER_ROLE_NAME_OUTPUT,
+        names.APP_CHEAPER_EXTRA_LAYERS_INPUT,
+        names.APP_CHEAPER_EXTRA_ENV_INPUT,
+        names.APP_ASK_URL_OUTPUT,
+    )
+    assert len(set(interface)) == len(interface)
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    for line in (
+        f"- design.md section 5 sets `{names.ROUTER_FUNCTION}`'s and "
+        f"`{names.JUDGE_FUNCTION}`'s log "
+        "level, INFO or above, and section 9 names the module interface the FIS module meets: "
+        f"outputs `{names.APP_CHEAPER_FUNCTION_NAME_OUTPUT}` and "
+        f"`{names.APP_CHEAPER_ROLE_NAME_OUTPUT}`, inputs `{names.APP_CHEAPER_EXTRA_LAYERS_INPUT}` "
+        f"and `{names.APP_CHEAPER_EXTRA_ENV_INPUT}`.",
+        f"- The baseline runs with the FIS extension on `{names.FIS_TARGET_FUNCTION}`, "
+        "as the fault "
+        "run has it: the lead applies the FIS module with the app module first (design.md section "
+        "9).",
+        "- Needs: 3.5 applied, 3.4, and 4.3's build half (the FIS module) applied with it. Files: "
+        "`evidence/3.6-app-smoke.md`.",
+        "- Needs: for the build half (the FIS module and `scripts/inject_fault.sh`), 3.5; for "
+        "the fault run, 3.6 and 4.1 applied with the recalibrated threshold.",
+        "After 3.6 and the FIS module applied: the alarm reaches ALARM within 5 minutes of the "
+        "fault starting and leaves ALARM after it ends; times recorded.",
+        "4.3's build half merges, and the lead applies `infra/modules/fis` with the app module, "
+        "before 3.6 (design.md section 9).",
+        "- design.md section 9 holds the module's names and interface. An organisation SCP denies "
+        f"FIS to `{names.REVIEW_ROLE}`, so the lead reads FIS state with the SSO profile "
+        "and records "
+        f"it, and `{names.INJECT_FAULT_SCRIPT}` runs with that profile.",
+    ):
+        assert line in tasks, line
+
+
+def test_fis_and_app_module_interfaces():
+    """Each module, once it exists, declares its side of section 9's interface."""
+
+    def declared(module: str) -> str:
+        directory = ROOT / "infra/modules" / module
+        if not directory.is_dir():
+            return ""
+        return "".join(p.read_text() for p in sorted(directory.glob("*.tf")))
+
+    fis, app = declared("fis"), declared("app")
+    takes = (names.APP_CHEAPER_FUNCTION_NAME_OUTPUT, names.APP_CHEAPER_ROLE_NAME_OUTPUT)
+    gives = (names.APP_CHEAPER_EXTRA_LAYERS_INPUT, names.APP_CHEAPER_EXTRA_ENV_INPUT)
+    if fis:
+        # The module pins the layer from names (section 9), not from SSM's moving value.
+        assert "local.names.FIS_EXTENSION_LAYER_ARN" in re.sub(r"#.*", "", fis)
+        for name in takes:
+            assert f'variable "{name}"' in fis, name
+        for name in gives:
+            assert f'output "{name}"' in fis, name
+    if app:
+        for name in (*takes, names.APP_ASK_URL_OUTPUT):
+            assert f'output "{name}"' in app, name
+        for name in gives:
+            assert f'variable "{name}"' in app, name

@@ -58,6 +58,15 @@ BEDROCK_RUNTIME_SERVICE = "bedrock-runtime"  # every call uses its Converse API
 # design.md section 3's list, including Converse's spelling topP (inside inferenceConfig);
 # top_k goes only in additionalModelRequestFields. A guard checks every one, at any depth.
 FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "topP", "top_k", "topK")
+# The planner gives its model each ID with its display name (KICKOFF.md's sample prompt
+# says "from Claude Fable 5.1 to Claude Sonnet 5"). The model reports the move it read as
+# two of these IDs, and code compares the pair with (MODEL_CURRENT, MODEL_CHEAPER); any
+# other pair, or none, is BAD_REQUEST before any write (task 2.3).
+MODEL_DISPLAY_NAMES = {
+    MODEL_CURRENT: "Claude Fable 5.1",
+    MODEL_CHEAPER: "Claude Sonnet 5",
+    MODEL_JUDGE: "Claude Haiku 5.5",
+}
 
 ANSWER_MAX_TOKENS = 2000  # caps thinking plus text
 ANSWER_THINKING_EFFORT = "low"
@@ -258,11 +267,40 @@ CW_METRIC_EMITTER = {
     CW_METRIC_ANSWER_HELPFUL: JUDGE_FUNCTION,
 }
 
+# Task 3.3's judge and its prices file (contract change c4, design.md section 5).
+JUDGE_REPLY_FIELD = "helpful"  # the judge model's reply: {"helpful": true} or false
+JUDGE_ERROR_THROTTLED = "JudgeThrottled"  # Bedrock's ThrottlingException, by its error code
+JUDGE_ERROR_FAILED = "JudgeFailed"  # any other failure before the CloudWatch write
+JUDGE_BEDROCK_CONNECT_TIMEOUT_SECONDS = 5
+JUDGE_BEDROCK_READ_TIMEOUT_SECONDS = 10
+JUDGE_FLUSH_RESERVE_SECONDS = 13  # one SDK send and 1 s more, left before the CloudWatch write
+PRICES_FIELDS = ("source_url", "retrieved_on", "currency", "per_million_tokens")
+PRICE_FIELDS = ("input", "output")  # US dollars per million tokens
 PRICES_FILE = "app/prices.json"  # copied from the AWS Bedrock pricing page, with URL and date
 
 # The answer functions' interface (schemas answer_request and answer_response).
 ANSWER_REQUEST_FIELDS = ("question", "identity")
 ANSWER_RESPONSE_FIELDS = ("answer", "input_tokens", "output_tokens", "model_id")
+# One handler, deployed as both answer functions, one Bedrock attempt per answer. Each zip
+# keeps the repo's paths, so a handler is its module's path plus the function.
+ANSWER_HANDLER = "app.answer.handler.handler"
+ANSWER_MODEL_ENV = "MODEL_ID"  # the model each deployment asks
+# The exception classes the answer handler raises. Lambda reports the class name as
+# errorType (the simple-name form is unverified until the first deployed invoke).
+ANSWER_ERROR_THROTTLED = "AnswerThrottled"  # Bedrock's ThrottlingException, by its error code
+ANSWER_ERROR_FAILED = "AnswerFailed"  # any other error, max_tokens, no text, a bad event
+ROUTER_HANDLER = "app.router.handler.handler"
+API_PAYLOAD_FORMAT_VERSION = "2.0"  # the HTTP API's Lambda integration with rm-router
+# rm-router's error bodies are {"error": <string>}: these three, or the answer's errorType
+# (503 for ANSWER_ERROR_THROTTLED, 502 for any other).
+ROUTER_ERROR_BAD_REQUEST = "bad_request"  # 400: bad input, including another run's identity
+ROUTER_ERROR_INVOKE_FAILED = "invoke_failed"  # 502: an invoke exception, with no errorType
+ROUTER_ERROR_UPSTREAM_FAILED = "upstream_failed"  # 502: rm-runs, the key, identity flags, pointer
+# rm-router's Flagsmith client: request_timeout_seconds, and urllib3 Retry(total=<this>,
+# backoff_factor=0). They bound the identity request only; the SDK's events processor
+# ignores both, so the flush runs on a thread beside the answer (design.md section 4).
+FLAGSMITH_SDK_REQUEST_TIMEOUT_SECONDS = 3
+FLAGSMITH_SDK_RETRIES = 1
 
 ALARM_NAME = "rm-cheaper-latency-p95"
 ALARM_METRIC = CW_METRIC_ANSWER_LATENCY_MS
@@ -467,9 +505,18 @@ RECOMMENDATIONS = (RECOMMEND_HOLD_RERUN, RECOMMEND_PROMOTE, RECOMMEND_HOLD)
 # credible interval for the lift on helpful_rate is at or above minus 5 percent, as a
 # fraction of relative lift. Flagsmith has no "not worse" probability (task 1.4).
 PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER = -0.05
+CREDIBLE_INTERVAL_PERCENT = 95  # the interval Flagsmith gives, and the report shows (2.4)
 EXPERIMENT_STATUS_ENDED = "completed"  # "ended in Flagsmith"; paused is not ended
 EXPERIMENT_STATUS_PAUSED = "paused"
-FLAGSMITH_EXPERIMENT_STATUSES = ("created", "running", "paused", "completed")
+# After the create, and after the start (design.md section 7's spellings, task 1.3).
+EXPERIMENT_STATUS_CREATED = "created"
+EXPERIMENT_STATUS_RUNNING = "running"
+FLAGSMITH_EXPERIMENT_STATUSES = (
+    EXPERIMENT_STATUS_CREATED,
+    EXPERIMENT_STATUS_RUNNING,
+    EXPERIMENT_STATUS_PAUSED,
+    EXPERIMENT_STATUS_ENDED,
+)
 # Refused before any call (design.md section 4): no code ends or re-states an experiment.
 MCP_EXPERIMENT_FORBIDDEN_FIELDS = (
     "status",
@@ -578,6 +625,32 @@ ALARM_RULE = "rm-alarm-to-invoker"  # EventBridge rule on the alarm entering ALA
 INVOKER_ROLE = "rm-invoker-role"
 
 FLAGSMITH_ADMIN_FUNCTION = "rm-flagsmith-admin"  # Gateway target
+# Its tools (task 2.2); the Gateway lists them as flagsmith-admin___<tool>. Each takes
+# environment_api_key, and each but ensure_metrics also takes experiment_id.
+FLAGSMITH_ADMIN_TOOLS = (
+    "ensure_metrics",
+    "start_experiment",
+    "refresh_results",
+    "get_results",
+    "get_experiment",
+)
+FLAGSMITH_ADMIN_ROLE = "rm-flagsmith-admin-role"
+FLAGSMITH_ADMIN_POLICY = "rm-flagsmith-admin-policy"  # inline, on FLAGSMITH_ADMIN_ROLE
+FLAGSMITH_ADMIN_LOG_GROUP = "/aws/lambda/rm-flagsmith-admin"
+# Per Admin API request: a tool makes at most 6, 24 s inside FLAGSMITH_ADMIN_TIMEOUT_SECONDS.
+FLAGSMITH_ADMIN_REQUEST_TIMEOUT_SECONDS = 4
+# A results read is current after a refresh asked at refreshed_at only if Flagsmith's
+# refresh_requested_at is at or after refreshed_at minus this (it allows for the two clocks).
+REFRESH_CLOCK_ALLOWANCE_SECONDS = 60
+# The Flagsmith spellings the tools rely on, as task 1.3 sent or read them (design.md
+# section 7 cites the step of evidence/1.3-flagsmith-agent-spike.md for each).
+API_FEATURE_MULTIVARIATE = "MULTIVARIATE"  # a feature's type
+API_FEATURE_STANDARD = "STANDARD"
+API_OPTION_TYPE = "unicode"  # a multivariate option's type
+API_ROLLOUT_VALUE_TYPE = "string"  # the experiment rollout's value: {"type": "string", ...}
+API_VERSION_VALUE_TYPE = "unicode"  # a v2 version state's value: {"type": "unicode", ...}
+API_PATH_ID = "id__path"  # MCP's name for a path ID that clashes with a body field
+API_METRIC_DEFINITION_VERSION = 1  # a metric's definition: {"version": 1, "event": ...}
 INCIDENTS_TOPIC = "rm-incidents"
 REPORTS_BUCKET = "rm-reports-818928662830"
 AGENT_TOOL_FLAGSMITH_ADMIN = "flagsmith_admin"
@@ -636,6 +709,22 @@ FIS_DURATION_MINUTES = 6
 FIS_SLOW_POLL_ENV = "AWS_FIS_SLOW_POLL_INTERVAL_SECONDS"
 FIS_SLOW_POLL_SECONDS = 10
 FIS_TIMEBOX_MINUTES = 120
+# Section 9's names (task 4.3, contract change c4). The configuration sits in the
+# bucket's FIS_CONFIG_PREFIX folder; the read policy goes on the cheaper function's role.
+# The extension layer is pinned (task 4.3's SSM read, PR #23's review); the module warns when
+# SSM's /aws/service/fis/lambda-extension/AWS-FIS-extension-arm64/1.x.x moves on.
+FIS_EXTENSION_LAYER_ARN = "arn:aws:lambda:us-east-1:211125607513:layer:aws-fis-extension-arm64:441"
+FIS_CONFIG_BUCKET = "rm-fis-config-818928662830"
+FIS_CONFIG_PREFIX = "FisConfigs"  # the AWS FIS Lambda actions guide's example folder
+FIS_ROLE = "rm-fis-role"
+FIS_ROLE_POLICY = "rm-fis-actions"
+FIS_CONFIG_READ_POLICY = "rm-fis-config-read"
+# The app module and the FIS module meet through these (tasks 3.5 and 4.3): the FIS module
+# takes the first two of the app module's outputs and gives back the app module's two inputs.
+APP_CHEAPER_FUNCTION_NAME_OUTPUT = "cheaper_function_name"
+APP_CHEAPER_ROLE_NAME_OUTPUT = "cheaper_role_name"
+APP_CHEAPER_EXTRA_LAYERS_INPUT = "cheaper_extra_layers"
+APP_CHEAPER_EXTRA_ENV_INPUT = "cheaper_extra_env"
 
 # ---------------------------------------------------------------------------
 # Section 10. Report
