@@ -279,18 +279,19 @@ Also on the request path:
   or about 9 seconds if a connect error is retried.
 - The SDK's events processor ignores both (it has its own session, a 3
   second timeout and up to 3 attempts), so one send can take about 12
-  seconds. A flush queued behind the SDK's own 10 second timer send waits
+  seconds when each attempt times out once (task 3.2's case), and longer
+  after a slow connect. A flush queued behind the SDK's own 10 second timer send waits
   for that send and then one more: about 24 seconds (task 3.2 measured
   19.88 and 22.67 seconds). So the flush runs beside the answer (section
   4, step 6), and the router bounds its join to Lambda's remaining time
   minus 1 second (`context.get_remaining_time_in_millis()`). If the flush is still
   running then, the router returns anyway and logs one warning that names
   no identity. A late flush loses at most that request's exposure. If no
-  thread can be started, the router logs one warning and returns without
+  thread can be started, the router logs a warning and returns without
   flushing, because the SDK's own flush has no timeout; the SDK's 10 second
   timer or a later flush sends the events.
 - A request takes about the identity request plus the longer of the answer
-  and the flush. With one send, that is about 16 to 22 seconds with the
+  and the flush. With one send, that is about 19 to 22 seconds with the
   cheaper answer under the fault (about 13 seconds), inside the router's
   29 second timeout; for a slower flush, the join's bound stops the wait
   before that timeout. An answer that runs to its own 25 second timeout is
@@ -737,8 +738,9 @@ requires.
   already holds for its MCP calls. The Lambda never logs it or returns it.
 - Names and limits: role `rm-flagsmith-admin-role`, inline policy
   `rm-flagsmith-admin-policy`, log group `/aws/lambda/rm-flagsmith-admin`,
-  128 MB, and a 4 second timeout per request: a tool makes at most 6
-  requests, 24 seconds, inside the 30 second Lambda timeout.
+  128 MB, and a 4 second timeout on each socket operation: a tool makes at
+  most 6 requests, about 24 seconds when each stalls once, inside the 30
+  second Lambda timeout; a slower tool ends in that timeout.
 
 The agent's side: `get_results(id, metric_ids, refreshed_at=None)`, given a
 refresh time, raises `ResultsNotCurrent` until the read is current (without
