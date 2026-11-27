@@ -64,10 +64,11 @@ a small budget returns no text at all:
   fields as the answers).
 - A response with `stopReason` `max_tokens` is an error, never a result.
 
-Task 1.2 proves the exact request fields for effort `low` on both answer
-models, and for disabling thinking on the judge's model (Haiku 5.5) and on
-Sonnet 5, and records them. Fable 5.1 cannot disable thinking; Bedrock
-rejects the request. Lambda timeouts: answer functions 25 seconds, router 29
+Task 1.2 proved the request fields: effort `low` is `output_config.effort`
+on both answer models, and thinking is disabled with `thinking.type`
+`disabled`, on the judge's model (Haiku 5.5) and on Sonnet 5, each inside
+`additionalModelRequestFields`. Fable 5.1 cannot disable thinking; Bedrock
+rejects the request with a 400. Lambda timeouts: answer functions 25 seconds, router 29
 seconds, judge 30 seconds, `rm-invoker` 300 seconds, `rm-flagsmith-admin` 30
 seconds.
 
@@ -77,19 +78,20 @@ seconds.
 | --- | --- |
 | Run ID | `r` + UTC `YYYYMMDDHHMM`, e.g. `r202611271530`. Scratch runs made by spikes and tests use `r` + a word + UTC `HHMM`, e.g. `rsmoke0412`. Pattern for both: `^r[a-z]*[0-9]{4,12}$` |
 | Experiment feature (multivariate) | `assistant_model_<run_id>` |
-| Control | the feature's own value, `current`. Flagsmith reserves the control; it is not a keyed option |
+| Control | the feature's own value, `current`. Flagsmith reserves the control; it is not a keyed option. Remote evaluation, exposures and results label it `control` (task 1.2), so `flag.variant` reads `control` while `flag.value` reads `current` |
 | Treatment | one multivariate option with key `cheaper` and value `cheaper`, at 50 percent. An option without a key records no exposures |
 | Experiment rollout | 100 percent of identities, set when the experiment is created; a wrong one is fixed by hand on the experiment page |
 | Kill-switch feature (boolean) | `assistant_cheaper_enabled`, default enabled |
 | Events, one of each per answer | `answer_helpful` (value 1 or 0, integer), `answer_latency_ms` (value), `answer_cost_micro_usd` (value) |
 | Metrics (environment level, get-or-create) | `helpful_rate` = mean of `answer_helpful` (primary, higher is better); `mean_latency_ms` = mean of `answer_latency_ms` (lower is better); `mean_cost_micro_usd` = mean of `answer_cost_micro_usd` (lower is better) |
 | Expected direction per experiment metric | `helpful_rate`: should not decrease; `mean_latency_ms`: should not increase; `mean_cost_micro_usd`: should not increase |
+| API spellings (task 1.3) | higher is better: `up`; lower is better: `down`; should not decrease: `not_decrease`; should not increase: `not_increase` |
 | Identity format | `user-001` to `user-150` |
 | SDK | `flagsmith` Python package 6.6.0 or later, remote evaluation, `enable_events=True` |
 | Flags call | `get_identity_flags`, once per answer |
-| Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when `flag.experiment.in_experiment` |
-| Outcome call | `track_event`, with the identity and a numeric `value` |
-| Flush | `flush_events()` before every handler returns. Buffer settings alone do not survive a Lambda freeze |
+| Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when `flag.experiment.in_experiment` and `flag.variant` is set |
+| Outcome call | `track_event`, with the identity and a numeric `value`. The SDK sends the value as a string, and Flagsmith aggregates it as a number (task 1.2) |
+| Flush | `flush_events()` before every handler returns. Buffer settings alone do not survive a Lambda freeze, and a buffer of one item drops events tracked in a row (task 1.2) |
 
 Available metric aggregations are occurrence, count, sum and mean. There
 is no "rate"; occurrence counts an identity once, which is useless at 10
@@ -103,14 +105,26 @@ Rules:
 - One experiment per run. Flagsmith allows one active experiment per
   feature and an ended experiment cannot restart, so each run gets a new
   feature key.
-- The agent creates features, multivariate options, metrics and the
-  experiment through the Flagsmith MCP server (`https://mcp.flagsmith.com`,
-  header `Authorization: Api-Key <key>`).
-- The MCP server cannot start an experiment or refresh results. Those go
-  through the Flagsmith Admin API from a small Lambda tool.
+- The agent creates features, multivariate options and the experiment
+  through the Flagsmith MCP server (`https://mcp.flagsmith.com`, header
+  `Authorization: Api-Key <key>`, with exactly one space; `api_key_authorization()`
+  in names.py builds it). The experiment's create carries its whole
+  rollout block (rollout, the control's value, the option's allocation);
+  Flagsmith refuses it without one (task 1.3). Flagsmith has no
+  primary-metric flag, so the agent attaches `helpful_rate` first.
+- The MCP server cannot create a metric (its create_metric tool drops the
+  required definition, task 1.3), start an experiment or refresh results.
+  Those go through the Flagsmith Admin API from a small Lambda tool.
+- Development and Production use v2 feature versioning: a feature's
+  environment state changes through a new version (create it, update its
+  default state, publish it), never in place (task 1.3).
 - Ending an experiment is done by the engineer in the Flagsmith dashboard.
-  The flag stays locked until then. No agent ends an experiment or calls an
-  end-experiment endpoint.
+  The dashboard locks the flag until then, but the API does not: task 1.3
+  changed a running experiment's feature through MCP. So no agent changes
+  an experiment's feature while it runs, and no agent ends an experiment or
+  calls an end-experiment endpoint, or sends an experiment's status or
+  rollout decision through MCP's experiment create or update tools, whose
+  schemas list both (task 1.3).
 - One Flagsmith identity request per answer. Flag, identity, trait and
   environment-document requests count toward the 50,000 cap.
 - Get-or-create checks what it finds. A found metric must match its
@@ -144,8 +158,9 @@ Router evaluation order, per request:
 2. Call `get_identity_flags` once. Both the experiment feature and the
    kill switch are read from that one result. Do not call
    `get_experiment_flag`; it makes its own identity request.
-3. If the experiment feature reports the identity is in the experiment,
-   record the exposure with `track_exposure_event`.
+3. If the experiment feature reports the identity is in the experiment
+   and `flag.variant` is set, record the exposure with
+   `track_exposure_event`.
 4. If `assistant_cheaper_enabled` is disabled, serve `current` whatever the
    variation says, and set `served=current`. `assigned` is always the
    experiment feature's value for the identity (`current` or `cheaper`),
@@ -155,7 +170,11 @@ Router evaluation order, per request:
 
 Results can be refreshed at most once every 5 minutes. The run item keeps
 `last_refresh_at`; a tick inside that window reads the last results
-without refreshing.
+without refreshing. Results lag the events: in task 1.2 all events were in
+by about 2 minutes 15 seconds after the last was sent, the exact lag
+unmeasured, so a refresh right after a load can miss the last events.
+After the engineer ends an experiment, a refresh returns final results,
+as of the end (task 1.4).
 
 ## 5. Request path and metrics
 
@@ -395,8 +414,9 @@ What each transition does (the pointer changes are in the commits above):
   `notified` empty, and the pointer.
 - `PLANNED -> RUNNING` (launch): enable the tick schedule; get-or-create
   the two permanent features; set `assistant_cheaper_enabled` enabled;
-  get-or-create the run's feature, options, metrics and experiment through
-  the MCP server; start the experiment through the Admin API tool.
+  get-or-create the run's feature, options and experiment through the MCP
+  server, and its metrics through the Admin API tool; start the experiment
+  through the Admin API tool.
 - `RUNNING -> ROLLED_BACK` and `RESULTS_READY -> ROLLED_BACK`: disable
   `assistant_cheaper_enabled`; publish the incident note to SNS. The
   commit appends an `incidents` entry with `started_at`.
@@ -455,7 +475,10 @@ results mapping is finished against the response 3.6 records.
 
 ## 7. Invoking the agent
 
-One AgentCore Runtime agent, `rm_agent`. Each invocation is short and
+One AgentCore Runtime agent, `rm_agent`, in the AgentCore CLI project `rm`
+with target `default`. The CLI names the deployed runtime
+`<project>_<target>_<runtime>`, so it is `rm_default_rm_agent`, and
+callers use its ARN (task 1.3). Each invocation is short and
 stateless and uses a new session ID (a UUID4 with the prefix `rm-session-`,
 which is longer than the 33 character minimum). Payload schema
 `contracts/schemas/invoke.json`:
@@ -509,7 +532,18 @@ Flagsmith's 95 percent credible interval for the relative lift
 (cheaper - current) / current on `helpful_rate`, as a fraction (-0.05 is
 minus 5 percent). `prob_cheaper_not_worse` is the probability that this
 lift is at least -0.05, as a fraction; it is null unless Flagsmith returns
-exactly that, and the win probability never goes in it.
+exactly that, and the win probability never goes in it. Flagsmith's
+results give, per metric, each variant's `n`, `sum` and `sum_squares` (the
+mean is sum / n) and, for `cheaper`, its `lift` (relative, a fraction),
+`ci_low`, `ci_high` and `chance_to_win`; the control arm is `control`
+(task 1.4's sample). So `helpful_lift_ci_lower` is the `helpful_rate`
+metric's `ci_low`, and `prob_cheaper_not_worse` stays null: Flagsmith has
+no such field. A variation's `identities` is the sum of its
+`new_identities` in the same response's exposures timeseries, not `n`:
+in the sample each identity sent one event, so whether `n` counts
+identities or events stays open until task 3.6. Results are read through
+the Admin API tool; MCP's results read returned nothing before a refresh
+(task 1.3).
 Task 2.2 maps Flagsmith's result fields onto this shape, starting from the
 sample task 1.4 records and finished against the response recorded in task
 3.6. Schemas in `contracts/schemas/`: `invoke`, `response`, `plan`,
@@ -541,7 +575,7 @@ Agent tools:
 | Tool | Reaches | Through |
 | --- | --- | --- |
 | Flagsmith MCP tools | features, multivariate options, metrics, experiments, results | AgentCore Gateway MCP target, API key from AgentCore Identity |
-| `flagsmith_admin` | start experiment, refresh results, read experiment status | Lambda `rm-flagsmith-admin` as a Gateway target |
+| `flagsmith_admin` | get-or-create metrics, start experiment, refresh and read results, read experiment status | Lambda `rm-flagsmith-admin` as a Gateway target |
 | `state` | `rm-runs` | boto3 in the agent |
 | `signals` | alarm state, CloudWatch metric statistics | boto3 in the agent |
 | `probe` | 5 direct invokes of `rm-answer-cheaper` | boto3 in the agent |
@@ -551,7 +585,11 @@ Agent tools:
 
 AgentCore pieces. `agent/scripts/setup_gateway.py` gets or creates each one
 by name, so it is safe to repeat; the CLI's gateway commands may be used
-instead under the same names:
+instead under the same names, except for two pieces (task 1.3): the
+credential provider, because the CLI either stores the key in its local env
+file or takes it from a JSON-keyed secret, and `rm/flagsmith/api-key` holds
+a bare string; and the `flagsmith` target, which CLI 1.3.0 cannot create
+with API-key auth:
 
 | Piece | Name | Notes |
 | --- | --- | --- |
@@ -559,11 +597,12 @@ instead under the same names:
 | Gateway | `rm-gateway` | Protocol `MCP`, inbound auth `AWS_IAM`, so no Cognito pool. The agent signs with SigV4 through `mcp-proxy-for-aws`, and the runtime's role gets `bedrock-agentcore:InvokeGateway` on the Gateway |
 | Gateway service role | `rm-gateway-role` | Also the outbound auth of the Lambda target, which supports only the service role |
 | Credential provider | `rm-flagsmith-api-key` | Holds the organisation key from `rm/flagsmith/api-key`, passed in the `apiKey` field of `CreateApiKeyCredentialProvider`, never through the CLI's env file |
-| MCP server target | `flagsmith` | `https://mcp.flagsmith.com`, API-key outbound auth, header `Authorization`, prefix `Api-Key ` |
+| MCP server target | `flagsmith` | `https://mcp.flagsmith.com`, API-key outbound auth, header `Authorization`, prefix `Api-Key`; the service stores the prefix trimmed (task 1.3) |
 | Lambda target | `flagsmith-admin` | Lambda `rm-flagsmith-admin`, added once task 2.2 has deployed it; `agent/scripts/setup_gateway.py` is finished in task 2.7 |
 
 A target's name shapes the tool names the Gateway gives its tools, so these
-names never change. Stack and role names that the CLI generates without the
+names never change: the Flagsmith tools appear as `flagsmith___<tool>`, all
+54 listed in task 1.3's evidence. Stack and role names that the CLI generates without the
 `rm-` prefix are accepted, except the Gateway service role: it is always
 `rm-gateway-role`, passed to the CLI when its gateway commands are used.
 
@@ -576,7 +615,7 @@ with the API key header and record the decision in `evidence/`.
 | Name | Holds | Read by |
 | --- | --- | --- |
 | Secrets Manager `rm/flagsmith/api-key` | Flagsmith organisation API key (MCP and Admin API) | Gateway credential provider, `rm-flagsmith-admin`, and every local script or test that calls Flagsmith's MCP server or Admin API directly: task 1.3's probes, `agent/scripts/setup_gateway.py`, live tests, `scripts/bootstrap_flagsmith.py`, `scripts/seed_experiment.py`, `scripts/reset.py`, and `scripts/inject_fault.sh` in its flag fallback |
-| Secrets Manager `rm/flagsmith/server-key` | The SDK key `rm-router` and `rm-judge` initialise with. Remote evaluation normally uses the Development environment's client-side key (on its SDK Keys page; not a secret, already exists, but kept out of this public repo so nobody else spends the request cap). Task 1.2 confirms whether events need a server-side key instead; if so the human creates one under SDK Keys | `rm-router`, `rm-judge`, task 1.2's spike function, and `rm-answer-cheaper` under the section 9 fallback only |
+| Secrets Manager `rm/flagsmith/server-key` | The SDK key `rm-router` and `rm-judge` initialise with. Remote evaluation normally uses the Development environment's client-side key (on its SDK Keys page; not a secret, already exists, but kept out of this public repo so nobody else spends the request cap). Task 1.2 confirmed that events accept this client-side key, so no server-side key is needed | `rm-router`, `rm-judge`, task 1.2's spike function, and `rm-answer-cheaper` under the section 9 fallback only |
 
 Each reader fetches the value at run time: scripts with the human's
 credentials, functions with their own role. It keeps the value in memory and
@@ -659,27 +698,30 @@ path; they ask the lead instead.
 
 ## 13. Verify before relying
 
-These came from documentation read during planning and have not been
-exercised. The task named owns proving or correcting each one, and writes
-the result to `evidence/`.
+These came from documentation read during planning. The task named owns
+proving or correcting each one and writes the result to `evidence/`; the
+Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
+1.4.
 
-| Claim | Task |
-| --- | --- |
-| Exact signatures of `get_identity_flags`, `track_exposure_event`, `track_event` and `flush_events`; that events survive a Lambda freeze; that an outcome event sent from a second invocation, with its own client, joins an exposure sent from the first (as `rm-judge` and `rm-router` will). 1.2 shows the join on a spike experiment the lead creates and starts through the Admin API, with the human's yes (`spike_flag` with one variation keyed `cheaper`, metric `spike_metric` = mean of `spike_event`, 50/50, rollout 100 percent), using all 150 identities. If no results arrive within 1.2's timebox, the join moves to 3.6, but only with the human's written acceptance at Gate 1 | 1.2 |
-| Request fields for thinking effort `low` on both answer models, and for disabling thinking on Haiku 5.5 and Sonnet 5. Fable 5.1 cannot disable thinking (AWS model card) | 1.2 |
-| What remote evaluation reports as `flag.variant` for each arm, the control arm especially (`current`, `control` or nothing); an exposure without a label is not counted | 1.2 |
-| That the MCP server can set a multivariate option's key; if not, the Admin API does it | 1.3 |
-| How `create_experiment` sets the rollout, the control's value and the option's 50 percent allocation, and what an experiment gets when they are left out. If MCP cannot set them, 1.4 adds an Admin API step to `rm-flagsmith-admin` | 1.3 |
-| The API spellings of a metric's direction and of an experiment metric's expected direction | 1.3 |
-| Whether the AgentCore CLI can add an MCP server target with API-key outbound auth | 1.3 |
-| Whether Flagsmith event calls count toward the 50,000 request cap | 3.6 |
-| p95 alarms on embedded-metric custom metrics with a dimension behave as designed | 4.1 |
-| Admin API paths for starting an experiment and refreshing results | 1.3 |
-| Whether an experiment can be ended through any API: documented, not exercised, because no agent ends an experiment | 1.3 |
-| Whether the feature is locked while its experiment runs, and what "locked" blocks | 1.3 |
-| Gateway API-key credential provider sending `Authorization: Api-Key <key>`, and whether the Gateway adds the space after the prefix itself | 1.3 |
-| Metric aggregation types available (occurrence, count, sum, mean) | 1.3 |
-| Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 |
-| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 |
-| FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 |
-| Bedrock prices for the three models | 3.3 |
+| Claim | Task | Result |
+| --- | --- | --- |
+| Exact signatures of `get_identity_flags`, `track_exposure_event`, `track_event` and `flush_events`; that events survive a Lambda freeze; that an outcome event sent from a second invocation, with its own client, joins an exposure sent from the first (as `rm-judge` and `rm-router` will), shown on a spike experiment the lead created with the human's yes (`spike_flag`, `spike_metric` = mean of `spike_event`, 50/50, rollout 100 percent) using all 150 identities | 1.2 | verified: signatures in `evidence/1.2-sdk-spike.md`; every event was delivered before the handler returned; experiment 807 showed means 0.8077 and 0.1944, exactly what the second client sent (`evidence/1.4-spike-experiment.md`) |
+| Request fields for thinking effort `low` on both answer models, and for disabling thinking on Haiku 5.5 and Sonnet 5. Fable 5.1 cannot disable thinking (AWS model card) | 1.2 | verified: `output_config.effort` and `thinking.type` `disabled`, each call `end_turn` with text; Fable 5.1 answered 400 to the disable |
+| What remote evaluation reports as `flag.variant` for each arm, the control arm especially (`current`, `control` or nothing); an exposure without a label is not counted | 1.2 | corrected: `control` for the control arm (value `current`), `cheaper` for the treatment |
+| That the MCP server can set a multivariate option's key; if not, the Admin API does it | 1.3 | verified: yes, through its option create (key read back) |
+| That the MCP server can create a metric (added by 1.4) | 1.3 | corrected: no; its create_metric drops the required definition and Flagsmith answers 400, so metrics go through the Admin API tool |
+| How `create_experiment` sets the rollout, the control's value and the option's 50 percent allocation, and what an experiment gets when they are left out | 1.3 | verified: all inside `experiment_rollout`, which Flagsmith requires (400 without it) |
+| The API spellings of a metric's direction and of an experiment metric's expected direction | 1.3 | verified: `up`, `down`, `informational`; `increase`, `decrease`, `not_increase`, `not_decrease` |
+| Whether the AgentCore CLI can add an MCP server target with API-key outbound auth | 1.3 | verified: no (CLI 1.3.0 refuses it); `agent/scripts/setup_gateway.py` uses the AWS API |
+| How a feature's state changes in an environment with v2 feature versioning (added by 1.4) | 1.3 | verified: create a version, update its default state, publish it (four MCP calls, in `evidence/1.3-flagsmith-agent-spike.md`) |
+| Whether Flagsmith event calls count toward the 50,000 request cap | 3.6 | open |
+| p95 alarms on embedded-metric custom metrics with a dimension behave as designed | 4.1 | open |
+| Admin API paths for starting an experiment and refreshing results | 1.3 | verified: `start/` with name and hypothesis; `results/refresh/` (202, then 429 inside 5 minutes); `results/` |
+| Whether an experiment can be ended through any API | 1.3 | documented, not exercised: Flagsmith's published spec lists `complete/`; no agent calls it |
+| Whether the feature is locked while its experiment runs, and what "locked" blocks | 1.3 | corrected: the API locks nothing; 1.3 changed a running experiment's option, state and description and put them back |
+| Gateway API-key credential provider sending `Authorization: Api-Key <key>`, and whether the Gateway adds the space after the prefix itself | 1.3 | corrected: the service stores the prefix trimmed (`Api-Key`) and calls authenticate with either value; that the Gateway adds the space is inferred, not observed |
+| Metric aggregation types available (occurrence, count, sum, mean) | 1.3 | verified |
+| Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the dashboard shows the level, 95 percent), `chance_to_win`; no "not worse" field |
+| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); corrected for usage: the usage reads returned nothing in task 1.3, so the human reads the Usage page |
+| FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | open |
+| Bedrock prices for the three models | 3.3 | open |

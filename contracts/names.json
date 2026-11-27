@@ -32,10 +32,13 @@
   "AGENTCORE_CLI_COMMAND": "agentcore",
   "AGENTCORE_CLI_MIN_VERSION": "1.3.0",
   "AGENTCORE_CLI_PACKAGE": "@aws/agentcore",
+  "AGENTCORE_PROJECT_NAME": "rm",
+  "AGENTCORE_TARGET_NAME": "default",
   "AGENT_CLIENT_MAX_ATTEMPTS": 1,
   "AGENT_CLIENT_READ_TIMEOUT_SECONDS": 290,
   "AGENT_MAX_TOKENS": 4000,
   "AGENT_RUNTIME_ARN_PARAMETER": "/rm/agent-runtime-arn",
+  "AGENT_RUNTIME_DEPLOYED_NAME": "rm_default_rm_agent",
   "AGENT_RUNTIME_NAME": "rm_agent",
   "AGENT_THINKING_EFFORT": "low",
   "AGENT_TOOLS": [
@@ -129,6 +132,7 @@
   ],
   "CLI_ENTRY_POINT": "cli.marshal:main",
   "CLI_NAME": "marshal",
+  "CONTROL_LABEL": "control",
   "CONTROL_VALUE": "current",
   "CW_DIMENSION_SETS": [
     [
@@ -189,6 +193,10 @@
   "EVENT_COST_MICRO_USD": "answer_cost_micro_usd",
   "EVENT_HELPFUL": "answer_helpful",
   "EVENT_LATENCY_MS": "answer_latency_ms",
+  "EXPECTED_DIRECTION_API": {
+    "should not decrease": "not_decrease",
+    "should not increase": "not_increase"
+  },
   "EXPECTED_DIRECTION_NOT_DECREASE": "should not decrease",
   "EXPECTED_DIRECTION_NOT_INCREASE": "should not increase",
   "EXPERIMENT_EXPECTED_DIRECTIONS": {
@@ -222,12 +230,24 @@
     "enable_events": true
   },
   "FLAGSMITH_ENVIRONMENT_NAME": "Development",
+  "FLAGSMITH_EXPOSURES_FIELD": "new_identities",
   "FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE": "Authorization: Api-Key <key>",
   "FLAGSMITH_MCP_URL": "https://mcp.flagsmith.com",
   "FLAGSMITH_MONTHLY_REQUEST_LIMIT": 50000,
   "FLAGSMITH_ORGANISATION_ID": 41656,
   "FLAGSMITH_PROJECT_ID": 55601,
   "FLAGSMITH_PROJECT_NAME": "Toggle Wars",
+  "FLAGSMITH_RESULT_INFERENCE_FIELDS": [
+    "lift",
+    "ci_low",
+    "ci_high",
+    "chance_to_win"
+  ],
+  "FLAGSMITH_RESULT_VARIANT_FIELDS": [
+    "n",
+    "sum",
+    "sum_squares"
+  ],
   "FLAGSMITH_SDK_MIN_VERSION": "6.6.0",
   "FLAGSMITH_SDK_PACKAGE": "flagsmith",
   "FLAGSMITH_USAGE_STOP": 35000,
@@ -238,7 +258,7 @@
     "top_k"
   ],
   "GATEWAY_API_KEY_HEADER": "Authorization",
-  "GATEWAY_API_KEY_PREFIX": "Api-Key ",
+  "GATEWAY_API_KEY_PREFIX": "Api-Key",
   "GATEWAY_CREDENTIAL_PROVIDER": "rm-flagsmith-api-key",
   "GATEWAY_FALLBACK_AFTER_MINUTES": 90,
   "GATEWAY_INBOUND_AUTH": "AWS_IAM",
@@ -412,6 +432,10 @@
       "direction": "lower is better",
       "event": "answer_latency_ms"
     }
+  },
+  "METRIC_DIRECTION_API": {
+    "higher is better": "up",
+    "lower is better": "down"
   },
   "METRIC_DIRECTION_HIGHER": "higher is better",
   "METRIC_DIRECTION_LOWER": "lower is better",
@@ -626,6 +650,8 @@
   "TFSTATE_BUCKET": "rm-tfstate-818928662830",
   "TFSTATE_KEY": "rollout-marshal/terraform.tfstate",
   "TFVARS_FILE": "infra/terraform.tfvars",
+  "THINKING_DISABLED_FIELD": "thinking.type",
+  "THINKING_DISABLED_VALUE": "disabled",
   "THINKING_EFFORT_FIELD": "output_config.effort",
   "TICK_INTERVAL_MINUTES": 2,
   "TICK_SCHEDULE": "rm-tick",
