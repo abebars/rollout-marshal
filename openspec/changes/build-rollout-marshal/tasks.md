@@ -410,6 +410,10 @@ their tasks name, not against each other.
     validates against its schema.
   - The router's 400 for another run's identity is the router's HTTP answer
     (`bad_request`, design.md section 5), not the agent's `BAD_REQUEST`.
+  - A tick that refreshes results without moving the run records
+    `last_refresh_at` through a conditional update. 2.5 adds that helper
+    to `agent/runtime/rm_agent/state.py`, beside 2.1's writes, since no
+    commit carries it then.
   - Pass: `pytest agent/tests/test_handlers.py` green.
 
 - [ ] 2.6 **CLI**

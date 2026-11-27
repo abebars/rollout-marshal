@@ -34,7 +34,10 @@ The router MUST make exactly one Flagsmith identity request per answer.
 
 ### Requirement: Outcomes off the request path
 Judging and Flagsmith events SHALL happen asynchronously and MUST NOT be
-lost when the function freezes.
+lost when the function freezes. The one exception is the router's exposure
+flush: the router waits for it only while Lambda has time left (design.md
+section 4), and a flush still running then is logged, losing at most that
+request's exposure.
 
 #### Scenario: Events flushed
 - **WHEN** the judge handles one answer
