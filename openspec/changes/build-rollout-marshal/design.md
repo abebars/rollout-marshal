@@ -158,8 +158,9 @@ Router evaluation order, per request:
 2. Call `get_identity_flags` once. Both the experiment feature and the
    kill switch are read from that one result. Do not call
    `get_experiment_flag`; it makes its own identity request.
-3. If the experiment feature reports the identity is in the experiment,
-   record the exposure with `track_exposure_event`.
+3. If the experiment feature reports the identity is in the experiment
+   and `flag.variant` is set, record the exposure with
+   `track_exposure_event`.
 4. If `assistant_cheaper_enabled` is disabled, serve `current` whatever the
    variation says, and set `served=current`. `assigned` is always the
    experiment feature's value for the identity (`current` or `cheaper`),
@@ -413,8 +414,9 @@ What each transition does (the pointer changes are in the commits above):
   `notified` empty, and the pointer.
 - `PLANNED -> RUNNING` (launch): enable the tick schedule; get-or-create
   the two permanent features; set `assistant_cheaper_enabled` enabled;
-  get-or-create the run's feature, options, metrics and experiment through
-  the MCP server; start the experiment through the Admin API tool.
+  get-or-create the run's feature, options and experiment through the MCP
+  server, and its metrics through the Admin API tool; start the experiment
+  through the Admin API tool.
 - `RUNNING -> ROLLED_BACK` and `RESULTS_READY -> ROLLED_BACK`: disable
   `assistant_cheaper_enabled`; publish the incident note to SNS. The
   commit appends an `incidents` entry with `started_at`.
@@ -536,7 +538,12 @@ mean is sum / n) and, for `cheaper`, its `lift` (relative, a fraction),
 `ci_low`, `ci_high` and `chance_to_win`; the control arm is `control`
 (task 1.4's sample). So `helpful_lift_ci_lower` is the `helpful_rate`
 metric's `ci_low`, and `prob_cheaper_not_worse` stays null: Flagsmith has
-no such field.
+no such field. A variation's `identities` is the sum of its
+`new_identities` in the same response's exposures timeseries, not `n`:
+in the sample each identity sent one event, so whether `n` counts
+identities or events stays open until task 3.6. Results are read through
+the Admin API tool; MCP's results read returned nothing before a refresh
+(task 1.3).
 Task 2.2 maps Flagsmith's result fields onto this shape, starting from the
 sample task 1.4 records and finished against the response recorded in task
 3.6. Schemas in `contracts/schemas/`: `invoke`, `response`, `plan`,
@@ -568,7 +575,7 @@ Agent tools:
 | Tool | Reaches | Through |
 | --- | --- | --- |
 | Flagsmith MCP tools | features, multivariate options, metrics, experiments, results | AgentCore Gateway MCP target, API key from AgentCore Identity |
-| `flagsmith_admin` | get-or-create metrics, start experiment, refresh results, read experiment status | Lambda `rm-flagsmith-admin` as a Gateway target |
+| `flagsmith_admin` | get-or-create metrics, start experiment, refresh and read results, read experiment status | Lambda `rm-flagsmith-admin` as a Gateway target |
 | `state` | `rm-runs` | boto3 in the agent |
 | `signals` | alarm state, CloudWatch metric statistics | boto3 in the agent |
 | `probe` | 5 direct invokes of `rm-answer-cheaper` | boto3 in the agent |
@@ -578,7 +585,9 @@ Agent tools:
 
 AgentCore pieces. `agent/scripts/setup_gateway.py` gets or creates each one
 by name, so it is safe to repeat; the CLI's gateway commands may be used
-instead under the same names:
+instead under the same names, except for the credential provider and the
+`flagsmith` target, which CLI 1.3.0 cannot create with API-key auth (task
+1.3):
 
 | Piece | Name | Notes |
 | --- | --- | --- |
@@ -586,7 +595,7 @@ instead under the same names:
 | Gateway | `rm-gateway` | Protocol `MCP`, inbound auth `AWS_IAM`, so no Cognito pool. The agent signs with SigV4 through `mcp-proxy-for-aws`, and the runtime's role gets `bedrock-agentcore:InvokeGateway` on the Gateway |
 | Gateway service role | `rm-gateway-role` | Also the outbound auth of the Lambda target, which supports only the service role |
 | Credential provider | `rm-flagsmith-api-key` | Holds the organisation key from `rm/flagsmith/api-key`, passed in the `apiKey` field of `CreateApiKeyCredentialProvider`, never through the CLI's env file |
-| MCP server target | `flagsmith` | `https://mcp.flagsmith.com`, API-key outbound auth, header `Authorization`, prefix `Api-Key`; the Gateway adds the space (task 1.3) |
+| MCP server target | `flagsmith` | `https://mcp.flagsmith.com`, API-key outbound auth, header `Authorization`, prefix `Api-Key`; the service stores the prefix trimmed (task 1.3) |
 | Lambda target | `flagsmith-admin` | Lambda `rm-flagsmith-admin`, added once task 2.2 has deployed it; `agent/scripts/setup_gateway.py` is finished in task 2.7 |
 
 A target's name shapes the tool names the Gateway gives its tools, so these
@@ -708,9 +717,9 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | Admin API paths for starting an experiment and refreshing results | 1.3 | verified: `start/` with name and hypothesis; `results/refresh/` (202, then 429 inside 5 minutes); `results/` |
 | Whether an experiment can be ended through any API | 1.3 | documented, not exercised: Flagsmith's published spec lists `complete/`; no agent calls it |
 | Whether the feature is locked while its experiment runs, and what "locked" blocks | 1.3 | corrected: the API locks nothing; 1.3 changed a running experiment's option, state and description and put them back |
-| Gateway API-key credential provider sending `Authorization: Api-Key <key>`, and whether the Gateway adds the space after the prefix itself | 1.3 | corrected: the Gateway adds the space, so the prefix is `Api-Key` |
+| Gateway API-key credential provider sending `Authorization: Api-Key <key>`, and whether the Gateway adds the space after the prefix itself | 1.3 | corrected: the service stores the prefix trimmed (`Api-Key`) and calls authenticate with either value; that the Gateway adds the space is inferred, not observed |
 | Metric aggregation types available (occurrence, count, sum, mean) | 1.3 | verified |
-| Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the docs give the level as 95 percent), `chance_to_win`; no "not worse" field |
-| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); corrected for usage: the usage reads return nothing on this plan, so the human reads the Usage page |
+| Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the dashboard shows the level, 95 percent), `chance_to_win`; no "not worse" field |
+| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); corrected for usage: the usage reads returned nothing in task 1.3, so the human reads the Usage page |
 | FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | open |
 | Bedrock prices for the three models | 3.3 | open |

@@ -177,6 +177,8 @@ EXPECTED_DIRECTION_API = {
 # and for cheaper the inference against control.
 FLAGSMITH_RESULT_VARIANT_FIELDS = ("n", "sum", "sum_squares")
 FLAGSMITH_RESULT_INFERENCE_FIELDS = ("lift", "ci_low", "ci_high", "chance_to_win")
+# A variation's identities: the sum of this field over the results' exposures timeseries.
+FLAGSMITH_EXPOSURES_FIELD = "new_identities"
 # Every Flagsmith name a spike creates starts with this, except task 1.3's experiment
 # feature (experiment_feature_key(scratch_run_id("spike", now))).
 SPIKE_NAME_PREFIX = "spike_"
@@ -191,7 +193,7 @@ FLAGSMITH_SDK_MIN_VERSION = "6.6.0"
 FLAGSMITH_CLIENT_OPTIONS = {"enable_events": True}  # remote evaluation
 # SDK calls; the exact signatures are proven by task 1.2.
 SDK_FLAGS_CALL = "get_identity_flags"  # once per answer, the only identity request
-SDK_EXPOSURE_CALL = "track_exposure_event"  # only when flag.experiment.in_experiment
+SDK_EXPOSURE_CALL = "track_exposure_event"  # only when in the experiment with a variant set
 SDK_OUTCOME_CALL = "track_event"  # with the identity and a numeric value
 SDK_FLUSH_CALL = "flush_events"  # before every handler returns
 SDK_FORBIDDEN_CALL = "get_experiment_flag"  # makes its own identity request
@@ -565,7 +567,7 @@ GATEWAY_TARGET_FLAGSMITH_ADMIN = "flagsmith-admin"  # Lambda target, once 2.2 de
 # A target's name shapes the Gateway's tool names, so these never change.
 GATEWAY_TARGETS = (GATEWAY_TARGET_FLAGSMITH, GATEWAY_TARGET_FLAGSMITH_ADMIN)
 GATEWAY_API_KEY_HEADER = "Authorization"
-GATEWAY_API_KEY_PREFIX = "Api-Key"  # the Gateway adds the space before the key (task 1.3)
+GATEWAY_API_KEY_PREFIX = "Api-Key"  # stored trimmed by the Gateway service (task 1.3)
 
 # ---------------------------------------------------------------------------
 # Section 8. Secrets and notifications
@@ -705,8 +707,9 @@ def dedupe_key(history_length: int, to_state: str) -> str:
 def api_key_authorization(key: str) -> str:
     """The Authorization value for Flagsmith's MCP server and Admin API: Api-Key <key>.
 
-    Exactly one space between prefix and key; Flagsmith refuses two (task 1.3). The Gateway
-    adds that space itself when it is given GATEWAY_API_KEY_PREFIX.
+    Exactly one space between prefix and key. That Flagsmith refuses two is read in its
+    open-source key parser, not observed; the Gateway service stores the prefix trimmed and
+    authenticates either way (task 1.3).
     """
     if not key or key != key.strip():
         raise ValueError("the key must be non-empty with no surrounding whitespace")

@@ -17,9 +17,9 @@ NOT change anything in Flagsmith until the engineer approves it.
 - **THEN** the run moves to `ABORTED` and nothing is created in Flagsmith
 
 ### Requirement: Launch through Flagsmith
-On approval the agent SHALL create the feature, multivariate options,
-metrics and experiment through the Flagsmith MCP server and SHALL start the
-experiment through the Flagsmith Admin API.
+On approval the agent SHALL create the feature, multivariate options and
+experiment through the Flagsmith MCP server, and SHALL create the metrics
+and start the experiment through the Flagsmith Admin API.
 
 #### Scenario: Launch
 - **WHEN** the engineer approves a `PLANNED` run

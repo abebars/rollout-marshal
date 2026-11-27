@@ -230,6 +230,7 @@
     "enable_events": true
   },
   "FLAGSMITH_ENVIRONMENT_NAME": "Development",
+  "FLAGSMITH_EXPOSURES_FIELD": "new_identities",
   "FLAGSMITH_MCP_AUTH_HEADER_TEMPLATE": "Authorization: Api-Key <key>",
   "FLAGSMITH_MCP_URL": "https://mcp.flagsmith.com",
   "FLAGSMITH_MONTHLY_REQUEST_LIMIT": 50000,

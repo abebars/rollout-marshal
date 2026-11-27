@@ -228,6 +228,8 @@ their tasks name, not against each other.
     `agent/flagsmith_admin/handler.py`,
     `infra/modules/agent/flagsmith_admin.tf`,
     `agent/tests/test_flagsmith_tools.py`.
+  - `rm-flagsmith-admin` builds the Authorization value with
+    `api_key_authorization()` from names.py.
   - What 1.3 found shapes this task (`evidence/1.3-flagsmith-agent-spike.md`,
     `evidence/1.3-mcp-tools.json`): metrics are get-or-created through
     `rm-flagsmith-admin` (the Admin API), not MCP; the experiment's create
@@ -249,8 +251,8 @@ their tasks name, not against each other.
     definition (design.md section 4) stops with an error; `ensure_experiment`
     sets rollout 100 and the `cheaper` option at 50; `get_results` maps
     `evidence/1.4-results-sample.json` onto `results.json` and computes
-    `ready` (49 and 50 identities, one null mean), builds the
-    Authorization value with `api_key_authorization()`, maps the results'
+    `ready` (49 and 50 identities, one null mean), takes `identities` from
+    the exposures timeseries, maps the results'
     `control` arm to `current`, takes each mean as sum / n and
     `helpful_lift_ci_lower` from `ci_low`, finished against
     `evidence/3.6-results.json` after 3.6 (that one test waits; the rest
@@ -421,10 +423,11 @@ their tasks name, not against each other.
     emits latency; with no active run, `rm-judge` is not invoked; the judge
     payload's `assigned` is the flag's value, while the exposure sends
     `flag.variant` (`control` or `cheaper`), and only when the identity is
-    in the experiment and `flag.variant` is set; a slow events API cannot
-    push the router past its 29 seconds (the SDK retries a flush for about
-    12 seconds or more, per 1.2's evidence); every metric carries exactly the `Variant` dimension
-    set.
+    in the experiment and `flag.variant` is set; every metric carries
+    exactly the `Variant` dimension set. A test with a slow fake events
+    API records how long the router then takes (the SDK retries a flush
+    for about 12 seconds or more, per 1.2's evidence); if it can pass 29
+    seconds, tell the lead, and a contract change sets the rule.
   - Pass: unit tests green.
 
 - [ ] 3.3 **Judge**
@@ -464,6 +467,10 @@ their tasks name, not against each other.
     profiles, their models and the account's default Bedrock project, as
     1.2's spike role did; bundle boto3 where a function needs a newer SDK
     than the runtime's (1.2 read boto3 1.42.97 there).
+  - The scripts follow design.md section 4 as 1.3 found it: state changes
+    through a v2 feature version, the Admin API spellings, the experiment's
+    whole `experiment_rollout` block, and `api_key_authorization()` for the
+    organisation key.
   - Produces: HTTP API, `rm-router`, `rm-answer-current`,
     `rm-answer-cheaper`, `rm-judge`, table `rm-runs`, the reports bucket,
     IAM. The module takes inputs `cheaper_extra_layers` and
@@ -518,9 +525,10 @@ their tasks name, not against each other.
   - The module declares `alarm_threshold_ms` with no default; the lead's
     root fills it from `contracts/names.json`. `STUB` is
     `var.invoker_stub ? "1" : "0"`. The invoker's role allows
-    `bedrock-agentcore:InvokeAgentRuntime` on the `rm_default_rm_agent`
-    runtime, and its zip bundles boto3 (the `bedrock-agentcore` client
-    needs botocore 1.39.7 or later). The tick schedule's input is
+    `bedrock-agentcore:InvokeAgentRuntime` on
+    `arn:aws:bedrock-agentcore:us-east-1:818928662830:runtime/rm_default_rm_agent-*`.
+    1.2 read boto3 1.42.97 in the python3.13 runtime; check that it has the
+    `bedrock-agentcore` client's `invoke_agent_runtime`, or bundle boto3. The tick schedule's input is
     the tick payload, `{"action": "tick"}`.
   - Pass: `terraform validate` clean, and the plan from `infra/` lists
     this task's resources to add and destroys nothing outside them.
