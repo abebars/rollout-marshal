@@ -2907,7 +2907,7 @@ def test_contract_c6_app_names():
             (f'{names.APP_ROLE_SUFFIX}"', "APP_ROLE_SUFFIX"),
             (f'{names.APP_POLICY_SUFFIX}"', "APP_POLICY_SUFFIX"),
             (f'"{names.JUDGE_HANDLER}"', "JUDGE_HANDLER"),
-            (names.APP_BUILD_DIR.rstrip("/"), "APP_BUILD_DIR"),
+            (f'/{names.APP_BUILD_DIR.rstrip("/")}"', "APP_BUILD_DIR"),
             *((zip_name, "APP_ZIPS") for zip_name in names.APP_ZIPS),
         ):
             assert carries(module, literal, const), literal
@@ -2915,12 +2915,19 @@ def test_contract_c6_app_names():
         assert log_group or "names.APP_LOG_GROUP_PREFIX" in module
     build_spec = importlib.util.find_spec("app.build_zips")
     if build_spec is not None:  # task 3.5
-        zips = importlib.import_module("app.build_zips").ZIPS
+        build = importlib.import_module("app.build_zips")
+        assert build.BUILD_DIR == ROOT / names.APP_BUILD_DIR
+        zips = build.ZIPS
         assert tuple(zips) == names.APP_ZIPS
-        assert "app/bedrock_fields.py" in zips[answer_zip]["files"]
-        assert "app/bedrock_fields.py" in zips[judge_zip]["files"]
-        assert names.PRICES_FILE in zips[judge_zip]["files"]
-        assert "app/judge/handler.py" in zips[judge_zip]["files"]
+        both = ("app/__init__.py", "contracts/__init__.py", "contracts/names.py")
+        own = {
+            answer_zip: ("app/answer/handler.py", "app/bedrock_fields.py"),
+            router_zip: ("app/router/handler.py",),
+            judge_zip: ("app/judge/handler.py", "app/bedrock_fields.py", names.PRICES_FILE),
+        }
+        for zip_name, files in own.items():
+            assert {*both, *files} <= set(zips[zip_name]["files"]), zip_name
+        assert [zips[z]["dependencies"] for z in names.APP_ZIPS] == [False, True, True]
     bootstrap = ROOT / names.BOOTSTRAP_FLAGSMITH_SCRIPT
     if bootstrap.is_file():  # task 3.5: the scripts' shared Admin API client
         source = bootstrap.read_text()
