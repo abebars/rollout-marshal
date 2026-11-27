@@ -294,6 +294,9 @@ their tasks name, not against each other.
       `current → cheaper → current` and toggles a scratch kill switch, each
       through a v2 version. It reads each change back through the SDK's
       `get_identity_flags` and records the seconds from publish to visible.
+  - design.md section 7 now holds `rm-flagsmith-admin`'s interface, the
+    freshness rule, the spellings, and the `get_results` and
+    `refresh_results` signatures, which replace the two above.
   - Pass: unit tests green; the plan from `infra/` lists this task's
     resources to add and destroys nothing outside them.
     After `infra/modules/agent` is applied: `pytest -m live` creates and starts an
@@ -319,6 +322,8 @@ their tasks name, not against each other.
     If the report call comes near 4,000 tokens or botocore's 60-second read
     timeout, tell the lead, who adjusts `AGENT_MAX_TOKENS` or the agent's
     Bedrock read timeout through a contract change.
+  - The display names the planner gives its model are in design.md
+    section 3.
   - Pass: `pytest agent/tests/test_planner.py` green.
 
 - [ ] 2.4 **AWS tools: signals, probe, schedule, notify, report**
@@ -403,6 +408,8 @@ their tasks name, not against each other.
     and a later `tick` resumes and completes it; every terminal state clears
     the pointer and disables the tick; every payload and response
     validates against its schema.
+  - The router's 400 for another run's identity is the router's HTTP answer
+    (`bad_request`, design.md section 5), not the agent's `BAD_REQUEST`.
   - Pass: `pytest agent/tests/test_handlers.py` green.
 
 - [ ] 2.6 **CLI**
@@ -474,6 +481,8 @@ their tasks name, not against each other.
     `stopReason` `max_tokens` raises; a Bedrock throttle returns a typed
     error. The `chaos_delay_cheaper` read (design.md section 9) is built
     only if 4.3's FIS timebox runs out.
+  - The typed errors, `AnswerThrottled` and `AnswerFailed`, are in design.md
+    section 5.
   - Pass: unit tests green.
 
 - [ ] 3.2 **Router**
@@ -504,6 +513,8 @@ their tasks name, not against each other.
   - With an active run, an identity that is not that run's gets a 400 and
     no Flagsmith call; tests cover another run's identity, `<run_id>1-user-001`
     and a trailing newline (design.md section 4, step 1).
+  - The response contract, the flag fallbacks, the flush thread and the SDK
+    settings are in design.md sections 4 and 5.
   - Pass: unit tests green.
 
 - [ ] 3.3 **Judge**
@@ -573,6 +584,8 @@ their tasks name, not against each other.
   - **v2 over REST.** v2 versioning was run only through MCP in 1.3. 3.5
     runs its REST path once against a scratch `spike_` feature, records it
     in the evidence, and pins it in a test.
+  - Payload format 2.0, the handler paths and what the answer and router zips
+    hold are in design.md section 5.
   - Pass: `terraform validate` clean, and the plan from `infra/` lists this
     task's resources to add and destroys nothing outside them. After 3.5 is
     merged and applied: the lead attaches the plan and apply output, and a
@@ -588,6 +601,9 @@ their tasks name, not against each other.
     statistics page describes. It records each arm's `n` against its
     identities in `evidence/3.6-app-smoke.md`, settling whether `n` counts
     identities or events (design.md section 7).
+  - `evidence/3.6-results.json` holds the experiment read's
+    `experiment_metrics` list (`metric_name`, `metric`) next to the raw
+    `results`; 2.2's waiting test reads it.
   - Pass, read through the API found in 1.3 (or **Human** on the
     dashboard if none exists): both variations show at least 50
     identities; CloudWatch has `AnswerLatencyMs` datapoints for both
