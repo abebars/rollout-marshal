@@ -149,7 +149,9 @@ flowchart LR
   `rm-invoker` again every 2 minutes on the `rm-tick` schedule, which runs only from the
   launch to the end of the run.
 - The alarm is the p95 of `AnswerLatencyMs` for `Variant=cheaper`, over 60-second periods,
-  2 of 2 above the threshold: [[4.1: alarm threshold, ms]].
+  2 of 2 above a threshold of 10000 ms. Task 4.1 set it from task 3.6's baseline p95 for the
+  cheaper arm, 4772.8 ms, plus half the injected delay, rounded up to the next 1000
+  (design.md section 5).
 - Its model, Claude Sonnet 5, does three things only: it turns the prompt into a plan,
   writes the incident note and writes the report's prose. State changes, stop rules and the
   recommendation are deterministic code.
@@ -234,8 +236,7 @@ The runs recorded for this entry, each with its history in `evidence/5.1-e2e.md`
 | Run | Final state | Recommendation, as its report states it | Report |
 | --- | --- | --- | --- |
 | [[5.1: run ID]] | [[5.1: final state]] | [[5.1: recommendation]] | [[5.1: report S3 key]] |
-| [[5.2: first run ID]] | [[5.2: first run's final state]] | [[5.2: first run's recommendation]] | [[5.2: first run's report S3 key]] |
-| [[5.2: second run ID]] | [[5.2: second run's final state]] | [[5.2: second run's recommendation]] | [[5.2: second run's report S3 key]] |
+| [[5.2: run ID]] | [[5.2: final state]] | [[5.2: recommendation]] | [[5.2: report S3 key]] |
 
 Each report is at `s3://rm-reports-818928662830/runs/<run_id>/report.md`, with nine sections:
 Hypothesis, Setup, Timeline, Results, Guardrails, Incident, Known bias, Recommendation and Time
