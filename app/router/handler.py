@@ -34,7 +34,8 @@ metric are section 5's. Per request:
    - The join waits at most the time Lambda has left, less 1 s. If the flush is still
      running then, the router returns anyway and logs one warning that names no identity.
      The client always gets its answer, and a late flush loses at most that request's
-     exposure.
+     exposure. With no thread to be had, the router returns at once and leaves the
+     events to the SDK's own 10 s timer or the next flush.
    - The SDK client gives up on a request after 3 s and retries it at most once, which
      bounds the identity request. Its events processor ignores both settings: one send
      takes at most about 12 s, and a flush queued behind a send already in flight (the
@@ -465,27 +466,31 @@ class Router:
         thread = threading.Thread(target=self._flush_now, name="flush", daemon=True)
         try:
             thread.start()
-        except RuntimeError as err:  # no thread to be had: flush in-line instead
-            logger.warning("cannot start the flush thread (%s); flushing in-line", err)
+        except RuntimeError as err:  # no thread to be had: leave the events to the SDK's timer
+            logger.warning(
+                "cannot start the flush thread (%s); leaving the events to the SDK's timer", err
+            )
             return None
         return thread
 
     def _finish_flush(self, context: object = None) -> None:
         """Join this request's flush thread, starting one now if none was. The join waits at
-        most the time Lambda has left, less 1 s (contract change c3)."""
+        most the time Lambda has left, less 1 s (contract change c3). With no thread to be
+        had it returns at once: the SDK's flush has no timeout, so an in-line one could
+        outlast Lambda's time."""
         thread, self._flushing = self._flushing, None
         if thread is None:
             thread = self._flush_thread()
         if thread is None:
-            self._flush_now()  # nothing to flush, or no thread: in-line, before the return
-            return
+            return  # nothing to flush, or no thread: the SDK's own timer or the next flush
         limit = None
         if context is not None:
             limit = max(0.0, context.get_remaining_time_in_millis() / 1000 - 1.0)
         thread.join(timeout=limit)
         if thread.is_alive():
             logger.warning(
-                "the flush was still running when Lambda had %.1f s left; returning without it",
+                "the flush was still running after %.1f s, with about 1 s of Lambda's time left;"
+                " returning without it",
                 limit,
             )
 

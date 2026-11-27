@@ -635,23 +635,33 @@ def test_the_flush_join_is_bounded_by_the_time_lambda_has_left(flagsmith_api, ca
 
     assert _reply(response)[0] == 200
     assert 1.5 <= elapsed <= 1.5 + 1.0  # 2.5 s left, less 1 s, then the join gives up
-    assert "the flush was still running" in caplog.text
+    # How long the join waited, and the time that leaves, not the time Lambda had left.
+    assert "the flush was still running after 1.5 s, with about 1 s of Lambda's" in caplog.text
     assert IDENTITY not in caplog.text
 
 
-def test_without_a_thread_the_flush_runs_in_line_and_the_answer_returns(
+def test_without_a_thread_the_answer_returns_at_once_and_nothing_flushes_in_line(
     active, monkeypatch, caplog
 ):
+    """The SDK's flush has no timeout, so an in-line one could outlast Lambda's time. The
+    events wait for the SDK's own timer or the next flush instead."""
+
     def no_thread(self):
         raise RuntimeError("can't start new thread")
 
-    _ask(active)  # the client exists from here on
+    _ask(active)  # the client exists from here on, and its one flush is done
     monkeypatch.setattr(handler.threading.Thread, "start", no_thread)
+    active.flagsmith.flush_seconds = 2.0  # an in-line flush would hold the reply this long
     caplog.set_level(logging.WARNING, logger=ROUTER_LOGGER)
 
-    assert _ask(active)[0] == 200
-    assert active.flagsmith.flushes == 2  # the second one in-line, before the return
-    assert "cannot start the flush thread" in caplog.text
+    started = time.perf_counter()
+    status, _ = _ask(active)
+    elapsed = time.perf_counter() - started
+
+    assert status == 200
+    assert elapsed < 1.0
+    assert active.flagsmith.calls.count("flush") == active.flagsmith.flushes == 1  # the first
+    assert "leaving the events to the SDK's timer" in caplog.text
 
 
 def test_a_failing_flush_is_logged_and_the_answer_still_returned(active, caplog):
