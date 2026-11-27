@@ -168,7 +168,7 @@
           }
         }
       },
-      "notes": "Sonnet 5 with the judge's thinking-disabled request, as a proven fallback",
+      "notes": "Sonnet 5 with the judge's thinking-disabled request: it worked once, on one canned answer (reworded at Gate 1; the run recorded 'as a proven fallback')",
       "wall_ms": 855.2,
       "stop_reason": "end_turn",
       "text": "{\"helpful\": true}",
