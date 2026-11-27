@@ -186,7 +186,10 @@ SPIKE_NAME_PREFIX = "spike_"
 IDENTITY_COUNT = 150
 IDENTITY_FIRST = "user-001"
 IDENTITY_LAST = "user-150"
-IDENTITY_PATTERN = r"^user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$"
+IDENTITY_PATTERN = r"^user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$"  # the user part
+# What Flagsmith sees outside the spikes: <run_id>-user-001 .. <run_id>-user-150, so each
+# run's identities are new to it (Gate 1). run_identity() builds one, is_run_identity() checks.
+RUN_IDENTITY_PATTERN = "^" + RUN_ID_PATTERN[1:-1] + "-" + IDENTITY_PATTERN[1:-1] + "$"
 
 FLAGSMITH_SDK_PACKAGE = "flagsmith"
 FLAGSMITH_SDK_MIN_VERSION = "6.6.0"
@@ -442,7 +445,8 @@ PENDING_STALE_SECONDS = 360  # a pending claim older than this may be taken over
 RESULTS_EMBARGO_SECONDS = 600  # no results read in the first 600 s after first_running_at
 PROBE_INVOKES = 5  # parallel direct invokes of rm-answer-cheaper; slowest < the alarm's threshold
 PROBE_QUESTION = "How do I reset my password?"
-PROBE_IDENTITY = IDENTITY_FIRST  # a valid identity; the answer functions make no Flagsmith call
+PROBE_RUN_ID = "rprobe0000"  # a fixed run ID for the probe's identity; it names no run
+PROBE_IDENTITY = f"{PROBE_RUN_ID}-{IDENTITY_FIRST}"  # valid; the answer functions call no Flagsmith
 MIN_IDENTITIES_PER_VARIATION = 50
 
 # Guardrails: cheaper mean latency at most 110 percent of current's, and
@@ -469,6 +473,11 @@ AGENTCORE_PROJECT_NAME = "rm"
 AGENTCORE_TARGET_NAME = "default"
 # The CLI names a deployed runtime <project>_<target>_<runtime> (task 1.3).
 AGENT_RUNTIME_DEPLOYED_NAME = "rm_default_rm_agent"
+# The CLI packages only its code folder, which becomes the zip root (Gate 1).
+AGENT_CODE_DIR = "agent/runtime/"
+AGENT_CODE_LOCATION = "runtime"  # agentcore.json codeLocation, relative to agent/
+AGENT_ENTRYPOINT = "app.py"
+AGENT_PACKAGE = AGENT_RUNTIME_NAME  # the Python package in the code folder
 SESSION_ID_PREFIX = "rm-session-"  # + UUID4
 SESSION_ID_MIN_LENGTH = 33
 
@@ -537,6 +546,10 @@ AGENT_CLIENT_READ_TIMEOUT_SECONDS = 290
 AGENT_CLIENT_MAX_ATTEMPTS = 1
 TICK_SCHEDULE = "rm-tick"
 TICK_INTERVAL_MINUTES = 2  # EventBridge Scheduler, enabled by launch until a terminal state
+TICK_SCHEDULE_GROUP = "default"
+SCHEDULER_ROLE = "rm-scheduler-role"  # rm-tick's execution role; may invoke only rm-invoker
+ALARM_RULE = "rm-alarm-to-invoker"  # EventBridge rule on the alarm entering ALARM
+INVOKER_ROLE = "rm-invoker-role"
 
 FLAGSMITH_ADMIN_FUNCTION = "rm-flagsmith-admin"  # Gateway target
 INCIDENTS_TOPIC = "rm-incidents"
@@ -647,6 +660,7 @@ ANSWER_COST_STOP_MICRO_USD = 60_000_000
 # ---------------------------------------------------------------------------
 _RUN_ID_RE = re.compile(RUN_ID_PATTERN)
 _IDENTITY_RE = re.compile(IDENTITY_PATTERN)
+_RUN_IDENTITY_RE = re.compile(RUN_IDENTITY_PATTERN)
 
 
 def is_run_id(value: str) -> bool:
@@ -725,6 +739,17 @@ def identity(n: int) -> str:
 
 def is_identity(value: str) -> bool:
     return bool(_IDENTITY_RE.fullmatch(value))
+
+
+def run_identity(run_id: str, n: int) -> str:
+    """<run_id>-user-001 .. <run_id>-user-150: user n of run run_id, as Flagsmith sees it."""
+    if not is_run_id(run_id):
+        raise ValueError(f"not a run ID (expected {RUN_ID_PATTERN}): {run_id!r}")
+    return f"{run_id}-{identity(n)}"
+
+
+def is_run_identity(value: str) -> bool:
+    return bool(_RUN_IDENTITY_RE.fullmatch(value))
 
 
 UTC_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"  # the one stored form of every *_at value
