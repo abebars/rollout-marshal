@@ -27,7 +27,7 @@ changes, and clear output.
 | AgentCore CLI | npm package `@aws/agentcore`, command `agentcore`, version 1.3.0 or later within 1.x. Its project lives under `agent/`; it deploys the runtime through its own CDK stack and bootstraps CDK on the first deploy |
 | Infra as code | Terraform in `infra/` for everything except the agent runtime, which the AgentCore CLI deploys, the Gateway pieces in section 7, which `agent/scripts/setup_gateway.py` creates, and SSM parameter `/rm/agent-runtime-arn`, which task 2.7 writes after each deploy |
 | Terraform state | S3 backend, bucket `rm-tfstate-818928662830`, key `rollout-marshal/terraform.tfstate`, created by task 1.0. Only the integration lead runs `terraform apply`, after each infra merge, and attaches the plan output to the pull request. Workstream agents run `terraform validate` and `terraform plan` only. The one exception is task 1.2, below. For a task whose Pass needs its own Terraform applied (2.7, 4.3), the lead may apply that branch merged locally with `dev` before it merges, attaches the plan, and re-applies `dev` if it does not merge. While a branch is applied unmerged, every later apply includes it; branches are applied together only from one local merge, and only if they touch different modules |
-| Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review` |
+| Review access | Role `rm-review-readonly` (AWS managed ReadOnlyAccess, plus a deny on secret values and on the state bucket's objects), created by the lead and used by goldfish reviewers through the AWS CLI profile `rm-review`, always as `--profile rm-review`: exported environment credentials override `AWS_PROFILE`, but not `--profile` |
 | Timebox | 90 minutes per task unless the task says otherwise. Past it, stop and tell the lead |
 | Flagsmith | SaaS, organisation 41656, project "Toggle Wars" (ID `55601`), environment "Development" |
 | Flagsmith plan limits | Free: 50,000 API requests a month, 1 project, 1 seat |
@@ -86,7 +86,7 @@ seconds.
 | Metrics (environment level, get-or-create) | `helpful_rate` = mean of `answer_helpful` (primary, higher is better); `mean_latency_ms` = mean of `answer_latency_ms` (lower is better); `mean_cost_micro_usd` = mean of `answer_cost_micro_usd` (lower is better) |
 | Expected direction per experiment metric | `helpful_rate`: should not decrease; `mean_latency_ms`: should not increase; `mean_cost_micro_usd`: should not increase |
 | API spellings (task 1.3) | higher is better: `up`; lower is better: `down`; should not decrease: `not_decrease`; should not increase: `not_increase` |
-| Identity format | `user-001` to `user-150` |
+| Identity format | the run ID, a hyphen, then `user-001` to `user-150` (`run_identity()` in names.py), so each run's identities are new to Flagsmith: nothing shows that an experiment's results count only events sent after its own exposures (Gate 1). The probe's identity reaches no Flagsmith call |
 | SDK | `flagsmith` Python package 6.6.0 or later, remote evaluation, `enable_events=True` |
 | Flags call | `get_identity_flags`, once per answer |
 | Exposure call | `track_exposure_event(feature, identifier, value=flag.variant, metadata={"experiment_id": flag.experiment.id})`, only when `flag.experiment.in_experiment` and `flag.variant` is set |
@@ -150,7 +150,11 @@ idempotently, by the agent at launch:
 
 Router evaluation order, per request:
 
-1. Read the active run pointer (section 6). No active run: read
+1. Read the active run pointer (section 6). With an active run, an
+   `identity` that is not one of that run's (`is_run_identity()`, with the
+   pointer's `run_id` before `-user-`) gets a 400 before any Flagsmith
+   call, so a wrong `--run-id` cannot reuse an old run's identities (Gate
+   1). No active run: read
    `assistant_default_model` from the environment flags (cached 30
    seconds), serve that model, record no exposure and no event, and do not
    invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is
@@ -423,7 +427,7 @@ What each transition does (the pointer changes are in the commits above):
 - `ROLLED_BACK -> AWAITING_RESUME` (guard: the alarm is not in ALARM, then
   the health probe passes): publish a resume request to SNS. The probe is 5
   direct invokes of `rm-answer-cheaper`, run in parallel, each asking
-  `How do I reset my password?` as `user-001`. It passes if the slowest is
+  `How do I reset my password?` as `rprobe0000-user-001`. It passes if the slowest is
   under the alarm's threshold, read from the same DescribeAlarms call as
   the alarm's state; a failed read, an invoke error, a timeout or a reply
   that fails `answer_response` fails it.
@@ -554,8 +558,8 @@ Three things invoke it:
 | Caller | Sends | How |
 | --- | --- | --- |
 | `marshal` CLI (`cli/`) | `start`, `approve`, `decline`, `status`, `check` | `InvokeAgentRuntime` with the engineer's AWS credentials, through the console script `cli.marshal:main` |
-| `rm-invoker` Lambda | `alarm` | EventBridge rule on the alarm entering ALARM. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
-| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input |
+| `rm-invoker` Lambda | `alarm` | EventBridge rule `rm-alarm-to-invoker` on the alarm entering ALARM. Role `rm-invoker-role`. Reads the runtime ARN from SSM parameter `/rm/agent-runtime-arn`. Terraform variable `invoker_stub` (root, set by the lead) sets env `STUB`; with `STUB=1` it only logs the payload and never reads the parameter |
+| `rm-tick` schedule | `tick` | EventBridge Scheduler, every 2 minutes, enabled by launch and disabled when the run reaches a terminal state; targets `rm-invoker`, with the tick payload as its input. It sits in the `default` schedule group, with execution role `rm-scheduler-role`, which may invoke only `rm-invoker`. An update replaces every field of a schedule, so the agent's `schedule` tool reads it with GetSchedule and writes back every field it returned that UpdateSchedule takes (all but Arn, CreationDate and LastModificationDate), changing only its state. That passes `rm-scheduler-role` to `scheduler.amazonaws.com`, so the runtime's role needs pass-role on it (task 2.7) |
 
 The CLI and `rm-invoker` share one `InvokeAgentRuntime` client setting: read
 timeout 290 seconds and one attempt (`total_max_attempts` 1). It sits just
@@ -593,7 +597,7 @@ with API-key auth:
 
 | Piece | Name | Notes |
 | --- | --- | --- |
-| Runtime | `rm_agent` | One AgentCore CLI project under `agent/`, deployed from task 1.3 on. Task 2.7 redeploys the same runtime, so its ARN and `/rm/agent-runtime-arn` never change |
+| Runtime | `rm_agent` | One AgentCore CLI project under `agent/`, deployed from task 1.3 on. The CLI packages only its code folder, which becomes the zip root, so the code lives in `agent/runtime/` (the CLI's `codeLocation` `runtime`, entrypoint `main.py`, so no test's `import app` finds B's `app/`) as the package `rm_agent`; tests in `agent/tests/` import it through the root pytest `pythonpath`, and task 2.7 gives the folder its own `pyproject.toml`, `uv.lock` and a `contracts` symlink. Task 2.7 redeploys the same runtime, so its ARN and `/rm/agent-runtime-arn` never change |
 | Gateway | `rm-gateway` | Protocol `MCP`, inbound auth `AWS_IAM`, so no Cognito pool. The agent signs with SigV4 through `mcp-proxy-for-aws`, and the runtime's role gets `bedrock-agentcore:InvokeGateway` on the Gateway |
 | Gateway service role | `rm-gateway-role` | Also the outbound auth of the Lambda target, which supports only the service role |
 | Credential provider | `rm-flagsmith-api-key` | Holds the organisation key from `rm/flagsmith/api-key`, passed in the `apiKey` field of `CreateApiKeyCredentialProvider`, never through the CLI's env file |
@@ -660,8 +664,8 @@ bias, Recommendation, Time taken.
 
 ## 11. Load
 
-`scripts/load.py --users N --questions M --url <api>` runs from the shell
-of whichever agent's task calls for it, not as a Lambda (a full run outlasts Lambda's 15 minutes). At most 10
+`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`
+runs from the shell of whichever agent's task calls for it, not as a Lambda (a full run outlasts Lambda's 15 minutes). At most 10
 concurrent requests, questions from `app/questions.json` (30 support
 questions for a fictional SaaS product). It stops at its count, refuses to
 start while another load holds `rm-load.lock`, an OS file lock in the
@@ -679,6 +683,15 @@ exceeding 7,500. Every answer the load script sends counts toward that,
 and each run's evidence records its sent count. After a failed 5.1 or 5.2
 attempt, the lead rehearses at 150 x 2 until the path runs clean, before
 the next counted 150 x 10 run.
+
+Each request is one JSON `answer_request` (`question`, `identity`) posted
+to `--url`, the full URL of the HTTP API's only route, `POST /ask`, as the
+app module's output `ask_url` gives it. The route uses `AWS_IAM`
+authorization, so `load.py` signs every request with SigV4 (service
+`execute-api`) from the shell's AWS credentials: the repo is public, and an
+unsigned URL that leaked into evidence could spend Bedrock money. A load
+never prints the URL. The shell's credentials need `execute-api:Invoke` on
+the route.
 
 ## 12. Repo layout
 
@@ -722,6 +735,6 @@ Result column records it. Task 1.4 filled in the rows owned by 1.2, 1.3 and
 | Gateway API-key credential provider sending `Authorization: Api-Key <key>`, and whether the Gateway adds the space after the prefix itself | 1.3 | corrected: the service stores the prefix trimmed (`Api-Key`) and calls authenticate with either value; that the Gateway adds the space is inferred, not observed |
 | Metric aggregation types available (occurrence, count, sum, mean) | 1.3 | verified |
 | Result fields returned by Flagsmith: which of lift, credible interval and win probability come back and in what units, and which one gives the probability that `cheaper` is not worse or the credible interval for lift | 1.4, from 1.2's spike experiment before it is ended (`evidence/1.4-results-sample.json`); 3.6 confirms with the real metrics; mapped in 2.2 | verified: `lift` (relative, a fraction), `ci_low` and `ci_high` (the dashboard shows the level, 95 percent), `chance_to_win`; no "not worse" field |
-| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); corrected for usage: the usage reads returned nothing in task 1.3, so the human reads the Usage page |
+| An API read for exposures per variation and for request usage, so an agent can check them without the dashboard | 1.3 | verified for exposures (`exposures/`, per variation); verified for usage, with a lag: `usage-data/total-count/` read 0 eleven to 25 minutes after 1.2's 150 identity requests (task 1.3) and 150 at 01:10Z the next day (`evidence/gate-1-review.md`), so a read lags by more than 25 minutes |
 | FIS action parameter names and the extension layer ARN for arm64 in us-east-1 | 4.3 | open |
 | Bedrock prices for the three models | 3.3 | open |

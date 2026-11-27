@@ -196,7 +196,8 @@ their tasks name, not against each other.
 ## 2. Workstream A: experiment agent
 
 - [ ] 2.1 **State store and state machine**
-  - Needs: 1.1. Files: `agent/state.py`, `agent/tests/test_state.py`.
+  - Needs: 1.1. Files: `agent/runtime/rm_agent/__init__.py`,
+    `agent/runtime/rm_agent/state.py`, `agent/tests/test_state.py`.
   - Produces, with every pointer change inside the run-item write's
     transaction (design.md section 6): `load_run(run_id) -> Run`;
     `create_run(prompt, plan) -> Run`, one transaction with the pointer and
@@ -224,7 +225,7 @@ their tasks name, not against each other.
     DynamoDB Local.
 
 - [ ] 2.2 **Flagsmith tools**
-  - Needs: 1.4. Files: `agent/tools/flagsmith.py`,
+  - Needs: 1.4. Files: `agent/runtime/rm_agent/tools/flagsmith.py`,
     `agent/flagsmith_admin/handler.py`,
     `infra/modules/agent/flagsmith_admin.tf`,
     `agent/tests/test_flagsmith_tools.py`.
@@ -266,7 +267,8 @@ their tasks name, not against each other.
     it; the ID is in the pull request.
 
 - [ ] 2.3 **Planner**
-  - Needs: 1.1. Files: `agent/planner.py`, `agent/tests/test_planner.py`.
+  - Needs: 1.1. Files: `agent/runtime/rm_agent/planner.py`,
+    `agent/tests/test_planner.py`.
   - Produces: `make_plan(prompt) -> Plan`, valid against `plan.json`. The
     model writes the hypothesis and wording. Metric names, split, sample
     floor (50 per variation), alarm name, guardrail limits and the
@@ -285,8 +287,8 @@ their tasks name, not against each other.
   - Pass: `pytest agent/tests/test_planner.py` green.
 
 - [ ] 2.4 **AWS tools: signals, probe, schedule, notify, report**
-  - Needs: 1.1. Files: `agent/tools/{signals,probe,schedule,notify,
-    report}.py`, tests alongside.
+  - Needs: 1.1. Files: `agent/runtime/rm_agent/tools/{signals,probe,
+    schedule,notify,report}.py`, tests in `agent/tests/`.
   - Produces: `alarm_state(name) -> "OK" | "ALARM" | "INSUFFICIENT_DATA"`
     and the alarm's threshold, from one DescribeAlarms call;
     `probe_cheaper(threshold_ms, n=5) -> {passed, max_ms, reason}`, the
@@ -310,8 +312,8 @@ their tasks name, not against each other.
   - Pass: unit tests green with moto.
 
 - [ ] 2.5 **Action handlers**
-  - Needs: 2.1, 2.2, 2.3, 2.4. Files: `agent/handlers.py`,
-    `agent/app.py`, `agent/tests/test_handlers.py`.
+  - Needs: 2.1, 2.2, 2.3, 2.4. Files: `agent/runtime/rm_agent/handlers.py`,
+    `agent/runtime/main.py`, `agent/tests/test_handlers.py`.
   - Produces: `handle(payload) -> dict` for every action in design.md
     section 7, applying each transition by claim, effects, commit.
   - Tests, with fakes for every tool: one per row of the transition table,
@@ -382,6 +384,14 @@ their tasks name, not against each other.
     (started in 1.3, finished here), `evidence/2.7-agent-deploy.md`.
   - The deployed runtime is `rm_default_rm_agent` (CLI project `rm`, target
     `default`, runtime `rm_agent`; design.md section 7), deployed by 1.3.
+    2.7 points the CLI at the code folder (`codeLocation` `runtime`,
+    entrypoint `main.py`) and adds `agent/runtime/pyproject.toml`, its
+    `uv.lock` and the `contracts` symlink, then checks that the zip holds
+    `main.py`, `rm_agent/` and `contracts/`. It adds `runtime/contracts` to
+    `agent/conftest.py`'s `collect_ignore`, or pytest collects the contracts
+    suite twice through the symlink. The runtime's role gets `iam:PassRole`
+    on `rm-scheduler-role`, with `iam:PassedToService`
+    `scheduler.amazonaws.com`, for the schedule tool's UpdateSchedule.
   - After each `agentcore deploy`, A writes the runtime ARN to
     `/rm/agent-runtime-arn` (for example `put-parameter --overwrite` in a
     small deploy script). A pre-merge apply of `runtime_role.tf` is allowed
@@ -431,6 +441,9 @@ their tasks name, not against each other.
     more, per 1.2's evidence). If that flush plus the cheaper answer under
     the 10-second fault can pass 29 seconds, tell the lead, and a contract
     change sets the rule.
+  - With an active run, an identity that is not that run's gets a 400 and
+    no Flagsmith call; tests cover another run's identity, `<run_id>1-user-001`
+    and a trailing newline (design.md section 4, step 1).
   - Pass: unit tests green.
 
 - [ ] 3.3 **Judge**
@@ -449,7 +462,10 @@ their tasks name, not against each other.
 
 - [ ] 3.4 **Load script**
   - Needs: 1.1. Files: `scripts/load.py`, `app/questions.json`, tests.
-  - Produces: `scripts/load.py --users N --questions M --url <api>`; at
+  - Produces: `scripts/load.py --run-id <run_id> --users N --questions M
+    --url <api>`, sending identity `run_identity(run_id, n)` for user n, each
+    request a SigV4-signed (`execute-api`) POST of an `answer_request` to
+    `--url` (the app module's `ask_url`); at
     most 10 concurrent; prints sent, ok, failed; lock file refuses a
     second start.
   - Tests: sends exactly N x M; never exceeds the concurrency; refuses
@@ -497,7 +513,7 @@ their tasks name, not against each other.
 - [ ] 3.6 **Deployed smoke**
   - Needs: 3.5 applied, 3.4. Files: `evidence/3.6-app-smoke.md`.
   - Do: `bootstrap_flagsmith.py`, `seed_experiment.py rsmoke<HHMM>`,
-    `load.py --users 150 --questions 2`; after the human ends the
+    `load.py --run-id <run_id> --users 150 --questions 2`; after the human ends the
     experiment, `reset.py`.
   - Pass, read through the API found in 1.3 (or **Human** on the
     dashboard if none exists): both variations show at least 50
@@ -523,15 +539,21 @@ their tasks name, not against each other.
   - Needs: 4.2 merged (for the invoker's code). Files:
     `infra/modules/signals/*.tf`.
   - Produces: `rm-invoker` (env `STUB=1`), alarm `rm-cheaper-latency-p95`,
-    the EventBridge rule on ALARM, schedule `rm-tick` (disabled), SNS
+    the EventBridge rule on ALARM, schedule `rm-tick` (created disabled, with
+    `lifecycle { ignore_changes = [state] }`, because the agent owns its
+    state), SNS
     topic `rm-incidents` with the email subscription.
   - The module declares `alarm_threshold_ms` with no default; the lead's
     root fills it from `contracts/names.json`. `STUB` is
     `var.invoker_stub ? "1" : "0"`. The invoker's role allows
     `bedrock-agentcore:InvokeAgentRuntime` on
     `arn:aws:bedrock-agentcore:us-east-1:818928662830:runtime/rm_default_rm_agent-*`.
-    1.2 read boto3 1.42.97 in the python3.13 runtime; check that it has the
-    `bedrock-agentcore` client's `invoke_agent_runtime`, or bundle boto3. The tick schedule's input is
+    1.2 read botocore 1.42.97 in the python3.13 runtime, and its service
+    model has `bedrock-agentcore`'s `InvokeAgentRuntime` (`evidence/gate-1-review.md`
+    records the wheel read), so no bundling is needed while the runtime ships it; the STUB log
+    line records botocore's version. The rule is `rm-alarm-to-invoker`, the
+    function's role `rm-invoker-role`, and `rm-tick` sits in the `default`
+    group with execution role `rm-scheduler-role` (design.md section 7). The tick schedule's input is
     the tick payload, `{"action": "tick"}`.
   - Pass: `terraform validate` clean, and the plan from `infra/` lists
     this task's resources to add and destroys nothing outside them.
@@ -566,7 +588,7 @@ their tasks name, not against each other.
   - Needs: 3.6; 4.1 applied with the recalibrated threshold. Timebox: 2 hours. Files: `infra/modules/fis/*.tf`,
     `scripts/inject_fault.sh`, `evidence/4.3-fis.md`.
   - Do: seed a run (`seed_experiment.py rfault<HHMM>`), start
-    `load.py --users 150 --questions 2`, then start the fault. The lead
+    `load.py --run-id <run_id> --users 150 --questions 2`, then start the fault. The lead
     applies `infra/modules/fis` first.
   - Pass: the alarm reaches ALARM within 5 minutes of the fault starting
     and leaves ALARM after it ends; times recorded. **Human** ends the
@@ -590,7 +612,7 @@ their tasks name, not against each other.
     approves anything itself; its wait for `AWAITING_RESUME` allows for the
     alarm's return to OK that 4.1 records. It runs `marshal start`, then
     pauses for the **Human** to run `marshal approve`; starts
-    `load.py --users 150 --questions 10` and injects the fault straight
+    `load.py --run-id <run_id> --users 150 --questions 10` and injects the fault straight
     away; waits for `ROLLED_BACK`, then `AWAITING_RESUME`; pauses for the
     **Human** to approve the resume; waits for `RESULTS_READY`; pauses for
     the **Human** to decline, or to end the experiment in Flagsmith and
