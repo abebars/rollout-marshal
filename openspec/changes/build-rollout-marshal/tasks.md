@@ -443,7 +443,7 @@ their tasks name, not against each other.
     The contracts test fails on 2.6's branch until then.
   - Pass: unit tests with a fake runtime client green.
 
-- [ ] 2.7 **Deploy the agent**
+- [x] 2.7 **Deploy the agent** (PR #30 merged: build and live halves; runtime role applied before merge)
   - Needs: 2.5, 2.6; 3.5 applied (for `rm-runs`).
   - Files: what the AgentCore CLI generates under `agent/`,
     `infra/modules/agent/runtime_role.tf`, `agent/scripts/setup_gateway.py`
