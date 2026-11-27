@@ -2,7 +2,8 @@
 
 The stub is first on PATH. It logs each call's arguments and answers from environment
 variables: the account, the template IDs, and the experiment states that get-experiment
-returns in turn.
+returns in turn. Like the real CLI, it prints times in its own local time zone, and every
+run sets TZ=America/New_York, so only the script's own TZ=UTC and `date -u` give UTC.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ import os
 import re
 import subprocess
 import sys
+from datetime import UTC as _UTC
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -24,6 +27,12 @@ UTC = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
 
 STUB = r"""#!PYTHON
 import json, os, sys
+from datetime import datetime, timezone
+START = datetime(2026, 11, 27, 4, 0, 20, tzinfo=timezone.utc).timestamp()
+END = datetime(2026, 11, 27, 4, 6, 30, tzinfo=timezone.utc).timestamp()
+def cli_time(epoch):
+    # The CLI prints timestamps in the process's local time zone.
+    return datetime.fromtimestamp(epoch).astimezone().isoformat()
 args = sys.argv[1:]
 with open(os.environ["STUB_LOG"], "a") as log:
     log.write(json.dumps(args) + "\n")
@@ -48,8 +57,8 @@ elif command == "fis get-experiment":
     states = os.environ.get("STUB_STATES", "running,completed").split(",")
     state = states[min(n, len(states) - 1)]
     ended = state in ("completed", "stopped", "failed", "cancelled")
-    end = "2026-11-27T04:06:30+00:00" if ended else "None"
-    print("\t".join([state, "2026-11-27T04:00:20+00:00", end, f"Experiment {state}."]))
+    end = cli_time(END) if ended else "None"
+    print("\t".join([state, cli_time(START), end, f"Experiment {state}."]))
 else:
     sys.exit(99)
 """
@@ -64,16 +73,21 @@ def run(tmp_path):
     aws.chmod(0o755)
     log = tmp_path / "aws.log"
 
-    def go(**env):
+    def go(*args, **env):
         environment = {
             **os.environ,
             "PATH": f"{stub_dir}{os.pathsep}{os.environ['PATH']}",
             "STUB_LOG": str(log),
             "RM_FIS_POLL_SECONDS": "0",
+            "TZ": "America/New_York",
             **env,
         }
         done = subprocess.run(
-            ["bash", str(SCRIPT)], env=environment, capture_output=True, text=True, timeout=60
+            ["bash", str(SCRIPT), *args],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
         return done, calls
@@ -97,9 +111,22 @@ def test_starts_the_template_and_waits_for_it_to_complete(run):
     start = next(c for c in calls if c[:2] == ["fis", "start-experiment"])
     assert start[start.index("--experiment-template-id") + 1] == "EXT1aaaaaaaaaaaaa"
     assert all(c[-2:] == ["--region", names.REGION] for c in calls)
-    assert re.search(rf"experiment EXP1bbbbbbbbbbbbb started at {UTC}", done.stdout)
+    started = re.search(rf"experiment EXP1bbbbbbbbbbbbb started at ({UTC})", done.stdout)
+    assert started, done.stdout
+    # The script's own clock is UTC (`date -u`), not the TZ=America/New_York the run sets.
+    printed = datetime.strptime(started.group(1), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=_UTC)
+    assert abs(datetime.now(_UTC) - printed) < timedelta(minutes=2)
     assert re.search(rf"experiment EXP1bbbbbbbbbbbbb ended at {UTC}: completed", done.stdout)
-    assert "2026-11-27T04:06:30+00:00" in done.stdout  # FIS's own end time, in UTC
+    # FIS's own start and end, in UTC because the script runs the CLI with TZ=UTC.
+    assert "FIS start 2026-11-27T04:00:20+00:00, end 2026-11-27T04:06:30+00:00" in done.stdout
+
+
+def test_refuses_any_argument(run):
+    """There is no --fallback (design.md section 9 builds it only if the timebox runs out)."""
+    done, calls = run("--fallback")
+    assert done.returncode == 2
+    assert calls == []
+    assert "takes no arguments" in done.stderr
 
 
 def test_finds_the_template_by_its_name_tag(run):
@@ -114,6 +141,14 @@ def test_any_other_end_state_exits_non_zero(run, final):
     done, _ = run(STUB_STATES=f"running,{final}")
     assert done.returncode == 1
     assert re.search(rf"ended at {UTC}: {final}", done.stdout)
+
+
+def test_stopping_is_not_an_end_state(run):
+    done, calls = run(STUB_STATES="running,stopping,stopped")
+    assert done.returncode == 1
+    assert commands(calls).count("fis get-experiment") == 3
+    assert re.search(rf"{UTC} state stopping", done.stdout)
+    assert re.search(rf"ended at {UTC}: stopped", done.stdout)
 
 
 def test_refuses_any_other_account_before_touching_fis(run):

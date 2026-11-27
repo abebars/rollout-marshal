@@ -5,11 +5,11 @@
 # The script never stops the experiment: the fault ends by its own duration, and no agent ends
 # an experiment. If it is interrupted, the experiment keeps running to its end.
 #
-# Usage:   scripts/inject_fault.sh
+# Usage:   scripts/inject_fault.sh        (no arguments; section 9's --fallback is not built)
 # Needs:   AWS credentials for account 818928662830. Use the SSO profile, not rm-review: the
 #          organisation's SCP denies FIS to the review role.
 # Exits:   0 when the experiment completes; 1 when it ends in any other state; 2 before anything
-#          starts (wrong account, or not exactly one template); 3 if it is still running after
+#          starts (an argument, the wrong account, or not exactly one template); 3 if it is still running after
 #          RM_FIS_MAX_WAIT_SECONDS (default 1200), with the experiment left to finish.
 # Tuning:  RM_FIS_POLL_SECONDS (default 15).
 #
@@ -26,6 +26,8 @@ MAX_WAIT_SECONDS="${RM_FIS_MAX_WAIT_SECONDS:-1200}"
 utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 say() { echo "inject_fault: $*"; }
 fail() { echo "inject_fault: $*" >&2; exit 2; }
+
+[ "$#" -eq 0 ] || fail "takes no arguments (there is no --fallback); nothing started"
 
 # TZ=UTC makes the CLI print FIS's own timestamps in UTC.
 aws_() { TZ=UTC aws "$@" --region "$REGION"; }

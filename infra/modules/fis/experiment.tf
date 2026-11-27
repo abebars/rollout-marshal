@@ -58,7 +58,7 @@ resource "aws_iam_role_policy" "experiment" {
 # have no name field, so the Name tag carries rm-delay-cheaper and scripts/inject_fault.sh finds
 # the template by it.
 resource "aws_fis_experiment_template" "delay_cheaper" {
-  description = "Adds ${local.names.FIS_DELAY_MS} ms to ${local.names.FIS_INVOCATION_PERCENTAGE} percent of rm-answer-cheaper's invocations for ${local.names.FIS_DURATION_MINUTES} minutes."
+  description = "Adds ${local.names.FIS_DELAY_MS} ms to ${local.names.FIS_INVOCATION_PERCENTAGE} percent of ${var.cheaper_function_name}'s invocations for ${local.names.FIS_DURATION_MINUTES} minutes."
   role_arn    = aws_iam_role.experiment.arn
 
   action {

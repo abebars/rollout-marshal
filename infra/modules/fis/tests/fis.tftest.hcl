@@ -62,6 +62,11 @@ run "the_template" {
   }
 
   assert {
+    condition     = aws_fis_experiment_template.delay_cheaper.description == "Adds 10000 ms to 100 percent of rm-answer-cheaper's invocations for 6 minutes."
+    error_message = "The description names the targeted function, from cheaper_function_name."
+  }
+
+  assert {
     condition = {
       for p in one(aws_fis_experiment_template.delay_cheaper.action).parameter : p.key => p.value
       } == {
