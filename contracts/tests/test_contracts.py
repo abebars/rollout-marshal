@@ -227,6 +227,8 @@ NOT_A_NAME = {
     "pyproject.toml": "a file name",
     "pythonpath": "the pytest setting in the root pyproject.toml",
     "uv.lock": "a file name",
+    "--url": "load.py's option, in section 11's request contract",
+    "load.py": "the load script, named in section 11's request contract",
     "<project>_<target>_<runtime>": (
         "the AgentCore CLI's naming pattern; see AGENT_RUNTIME_DEPLOYED_NAME"
     ),
@@ -245,7 +247,7 @@ NOT_A_NAME = {
     "s3://rm-reports-818928662830/runs/<run_id>/report.md": (
         "REPORTS_BUCKET + REPORT_KEY_TEMPLATE; test_report_location checks it"
     ),
-    "scripts/load.py --users N --questions M --url <api>": (
+    "scripts/load.py --run-id <run_id> --users N --questions M --url <api>": (
         "command line of LOAD_SCRIPT, owned by task 3.4"
     ),
 }
@@ -335,6 +337,21 @@ def test_run_identities():
     assert "`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`" in tasks
     assert tasks.count("`load.py --run-id <run_id> --users 150") == 3
     assert "load.py --users" not in tasks
+    load = re.sub(r"\s+", " ", section(11))
+    assert "`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`" in load
+    assert (
+        f"the HTTP API's only route, `{names.API_ROUTE_KEY}`, as the app module's output "
+        f"`{names.APP_ASK_URL_OUTPUT}` gives it. The route uses `{names.API_AUTHORIZATION_TYPE}` "
+        f"authorization, so `load.py` signs every request with SigV4 (service "
+        f"`{names.API_SIGV4_SERVICE}`)" in load
+    )
+    spec = (ROOT / "openspec/changes/build-rollout-marshal/specs/assistant-api/spec.md").read_text()
+    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10`" in spec
+    assert "load.py --users" not in spec
+    assert (
+        "load.py --users"
+        not in (ROOT / "openspec/changes/build-rollout-marshal/design.md").read_text()
+    )
 
 
 def test_not_a_name_entries_still_exist_in_design():

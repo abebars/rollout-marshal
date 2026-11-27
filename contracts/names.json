@@ -103,7 +103,11 @@
   ],
   "ANSWER_THINKING_EFFORT": "low",
   "ANSWER_TIMEOUT_SECONDS": 25,
+  "API_AUTHORIZATION_TYPE": "AWS_IAM",
   "API_GATEWAY_TIMEOUT_SECONDS": 30,
+  "API_ROUTE_KEY": "POST /ask",
+  "API_SIGV4_SERVICE": "execute-api",
+  "APP_ASK_URL_OUTPUT": "ask_url",
   "AWAITING_BY_STATE": {
     "AWAITING_RESUME": "resume",
     "PLANNED": "launch",

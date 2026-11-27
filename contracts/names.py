@@ -221,6 +221,10 @@ ANSWER_FUNCTION_BY_VARIANT = {
     VARIANT_CHEAPER: ANSWER_CHEAPER_FUNCTION,
 }
 API_GATEWAY_TIMEOUT_SECONDS = 30  # applies to the request path only
+API_ROUTE_KEY = "POST /ask"  # the HTTP API's only route (design.md section 11)
+API_AUTHORIZATION_TYPE = "AWS_IAM"  # load.py signs with SigV4
+API_SIGV4_SERVICE = "execute-api"
+APP_ASK_URL_OUTPUT = "ask_url"  # the app module's output: the route's full URL
 
 # What rm-router hands rm-judge (contracts/schemas/judge_payload.json).
 JUDGE_PAYLOAD_FIELDS = (

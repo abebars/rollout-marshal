@@ -660,8 +660,8 @@ bias, Recommendation, Time taken.
 
 ## 11. Load
 
-`scripts/load.py --users N --questions M --url <api>` runs from the shell
-of whichever agent's task calls for it, not as a Lambda (a full run outlasts Lambda's 15 minutes). At most 10
+`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`
+runs from the shell of whichever agent's task calls for it, not as a Lambda (a full run outlasts Lambda's 15 minutes). At most 10
 concurrent requests, questions from `app/questions.json` (30 support
 questions for a fictional SaaS product). It stops at its count, refuses to
 start while another load holds `rm-load.lock`, an OS file lock in the
@@ -679,6 +679,14 @@ exceeding 7,500. Every answer the load script sends counts toward that,
 and each run's evidence records its sent count. After a failed 5.1 or 5.2
 attempt, the lead rehearses at 150 x 2 until the path runs clean, before
 the next counted 150 x 10 run.
+
+Each request is one JSON `answer_request` (`question`, `identity`) posted
+to `--url`, the full URL of the HTTP API's only route, `POST /ask`, as the
+app module's output `ask_url` gives it. The route uses `AWS_IAM`
+authorization, so `load.py` signs every request with SigV4 (service
+`execute-api`) from the shell's AWS credentials: the repo is public, and an
+unsigned URL that leaked into evidence could spend Bedrock money. A load
+never prints the URL.
 
 ## 12. Repo layout
 
