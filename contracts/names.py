@@ -333,7 +333,10 @@ ALARM_PERIOD_SECONDS = 60
 ALARM_EVALUATION_PERIODS = 2
 ALARM_DATAPOINTS_TO_ALARM = 2
 ALARM_TREAT_MISSING_DATA = "notBreaching"
-ALARM_THRESHOLD_MS = 10_000  # default; task 4.1 recalibrates it and records it in design.md
+# Task 4.1's recalibration (contract change c7): 3.6's baseline p95 for Variant=cheaper,
+# 4772.8 ms, plus ALARM_THRESHOLD_FAULT_MARGIN_MS, rounded up to the next 1000: unchanged.
+ALARM_THRESHOLD_MS = 10_000
+ALARM_BASELINE_P95_MS = 4772.8  # task 3.6, 170 samples, 08:11 to 08:15Z on 2026-11-27
 # Recalibration: baseline p95 (3.6, Variant=cheaper) + half the injected delay, rounded up
 # to the next 1000; stop and ask if the baseline is above ALARM_BASELINE_STOP_MS.
 ALARM_THRESHOLD_FAULT_MARGIN_MS = 5_000

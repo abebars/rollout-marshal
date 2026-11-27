@@ -379,6 +379,14 @@ signals module's variable `alarm_threshold_ms`, which the root fills from
 `contracts/names.json`, so a recalibration is a contract change plus the
 lead's re-apply.
 
+Recalibrated by task 4.1 on 2026-11-27 (contract change c7): 3.6's
+baseline p95 for exactly `Variant=cheaper` is B = 4772.8 ms (170 samples,
+08:11 to 08:15Z, with the FIS extension on and no fault), so T =
+10000 ms, the default, and no re-apply was needed. Under the 10000 ms
+fault the p95 lands about B + 10000 − T = 4772.8 ms above the threshold
+(the alarm margin); without it, it sits T − B = 5227.2 ms below (the
+headroom).
+
 ## 6. State
 
 DynamoDB table `rm-runs`, partition key `pk` (string).

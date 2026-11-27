@@ -58,6 +58,7 @@
     "report"
   ],
   "AGENT_TOOL_FLAGSMITH_ADMIN": "flagsmith_admin",
+  "ALARM_BASELINE_P95_MS": 4772.8,
   "ALARM_BASELINE_STOP_MS": 8000,
   "ALARM_DATAPOINTS_TO_ALARM": 2,
   "ALARM_DIMENSION": "Variant=cheaper",
