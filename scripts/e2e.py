@@ -4,6 +4,10 @@
     export AWS_PROFILE=<the engineer's SSO profile in 818928662830>
     uv run python scripts/e2e.py [--users 150] [--questions 10] [--prompt "<text>"]
                                  [--url <the route's URL>] [--record <new file>.json]
+                                 [--pause-minutes N]
+
+--pause-minutes sets how long each of the human's three pauses waits (launch, resume and the
+decision), for a human who will not be at the terminal within the defaults.
 
 Before anything starts, it checks that the credentials are for account 818928662830, finds
 the route's URL (--url, or rm-api's endpoint from apigatewayv2 GetApis plus /ask, read
@@ -71,7 +75,7 @@ import time
 import traceback
 import urllib.parse
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -112,6 +116,7 @@ CHILD_KILL_WAIT_SECONDS = 10  # after a SIGKILL, real seconds
 FAULT_SCRIPT_MAX_SECONDS = 1200 + 120
 # The alarm's ALARM-to-OK lag after the last datapoint (evidence/4.1-alarm.md).
 ALARM_OK_LAG = "6 min 36 s"
+PAUSE_MINUTES_MAX = 24 * 60  # --pause-minutes: the longest a human pause may be told to wait
 
 ROUTE_METHOD, ROUTE_PATH = names.API_ROUTE_KEY.split(" ", 1)  # POST, /ask
 # An HTTP API's endpoint is https://{api-id}.execute-api.{region}.amazonaws.com, and its
@@ -456,8 +461,8 @@ def stop_line_lines(record: dict) -> list[str]:
         f" --answers-sent <all answers since the cutoff; {this_run}>"
         " --remaining-planned <answers still planned>",
         "  usage: uv run python evidence/3.6-scripts/smoke_reads.py usage",
-        "         The total lags by about a day: also read usage-data/'s daily rows,"
-        " or the Usage page in the dashboard.",
+        "         The total lags (more than 25 minutes at Gate 1, and it may wait for the day"
+        " to close): also read usage-data/'s daily rows, or the Usage page in the dashboard.",
     ]
 
 
@@ -468,6 +473,11 @@ class E2E:
     def __init__(self, args: argparse.Namespace, deps: Deps) -> None:
         self.args, self.deps, self.clock = args, deps, deps.clock
         self.timeouts = deps.timeouts
+        if args.pause_minutes is not None:  # the human's three pauses wait this long instead
+            wait = args.pause_minutes * 60
+            self.timeouts = replace(
+                deps.timeouts, launch_approval=wait, resume_approval=wait, decision=wait
+            )
         self.url: str | None = None  # never printed
         self.run_id: str | None = None
         self.stamps: dict[str, str | None] = dict.fromkeys(
@@ -1186,6 +1196,14 @@ def build_parser() -> argparse.ArgumentParser:
         f" gives it; by default {names.API_NAME}'s endpoint plus {ROUTE_PATH}. Never printed",
     )
     parser.add_argument("--record", type=Path, help="a new JSON file for the summary")
+    parser.add_argument(
+        "--pause-minutes",
+        type=_count(1, PAUSE_MINUTES_MAX),
+        default=None,
+        help="how long each of the human's three pauses waits, in minutes (default: the launch"
+        f" {Timeouts.launch_approval / 60:g}, the resume {Timeouts.resume_approval / 60:g},"
+        f" the decision {Timeouts.decision / 60:g})",
+    )
     return parser
 
 

@@ -839,6 +839,38 @@ def test_each_wait_times_out_with_a_clear_message(
         assert process.signals == [signal.SIGTERM]  # every child still running is stopped
 
 
+def test_pause_minutes_sets_only_the_three_human_waits(harness, tmp_path):
+    default = e2e.Timeouts()
+    args = e2e.parse_args(["--pause-minutes", "720"])
+    timeouts = e2e.E2E(args, harness.deps()).timeouts
+    assert timeouts.launch_approval == timeouts.resume_approval == timeouts.decision == 720 * 60
+    assert (timeouts.effects, timeouts.rollback, timeouts.resume_request, timeouts.results) == (
+        default.effects,
+        default.rollback,
+        default.resume_request,
+        default.results,
+    )
+    assert e2e.E2E(e2e.parse_args([]), harness.deps()).timeouts == default
+
+
+@pytest.mark.parametrize("value", ["0", str(e2e.PAUSE_MINUTES_MAX + 1), "x"])
+def test_pause_minutes_out_of_range_is_refused(value):
+    with pytest.raises(SystemExit) as stop:
+        e2e.parse_args(["--pause-minutes", value])
+    assert stop.value.code == e2e.EXIT_USAGE
+
+
+def test_a_long_pause_waits_past_the_default_launch_timeout(monkeypatch, tmp_path, capsys):
+    h = make(monkeypatch, tmp_path, _upto(0))
+    h.spawner.specs["load"] = load_spec(exit_at=10**9)
+    h.spawner.specs["fault"] = fault_spec(exit_at=10**9)
+    assert h.run("--pause-minutes", "90") == e2e.EXIT_FAILED
+    assert h.clock.t == 40 + 90 * 60  # not 40 + 30 * 60, the default
+    assert h.recorded()["reason"].startswith(
+        "timed out after 90 min waiting for the launch approval."
+    )
+
+
 def test_the_resume_request_wait_allows_for_the_fault_and_the_alarms_return_to_ok():
     # The fault's 6 minutes, the alarm's 6 min 36 s back to OK, then a 2-minute tick: even
     # end to end, that fits in the lead's 25 minutes.
