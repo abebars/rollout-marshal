@@ -1,0 +1,198 @@
+{
+  "run_id": "r202611272042",
+  "outcome": "completed",
+  "reason": null,
+  "last_status": "HELD",
+  "prompt": "Test moving the support assistant from Claude Fable 5.1 to Claude Sonnet 5.",
+  "load_size": {
+    "users": 150,
+    "questions": 10
+  },
+  "timestamps": {
+    "start_sent": "2026-11-27T20:42:29.563696Z",
+    "plan_returned": "2026-11-27T20:42:36.140690Z",
+    "approve_seen": "2026-11-27T20:49:18.855147Z",
+    "running": "2026-11-27T20:49:51.537862Z"
+  },
+  "seen": [
+    {
+      "at": "2026-11-27T20:42:36.140690Z",
+      "state": "PLANNED",
+      "pending": null
+    },
+    {
+      "at": "2026-11-27T20:49:18.855147Z",
+      "state": "PLANNED",
+      "pending": "RUNNING"
+    },
+    {
+      "at": "2026-11-27T20:49:51.537862Z",
+      "state": "RUNNING",
+      "pending": null
+    },
+    {
+      "at": "2026-11-27T20:53:24.455291Z",
+      "state": "RUNNING",
+      "pending": "ROLLED_BACK"
+    },
+    {
+      "at": "2026-11-27T20:54:24.660338Z",
+      "state": "ROLLED_BACK",
+      "pending": null
+    },
+    {
+      "at": "2026-11-27T21:02:07.560657Z",
+      "state": "AWAITING_RESUME",
+      "pending": null
+    },
+    {
+      "at": "2026-11-27T21:02:40.313405Z",
+      "state": "AWAITING_RESUME",
+      "pending": "RUNNING"
+    },
+    {
+      "at": "2026-11-27T21:03:03.253571Z",
+      "state": "RUNNING",
+      "pending": null
+    },
+    {
+      "at": "2026-11-27T21:04:26.057707Z",
+      "state": "RESULTS_READY",
+      "pending": null
+    },
+    {
+      "at": "2026-11-27T21:05:08.852948Z",
+      "state": "HELD",
+      "pending": null
+    }
+  ],
+  "history": [
+    {
+      "actor": "engineer",
+      "at": "2026-11-27T20:42:36.083615Z",
+      "from": null,
+      "reason": "start",
+      "to": "PLANNED"
+    },
+    {
+      "actor": "engineer",
+      "at": "2026-11-27T20:49:47.462621Z",
+      "from": "PLANNED",
+      "reason": "approve",
+      "to": "RUNNING"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-27T20:54:15.557941Z",
+      "from": "RUNNING",
+      "reason": "tick, resuming RUNNING -> ROLLED_BACK",
+      "to": "ROLLED_BACK"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-27T21:02:01.064735Z",
+      "from": "ROLLED_BACK",
+      "reason": "tick",
+      "to": "AWAITING_RESUME"
+    },
+    {
+      "actor": "engineer",
+      "at": "2026-11-27T21:03:00.613882Z",
+      "from": "AWAITING_RESUME",
+      "reason": "approve",
+      "to": "RUNNING"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-27T21:04:20.442009Z",
+      "from": "RUNNING",
+      "reason": "tick",
+      "to": "RESULTS_READY"
+    },
+    {
+      "actor": "engineer",
+      "at": "2026-11-27T21:05:06.381702Z",
+      "from": "RESULTS_READY",
+      "reason": "decline",
+      "to": "HELD"
+    }
+  ],
+  "history_states": [
+    "PLANNED",
+    "RUNNING",
+    "ROLLED_BACK",
+    "AWAITING_RESUME",
+    "RUNNING",
+    "RESULTS_READY",
+    "HELD"
+  ],
+  "history_matches_pass": true,
+  "answers_sent": 1500,
+  "load": {
+    "command": "scripts/load.py --run-id r202611272042 --users 150 --questions 10 --url <not shown>",
+    "started_at": "2026-11-27T20:49:51.548080Z",
+    "exit_code": 0,
+    "signalled": [],
+    "sent": 1500,
+    "ok": 1500,
+    "failed": 0,
+    "output": [
+      "load: 1500 requests, 150 users x 10 questions of run r202611272042, at most 10 at a time",
+      "sent=1500 ok=1500 failed=0"
+    ],
+    "log": "<tmp>/rm-e2e-logs"
+  },
+  "fault": {
+    "command": "scripts/inject_fault.sh",
+    "started_at": "2026-11-27T20:49:51.553691Z",
+    "exit_code": 0,
+    "signalled": [],
+    "experiment_id": "EXPbCtqcpM2cfPus38",
+    "output": [
+      "inject_fault: template rm-delay-cheaper is EXTB2oxga85m1Pyax",
+      "inject_fault: experiment EXPbCtqcpM2cfPus38 started at 2026-11-27T20:49:53Z (state initiating)",
+      "inject_fault: 2026-11-27T20:49:53Z state initiating",
+      "inject_fault: 2026-11-27T20:50:08Z state running",
+      "inject_fault: 2026-11-27T20:50:24Z state running",
+      "inject_fault: 2026-11-27T20:50:39Z state running",
+      "inject_fault: 2026-11-27T20:50:55Z state running",
+      "inject_fault: 2026-11-27T20:51:10Z state running",
+      "inject_fault: 2026-11-27T20:51:25Z state running",
+      "inject_fault: 2026-11-27T20:51:41Z state running",
+      "inject_fault: 2026-11-27T20:51:56Z state running",
+      "inject_fault: 2026-11-27T20:52:12Z state running",
+      "inject_fault: 2026-11-27T20:52:27Z state running",
+      "inject_fault: 2026-11-27T20:52:42Z state running",
+      "inject_fault: 2026-11-27T20:52:58Z state running",
+      "inject_fault: 2026-11-27T20:53:13Z state running",
+      "inject_fault: 2026-11-27T20:53:29Z state running",
+      "inject_fault: 2026-11-27T20:53:44Z state running",
+      "inject_fault: 2026-11-27T20:53:59Z state running",
+      "inject_fault: 2026-11-27T20:54:15Z state running",
+      "inject_fault: 2026-11-27T20:54:30Z state running",
+      "inject_fault: 2026-11-27T20:54:46Z state running",
+      "inject_fault: 2026-11-27T20:55:01Z state running",
+      "inject_fault: 2026-11-27T20:55:16Z state running",
+      "inject_fault: 2026-11-27T20:55:32Z state running",
+      "inject_fault: 2026-11-27T20:55:47Z state running",
+      "inject_fault: 2026-11-27T20:56:03Z state running",
+      "inject_fault: experiment EXPbCtqcpM2cfPus38 ended at 2026-11-27T20:56:18Z: completed (FIS start 2026-11-27T20:49:52.910000+00:00, end 2026-11-27T20:56:04.925000+00:00: Experiment completed.)"
+    ],
+    "log": "<tmp>/rm-e2e-logs"
+  },
+  "state": "HELD",
+  "incidents": [
+    {
+      "resumed_at": "2026-11-27T21:03:00.613835Z",
+      "started_at": "2026-11-27T20:54:15.557892Z"
+    }
+  ],
+  "report_key": "runs/r202611272042/report.md",
+  "report": "s3://rm-reports-818928662830/runs/r202611272042/report.md",
+  "notified": {
+    "2#ROLLED_BACK": "d4d69364-89fe-56cd-8bec-f0e779c918a8",
+    "3#AWAITING_RESUME": "f7db8425-09a9-58d8-a045-e7a6fba19a4e",
+    "5#RESULTS_READY": "7f686463-dcf2-5423-88df-07e02e6603cb"
+  },
+  "run_item_error": null
+}
