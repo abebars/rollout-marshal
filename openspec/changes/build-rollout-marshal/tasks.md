@@ -744,8 +744,13 @@ their tasks name, not against each other.
     answers sent, the report's S3 key, and the SNS message IDs from the run
     item's `notified`. **Gate 3** runs here.
 
-- [ ] 5.2 **Two more clean runs**
+- [ ] 5.2 **Two more clean runs** (cut to one further clean run, 2026-11-27)
   - Needs: 5.1.
+  - Cut (CLAUDE.md cut order, item 2): Ahmed chose on 2026-11-27, after
+    3.6's cost projection passed 60,000,000 micro-USD (66,736,705 by the
+    higher-mean rule), to run 5.2 once, which brings it to about 46,600,000.
+    The Pass below then reads "once" for "twice" and "its history" for
+    "both histories".
   - Pass: `scripts/reset.py` then `scripts/e2e.py`, twice, with no code
     change between; both histories saved under `evidence/5.2/`. If a run
     fails, fix, rehearse at 150 x 2 until the path runs clean (as long as
