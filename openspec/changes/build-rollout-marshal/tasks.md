@@ -356,7 +356,7 @@ their tasks name, not against each other.
     least a 97.5 percent probability (design.md section 6).
   - Pass: unit tests green with moto.
 
-- [ ] 2.5 **Action handlers**
+- [x] 2.5 **Action handlers**
   - Needs: 2.1, 2.2, 2.3, 2.4. Files: `agent/runtime/rm_agent/handlers.py`,
     `agent/runtime/main.py`, `agent/tests/test_handlers.py`, and the one
     `agent/runtime/rm_agent/state.py` helper below, with its tests in
