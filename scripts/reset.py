@@ -18,25 +18,26 @@ scripts/seed_experiment.py, is no live run. Then, in this order:
 The tick and the pointer come first: they stop the agent and the router's experiment
 traffic. Each Flagsmith state changes through a v2 version, only when it differs.
 
-Disabling the tick writes back every field GetSchedule returns that UpdateSchedule takes,
-changing only State, as 2.4's set_tick does. 2.4 is not on dev yet, so its logic is
-copied here, with the same check that the schedule is rm-tick's. The script never ends an
-experiment, and never calls an end, pause or rollout path.
+The tick is disabled by 2.4's set_tick (agent/runtime/rm_agent/tools/schedule.py). It
+checks that the schedule is rm-tick's, then writes back every field GetSchedule returns
+that UpdateSchedule takes, changing only State. The script never ends an experiment, and
+never calls an end, pause or rollout path.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))  # contracts and scripts, when run as a script
+for path in (ROOT, ROOT / "agent" / "runtime"):  # contracts, scripts, and 2.4's rm_agent
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 import boto3  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
+from rm_agent.tools.schedule import set_tick  # noqa: E402
 
 from contracts import names  # noqa: E402
 from scripts.bootstrap_flagsmith import (  # noqa: E402
@@ -49,11 +50,11 @@ from scripts.bootstrap_flagsmith import (  # noqa: E402
     check_account,
     live_state,
     organisation_key,
+    path_of,
 )
 
-SCHEDULE_DISABLED = "DISABLED"  # EventBridge Scheduler's spelling (2.4's schedule tool)
-TICK_PAYLOAD = {"action": names.ACTION_TICK}
 POINTER_KEY = {names.PARTITION_KEY: {"S": names.ACTIVE_POINTER_PK}}
+MAX_PAGES = 50  # of the experiments list: far more than one project ever holds
 
 
 # ---------------------------------------------------------------------------
@@ -86,40 +87,6 @@ def clear_pointer(dynamodb, run_id: str) -> None:
         ExpressionAttributeNames={"#pk": names.PARTITION_KEY},
         ExpressionAttributeValues={":run_id": {"S": run_id}},
     )
-
-
-# ---------------------------------------------------------------------------
-# The tick (2.4's set_tick, copied: GetSchedule, then every field UpdateSchedule takes)
-# ---------------------------------------------------------------------------
-def tick_update_fields(scheduler) -> tuple[str, ...]:
-    """Every field GetSchedule returns that UpdateSchedule takes, by the service model."""
-    model = scheduler.meta.service_model
-    taken = model.operation_model("UpdateSchedule").input_shape.members
-    returned = model.operation_model("GetSchedule").output_shape.members
-    return tuple(field for field in returned if field in taken)
-
-
-def disable_tick(scheduler) -> bool:
-    """Disable rm-tick. True when it wrote, False when it was already disabled."""
-    schedule = scheduler.get_schedule(Name=names.TICK_SCHEDULE, GroupName=names.TICK_SCHEDULE_GROUP)
-    target = schedule.get("Target") or {}
-    try:
-        payload = json.loads(target.get("Input") or "null")
-    except ValueError:
-        payload = None
-    role = str(target.get("RoleArn", ""))
-    if payload != TICK_PAYLOAD or not role.endswith(f":role/{names.SCHEDULER_ROLE}"):
-        raise FlagsmithError(
-            f"schedule {names.TICK_SCHEDULE} does not target the tick payload with role "
-            f"{names.SCHEDULER_ROLE}; nothing was written"
-        )
-    if schedule.get("State") == SCHEDULE_DISABLED:
-        return False
-    fields = {
-        field: schedule[field] for field in tick_update_fields(scheduler) if field in schedule
-    }
-    scheduler.update_schedule(**{**fields, "State": SCHEDULE_DISABLED})
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -157,17 +124,27 @@ def reset_flags(admin: Admin, out=print) -> None:
 
 
 def running_experiments(admin: Admin) -> list[dict]:
-    reply = admin.request(
-        "GET", admin.environment_path(f"experiments/?status={names.EXPERIMENT_STATUS_RUNNING}")
-    )
-    found = (reply or {}).get("results", [])
-    return [e for e in found if e.get("status") == names.EXPERIMENT_STATUS_RUNNING]
+    """Every running experiment, from every page of the unfiltered list. The status filter
+    was never run, and 1.3's recorded schema spells the statuses otherwise, so the check is
+    on each experiment's own status, as 1.4's end_status.py did (PR #27's review)."""
+    running, path = [], admin.environment_path("experiments/")
+    for _ in range(MAX_PAGES):
+        reply = admin.request("GET", path) or {}
+        running += [
+            e
+            for e in reply.get("results", [])
+            if e.get("status") == names.EXPERIMENT_STATUS_RUNNING
+        ]
+        path = path_of(reply.get("next"))
+        if path is None:
+            return running
+    raise FlagsmithError(f"the experiments list ran past {MAX_PAGES} pages")
 
 
 # ---------------------------------------------------------------------------
 # The script
 # ---------------------------------------------------------------------------
-def reset(*, admin: Admin, dynamodb, scheduler, force: bool = False, out=print) -> None:
+def reset(*, admin: Admin, dynamodb, force: bool = False, out=print) -> None:
     run_id, state = live_run(dynamodb)
     if run_id is not None and state is not None and state not in names.TERMINAL_STATES:
         if not force:
@@ -183,7 +160,7 @@ def reset(*, admin: Admin, dynamodb, scheduler, force: bool = False, out=print) 
     else:
         out("no pointer to clear")
     try:
-        wrote = disable_tick(scheduler)
+        wrote = set_tick(False)  # 2.4's: ValueError when the schedule is not rm-tick's
         out(
             f"disabled {names.TICK_SCHEDULE}"
             if wrote
@@ -210,23 +187,22 @@ def main(
     *,
     admin: Admin | None = None,
     dynamodb=None,
-    scheduler=None,
     out=print,
 ) -> int:
+    """The tick's Scheduler client is 2.4's own, made on first use in us-east-1."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     parser.add_argument("--force", action="store_true", help="reset even while a run is live")
     args = parser.parse_args(argv)
     try:
-        if admin is None or dynamodb is None or scheduler is None:
+        if admin is None or dynamodb is None:
             check_account()
             dynamodb = dynamodb or boto3.client("dynamodb", region_name=names.REGION)
-            scheduler = scheduler or boto3.client("scheduler", region_name=names.REGION)
             admin = admin or Admin(organisation_key())
-        reset(admin=admin, dynamodb=dynamodb, scheduler=scheduler, force=args.force, out=out)
+        reset(admin=admin, dynamodb=dynamodb, force=args.force, out=out)
     except Refused as err:
         out(f"refused: {err}")
         return EXIT_REFUSED
-    except (FlagsmithError, ClientError) as err:
+    except (FlagsmithError, ClientError, ValueError) as err:  # ValueError: 2.4's tick check
         out(f"failed: {err}")
         return EXIT_FAILED
     return EXIT_OK

@@ -74,8 +74,12 @@ ZIPS: dict[str, dict] = {
         "dependencies": True,
     },
 }
-# Left out of the installed dependencies: uv's lock file, console scripts and bytecode.
-DEPENDENCY_SKIPS = (".lock", "bin/", "__pycache__/")
+# Left out of the installed dependencies: uv's lock file, console scripts and bytecode, and
+# each wheel's RECORD. RECORD hashes the console scripts, whose shebangs hold the build's
+# absolute Python path, so two checkouts would give different zips, and every plan would
+# show the functions changing (PR #27's review). importlib.metadata.version, which the SDK
+# uses, reads only METADATA.
+DEPENDENCY_SKIPS = (".lock", "bin/", "__pycache__/", ".dist-info/RECORD")
 
 
 def install_dependencies(deps_dir: Path = DEPS_DIR) -> Path:

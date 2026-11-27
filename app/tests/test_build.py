@@ -101,15 +101,39 @@ def test_each_handler_imports_from_its_zips_files_alone(tmp_path, zip_name, hand
 
 
 def _fake_dependencies(tmp_path: Path) -> Path:
+    """An installed app group in miniature, built the way uv pip install --target builds one:
+    the console script's shebang holds this build's Python, and RECORD hashes it."""
     deps = tmp_path / "deps"
     (deps / "flagsmith").mkdir(parents=True)
     (deps / "flagsmith" / "__init__.py").write_text("# stand-in\n")
     (deps / "bin").mkdir()
-    (deps / "bin" / "console").write_text("#!/bin/sh\n")
+    (deps / "bin" / "console").write_text(f"#!{tmp_path}/.venv/bin/python\n")
     (deps / ".lock").write_text("")
     (deps / "flagsmith" / "__pycache__").mkdir()
     (deps / "flagsmith" / "__pycache__" / "x.pyc").write_bytes(b"\0")
+    dist_info = deps / "flagsmith-6.7.0.dist-info"
+    dist_info.mkdir()
+    (dist_info / "METADATA").write_text("Metadata-Version: 2.1\nName: flagsmith\nVersion: 6.7.0\n")
+    (dist_info / "RECORD").write_text(f"bin/console,sha256={abs(hash(str(tmp_path)))},40\n")
     return deps
+
+
+def test_two_builds_at_different_paths_give_the_same_zips(tmp_path):
+    """PR #27's review: RECORD hashed the console scripts' shebangs, so each checkout gave
+    different zips, and every plan showed both functions changing."""
+    first = build_zips.build(
+        tmp_path / "out-a", deps_dir=_fake_dependencies(tmp_path / "checkout-a")
+    )
+    second = build_zips.build(
+        tmp_path / "out-b", deps_dir=_fake_dependencies(tmp_path / "checkout-b")
+    )
+
+    for zip_name in build_zips.ZIPS:
+        assert first[zip_name].read_bytes() == second[zip_name].read_bytes(), zip_name
+    with zipfile.ZipFile(first["rm-judge.zip"]) as archive:
+        entries = archive.namelist()
+    assert "flagsmith-6.7.0.dist-info/METADATA" in entries  # importlib.metadata.version's source
+    assert not [e for e in entries if e.endswith("/RECORD")]
 
 
 def test_a_build_is_repeatable_and_leaves_out_what_lambda_needs_not(tmp_path):
@@ -144,5 +168,5 @@ def test_a_dependency_may_never_replace_the_apps_files(tmp_path):
 def test_build_sh_runs_the_builder_and_make_build_finds_it():
     script = (ROOT / "app" / "build.sh").read_text()
     assert 'exec uv run --frozen python "$HERE/build_zips.py"' in script
-    assert "/spike/" not in "app/build.sh"  # make build skips only the spikes' scripts
+    assert "grep -v '/spike/'" in (ROOT / "Makefile").read_text()  # skips only the spikes'
     assert (ROOT / "app" / "build.sh").stat().st_mode & 0o111
