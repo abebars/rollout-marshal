@@ -561,7 +561,7 @@ their tasks name, not against each other.
     directory; the lock frees itself when the script dies.
   - Pass: unit tests green.
 
-- [ ] 3.5 **App infrastructure, bootstrap, seed and reset**
+- [x] 3.5 **App infrastructure, bootstrap, seed and reset**
   - Needs: 3.1, 3.2, 3.3; before its apply review, the lead's
     `rm-review-readonly` role (applied from `infra/review.tf`, its
     `simulate-principal-policy` result recorded) and the human's `rm-review`
