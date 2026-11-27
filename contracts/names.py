@@ -57,7 +57,7 @@ DATA_RETENTION_MODE = "aws_review"  # needed by MODEL_CURRENT in us-east-1
 BEDROCK_RUNTIME_SERVICE = "bedrock-runtime"  # every call uses its Converse API
 # design.md section 3's list, including Converse's spelling topP (inside inferenceConfig);
 # top_k goes only in additionalModelRequestFields. A guard checks every one, at any depth.
-FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "topP", "top_k")
+FORBIDDEN_SAMPLING_PARAMETERS = ("temperature", "top_p", "topP", "top_k", "topK")
 
 ANSWER_MAX_TOKENS = 2000  # caps thinking plus text
 ANSWER_THINKING_EFFORT = "low"
@@ -186,14 +186,17 @@ SPIKE_NAME_PREFIX = "spike_"
 IDENTITY_COUNT = 150
 IDENTITY_FIRST = "user-001"
 IDENTITY_LAST = "user-150"
-IDENTITY_PATTERN = r"^user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$"
+IDENTITY_PATTERN = r"^user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$"  # the user part
+# What Flagsmith sees outside the spikes: <run_id>-user-001 .. <run_id>-user-150, so each
+# run's identities are new to it (Gate 1). run_identity() builds one, is_run_identity() checks.
+RUN_IDENTITY_PATTERN = "^" + RUN_ID_PATTERN[1:-1] + "-" + IDENTITY_PATTERN[1:-1] + "$"
 
 FLAGSMITH_SDK_PACKAGE = "flagsmith"
 FLAGSMITH_SDK_MIN_VERSION = "6.6.0"
 FLAGSMITH_CLIENT_OPTIONS = {"enable_events": True}  # remote evaluation
 # SDK calls; the exact signatures are proven by task 1.2.
 SDK_FLAGS_CALL = "get_identity_flags"  # once per answer, the only identity request
-SDK_EXPOSURE_CALL = "track_exposure_event"  # only when in the experiment with a variant set
+SDK_EXPOSURE_CALL = "track_exposure_event"  # only when enabled, in the experiment, with a variant
 SDK_OUTCOME_CALL = "track_event"  # with the identity and a numeric value
 SDK_FLUSH_CALL = "flush_events"  # before every handler returns
 SDK_FORBIDDEN_CALL = "get_experiment_flag"  # makes its own identity request
@@ -218,6 +221,11 @@ ANSWER_FUNCTION_BY_VARIANT = {
     VARIANT_CHEAPER: ANSWER_CHEAPER_FUNCTION,
 }
 API_GATEWAY_TIMEOUT_SECONDS = 30  # applies to the request path only
+API_ROUTE_KEY = "POST /ask"  # the HTTP API's only route (design.md section 11)
+API_AUTHORIZATION_TYPE = "AWS_IAM"  # load.py signs with SigV4
+API_SIGV4_SERVICE = "execute-api"
+API_INVOKE_ACTION = "execute-api:Invoke"  # what the shell's credentials need on the route
+APP_ASK_URL_OUTPUT = "ask_url"  # the app module's output: the route's full URL
 
 # What rm-router hands rm-judge (contracts/schemas/judge_payload.json).
 JUDGE_PAYLOAD_FIELDS = (
@@ -341,7 +349,6 @@ PLAN_STOP_RULE_FIELDS = (
 PLAN_GUARDRAIL_FIELDS = ("max_latency_ratio", "max_cost_ratio")
 PLAN_RECOMMENDATION_RULE_FIELDS = (
     "after_incident",
-    "promote_min_prob_not_worse",
     "promote_min_helpful_lift_ci_lower",
 )
 
@@ -442,7 +449,8 @@ PENDING_STALE_SECONDS = 360  # a pending claim older than this may be taken over
 RESULTS_EMBARGO_SECONDS = 600  # no results read in the first 600 s after first_running_at
 PROBE_INVOKES = 5  # parallel direct invokes of rm-answer-cheaper; slowest < the alarm's threshold
 PROBE_QUESTION = "How do I reset my password?"
-PROBE_IDENTITY = IDENTITY_FIRST  # a valid identity; the answer functions make no Flagsmith call
+PROBE_RUN_ID = "rprobe0000"  # a fixed run ID for the probe's identity; it names no run
+PROBE_IDENTITY = f"{PROBE_RUN_ID}-{IDENTITY_FIRST}"  # valid; the answer functions call no Flagsmith
 MIN_IDENTITIES_PER_VARIATION = 50
 
 # Guardrails: cheaper mean latency at most 110 percent of current's, and
@@ -455,11 +463,24 @@ RECOMMEND_HOLD = "hold"
 RECOMMEND_HOLD_RERUN = "hold, re-run"  # after any incident
 # In the order design.md section 6 applies them: the first that matches wins.
 RECOMMENDATIONS = (RECOMMEND_HOLD_RERUN, RECOMMEND_PROMOTE, RECOMMEND_HOLD)
-PROMOTE_MIN_PROB_NOT_WORSE = 0.95
-# Fallback when prob_cheaper_not_worse is null: the lower bound of the credible
-# interval for the lift on helpful_rate is at or above minus 5 percent, as a fraction
-# of relative lift (design.md section 7; 1.2's results sample confirms the unit).
+# The promote rule (design.md section 6): the lower bound of Flagsmith's 95 percent
+# credible interval for the lift on helpful_rate is at or above minus 5 percent, as a
+# fraction of relative lift. Flagsmith has no "not worse" probability (task 1.4).
 PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER = -0.05
+EXPERIMENT_STATUS_ENDED = "completed"  # "ended in Flagsmith"; paused is not ended
+EXPERIMENT_STATUS_PAUSED = "paused"
+FLAGSMITH_EXPERIMENT_STATUSES = ("created", "running", "paused", "completed")
+# Refused before any call (design.md section 4): no code ends or re-states an experiment.
+MCP_EXPERIMENT_FORBIDDEN_FIELDS = (
+    "status",
+    "rollout_decision",
+    "rollout_variant",
+    "started_at",
+    "ended_at",
+)
+FLAGSMITH_ADMIN_FORBIDDEN_PATHS = ("complete/", "pause/", "rollout/")
+FLAGSMITH_ADMIN_METHODS = ("GET", "POST")  # never DELETE, PUT or PATCH
+MCP_EXCLUDED_TOOL = "flagsmith___update_experiment"  # with every flagsmith___delete_* tool
 
 # ---------------------------------------------------------------------------
 # Section 7. Invoking the agent
@@ -469,6 +490,16 @@ AGENTCORE_PROJECT_NAME = "rm"
 AGENTCORE_TARGET_NAME = "default"
 # The CLI names a deployed runtime <project>_<target>_<runtime> (task 1.3).
 AGENT_RUNTIME_DEPLOYED_NAME = "rm_default_rm_agent"
+# The CLI packages only its code folder, which becomes the zip root (Gate 1).
+AGENT_CODE_DIR = "agent/runtime/"
+AGENT_CODE_LOCATION = "runtime"  # agentcore.json codeLocation, relative to agent/
+AGENT_ENTRYPOINT = "main.py"  # not app.py: B's root app/ would shadow it in tests
+AGENT_PACKAGE = AGENT_RUNTIME_NAME  # the Python package in the code folder
+AGENT_STACK = "AgentCore-rm-default"  # the CLI's CloudFormation stack
+# Terraform reads the stack's runtime role from this export and attaches the tools'
+# policy to it (design.md section 7).
+AGENT_RUNTIME_ROLE_EXPORT = "AgentCore-rm-default-rm-agent-RoleArn"
+AGENT_RUNTIME_TOOLS_POLICY = "rm-agent-runtime-tools"
 SESSION_ID_PREFIX = "rm-session-"  # + UUID4
 SESSION_ID_MIN_LENGTH = 33
 
@@ -507,7 +538,7 @@ INVOKE_FIELDS = ("action", "prompt", "actor", "run_id", "alarm_name", "alarm_sta
 RESPONSE_FIELDS = ("run_id", "state", "message", "awaiting", "pending", "error")
 NO_ACTIVE_RUN_MESSAGE = "no active run"  # status with no active run, every other field null
 ERROR_FIELDS = ("code", "message")
-RESULTS_FIELDS = ("ready", "variations", "prob_cheaper_not_worse", "helpful_lift_ci_lower")
+RESULTS_FIELDS = ("ready", "variations", "helpful_lift_ci_lower")
 VARIATION_FIELDS = ("identities", "helpful_rate", "mean_latency_ms", "mean_cost_micro_usd")
 
 SCHEMA_DIR = "contracts/schemas/"
@@ -525,6 +556,9 @@ SCHEMA_FILES = {name: f"{SCHEMA_DIR}{name}.json" for name in SCHEMA_NAMES}
 
 CLI_NAME = "marshal"
 CLI_ENTRY_POINT = "cli.marshal:main"  # the console script; pyproject.toml gains it with 2.6
+CLI_EXIT_OK = 0  # the response's error is null
+CLI_EXIT_ERROR = 1  # the response carries an error code
+CLI_EXIT_USAGE = 2
 CLI_ACTIONS = (ACTION_START, ACTION_APPROVE, ACTION_DECLINE, ACTION_STATUS, ACTION_CHECK)
 INVOKER_FUNCTION = "rm-invoker"  # sends alarm and tick
 AGENT_RUNTIME_ARN_PARAMETER = "/rm/agent-runtime-arn"
@@ -537,6 +571,11 @@ AGENT_CLIENT_READ_TIMEOUT_SECONDS = 290
 AGENT_CLIENT_MAX_ATTEMPTS = 1
 TICK_SCHEDULE = "rm-tick"
 TICK_INTERVAL_MINUTES = 2  # EventBridge Scheduler, enabled by launch until a terminal state
+TICK_SCHEDULE_GROUP = "default"
+SCHEDULER_ROLE = "rm-scheduler-role"  # rm-tick's execution role; may invoke only rm-invoker
+SCHEDULER_SERVICE_PRINCIPAL = "scheduler.amazonaws.com"  # what the role is passed to
+ALARM_RULE = "rm-alarm-to-invoker"  # EventBridge rule on the alarm entering ALARM
+INVOKER_ROLE = "rm-invoker-role"
 
 FLAGSMITH_ADMIN_FUNCTION = "rm-flagsmith-admin"  # Gateway target
 INCIDENTS_TOPIC = "rm-incidents"
@@ -647,6 +686,7 @@ ANSWER_COST_STOP_MICRO_USD = 60_000_000
 # ---------------------------------------------------------------------------
 _RUN_ID_RE = re.compile(RUN_ID_PATTERN)
 _IDENTITY_RE = re.compile(IDENTITY_PATTERN)
+_RUN_IDENTITY_RE = re.compile(RUN_IDENTITY_PATTERN)
 
 
 def is_run_id(value: str) -> bool:
@@ -725,6 +765,17 @@ def identity(n: int) -> str:
 
 def is_identity(value: str) -> bool:
     return bool(_IDENTITY_RE.fullmatch(value))
+
+
+def run_identity(run_id: str, n: int) -> str:
+    """<run_id>-user-001 .. <run_id>-user-150: user n of run run_id, as Flagsmith sees it."""
+    if not is_run_id(run_id):
+        raise ValueError(f"not a run ID (expected {RUN_ID_PATTERN}): {run_id!r}")
+    return f"{run_id}-{identity(n)}"
+
+
+def is_run_identity(value: str) -> bool:
+    return bool(_RUN_IDENTITY_RE.fullmatch(value))
 
 
 UTC_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"  # the one stored form of every *_at value

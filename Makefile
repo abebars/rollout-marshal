@@ -1,5 +1,5 @@
 # Rollout Marshal developer commands. Python runs through uv on Python 3.13.
-.PHONY: help install test lint fmt preflight names-json
+.PHONY: help install test lint fmt preflight names-json build
 
 help:
 	@echo "make install    create .venv (Python 3.13) with every dependency group"
@@ -8,6 +8,7 @@ help:
 	@echo "make fmt        apply ruff fixes and formatting, and terraform fmt"
 	@echo "make preflight  scripts/preflight.sh: one ok or FAIL line per check"
 	@echo "make names-json regenerate contracts/names.json from contracts/names.py"
+	@echo "make build      run every function's build.sh (not the spikes'); before every plan and apply"
 
 install:
 	uv sync
@@ -27,6 +28,12 @@ fmt:
 
 preflight:
 	./scripts/preflight.sh
+
+# Each function's zip is built by a build.sh in its owner's directory, so no task
+# edits this file (design.md section 2). The spikes' own scripts are left out.
+build:
+	@git rev-parse --is-inside-work-tree >/dev/null
+	@set -e; for f in $$(git ls-files --cached --others --exclude-standard '*build.sh' | grep -v '/spike/'); do echo "== $$f"; bash "$$f"; done
 
 names-json:
 	uv run python -c 'from contracts import names; print(names.as_json(), end="")' > contracts/names.json

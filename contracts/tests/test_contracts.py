@@ -8,6 +8,7 @@ does not give.
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 import sys
@@ -216,6 +217,31 @@ NOT_A_NAME = {
     "flag.variant": "SDK attribute the exposure call sends",
     "flag.value": "SDK attribute: the variant's value, which names the model served",
     "api_key_authorization()": "helper in contracts.names; test_spike_findings_match_design",
+    # contract change c1 (Gate 1)
+    "--profile": "an AWS CLI option in the review-access rule",
+    "--profile rm-review": "the AWS CLI option and REVIEW_PROFILE, in the review-access rule",
+    "AWS_PROFILE": "an AWS CLI environment variable the review-access rule warns about",
+    "run_identity()": "helper in contracts.names; test_run_identities",
+    "is_run_identity()": "helper in contracts.names; test_run_identities",
+    "--run-id": "load.py's option, in section 4's identity rule",
+    "-user-": "the separator in a run identity, in section 4's identity rule",
+    "app/": "B's root package (design.md section 12)",
+    "import app": "the Python statement the entrypoint's name avoids",
+    "agent/tests/": "a repo path (design.md section 12, A's agent/)",
+    "codeLocation": "the AgentCore CLI's agentcore.json field",
+    "contracts": "the repo's contracts package, linked into the code folder",
+    "pyproject.toml": "a file name",
+    "pythonpath": "the pytest setting in the root pyproject.toml",
+    "uv.lock": "a file name",
+    "--url": "load.py's option, in section 11's request contract",
+    # contract change c2 (Gate 1)
+    "build.sh": "each function's build script, which make build runs",
+    "make build": "a Makefile target the lead owns",
+    "cli": "the repo's cli package (design.md section 12)",
+    "uv run marshal": "the command the packaged console script gives",
+    "flagsmith___delete_*": "every MCP delete tool, left out of 2.2's allow-list",
+    "archive_file": "Terraform's archive data source, which a module may package with",
+    "load.py": "the load script, named in section 11's request contract",
     "<project>_<target>_<runtime>": (
         "the AgentCore CLI's naming pattern; see AGENT_RUNTIME_DEPLOYED_NAME"
     ),
@@ -234,7 +260,7 @@ NOT_A_NAME = {
     "s3://rm-reports-818928662830/runs/<run_id>/report.md": (
         "REPORTS_BUCKET + REPORT_KEY_TEMPLATE; test_report_location checks it"
     ),
-    "scripts/load.py --users N --questions M --url <api>": (
+    "scripts/load.py --run-id <run_id> --users N --questions M --url <api>": (
         "command line of LOAD_SCRIPT, owned by task 3.4"
     ),
 }
@@ -285,6 +311,188 @@ def test_every_name_in_design_section_has_a_constant(n):
     assert missing == [], f"design.md section {n} names without a constant in contracts.names"
 
 
+def test_run_identities():
+    """Each run's identities are new to Flagsmith (contract change c1, Gate 1)."""
+    run_id = "rlive0230"
+    users = [names.run_identity(run_id, n) for n in range(1, names.IDENTITY_COUNT + 1)]
+    assert users[0] == f"{run_id}-{names.IDENTITY_FIRST}"
+    assert users[-1] == f"{run_id}-{names.IDENTITY_LAST}"
+    assert all(names.is_run_identity(u) for u in users)
+    assert len(set(users)) == names.IDENTITY_COUNT
+    assert not names.is_run_identity(names.IDENTITY_FIRST)
+    assert not names.is_run_identity(f"{run_id}-user-151")
+    assert not names.is_run_identity(f"{run_id}-user-000")
+    assert not names.is_run_identity(f"{run_id}-user-001\n")
+    sec4 = re.sub(r"\s+", " ", section(4))
+    assert "| Identity format | the run ID, a hyphen, then `user-001` to `user-150`" in sec4
+    assert (
+        "with the pointer's `run_id` before `-user-`) gets a 400 before any Flagsmith call" in sec4
+    )
+    with pytest.raises(ValueError):
+        names.run_identity("live0230", 1)
+    with pytest.raises(ValueError):
+        names.run_identity(run_id, 151)
+    assert names.run_identity("rsmoke0230", 1) != names.run_identity(run_id, 1)
+    assert names.AGENT_PACKAGE == names.AGENT_RUNTIME_NAME
+    row = re.sub(r"\s+", " ", section(7))
+    assert (
+        f"so the code lives in `{names.AGENT_CODE_DIR}` (the CLI's `codeLocation` "
+        f"`{names.AGENT_CODE_LOCATION}`, entrypoint `{names.AGENT_ENTRYPOINT}`, so no test's "
+        f"`import app` finds B's `app/`) as the package `{names.AGENT_PACKAGE}`" in row
+    )
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    assert f'pythonpath = [".", "{names.AGENT_CODE_DIR.rstrip("/")}"]' in pyproject
+    assert (
+        f"EventBridge rule `{names.ALARM_RULE}` on the alarm entering ALARM. Role "
+        f"`{names.INVOKER_ROLE}`." in row
+    )
+    assert (
+        f"It sits in the `{names.TICK_SCHEDULE_GROUP}` schedule group, with execution role "
+        f"`{names.SCHEDULER_ROLE}`, which may invoke only `{names.INVOKER_FUNCTION}`." in row
+    )
+    tasks = re.sub(
+        r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
+    )
+    assert "`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`" in tasks
+    assert "`run_identity(run_id, n)`" in tasks
+    code = names.AGENT_CODE_DIR
+    for path in ("rm_agent/state.py", "rm_agent/planner.py", "rm_agent/handlers.py"):
+        assert f"`{code}{path}`" in tasks
+    assert f"`{code}{names.AGENT_ENTRYPOINT}`" in tasks
+    assert (
+        f"`codeLocation` `{names.AGENT_CODE_LOCATION}`, entrypoint `{names.AGENT_ENTRYPOINT}`"
+        in tasks
+    )
+    assert f"`{code}rm_agent/tools/flagsmith.py`" in tasks
+    assert (
+        f"The rule is `{names.ALARM_RULE}`, the function's role `{names.INVOKER_ROLE}`, and "
+        f"`{names.TICK_SCHEDULE}` sits in the `{names.TICK_SCHEDULE_GROUP}` group with execution "
+        f"role `{names.SCHEDULER_ROLE}`" in tasks
+    )
+    assert "`lifecycle { ignore_changes = [state] }`" in tasks
+    assert "`rm-tick` (created disabled, with `lifecycle { ignore_changes = [state] }`" in tasks
+    assert (
+        "It adds `runtime/contracts` to `agent/conftest.py`'s `collect_ignore`, or pytest "
+        "collects the contracts suite twice through the symlink." in tasks
+    )
+    assert (
+        f"The runtime's role gets `iam:PassRole` on `{names.SCHEDULER_ROLE}`, with "
+        f"`iam:PassedToService` `{names.SCHEDULER_SERVICE_PRINCIPAL}`" in tasks
+    )
+    assert "`<run_id>1-user-001` and a trailing newline" in tasks
+    design = (ROOT / "openspec/changes/build-rollout-marshal/design.md").read_text()
+    assert "app.py" not in tasks and "app.py" not in design
+    sec4 = re.sub(r"\s+", " ", section(4))
+    assert (
+        "1. Read the active run pointer (section 6). With an active run, an `identity` that is "
+        "not one of that run's (`is_run_identity()`, with the pointer's `run_id` before "
+        "`-user-`) gets a 400 before any Flagsmith call, so a wrong `--run-id` cannot reuse an "
+        "old run's identities (Gate 1)." in sec4
+    )
+    sec7 = re.sub(r"\s+", " ", section(7))
+    assert (
+        "reads it with GetSchedule and writes back every field it returned that UpdateSchedule "
+        "takes (all but Arn, CreationDate and LastModificationDate), changing only its state. "
+        f"That passes `{names.SCHEDULER_ROLE}` to `{names.SCHEDULER_SERVICE_PRINCIPAL}`, so the "
+        "runtime's role needs pass-role on it (task 2.7)" in sec7
+    )
+    sec11 = re.sub(r"\s+", " ", section(11))
+    assert (
+        f"Each request is one JSON `answer_request` (`question`, `identity`) posted to `--url`, "
+        f"the full URL of the HTTP API's only route, `{names.API_ROUTE_KEY}`" in sec11
+    )
+    assert "from the shell's AWS credentials" in sec11
+    assert "A load never prints the URL. The shell's credentials need `execute-api:Invoke`" in sec11
+    assert tasks.count("`load.py --run-id <run_id> --users 150") == 3
+    assert "load.py --users" not in tasks
+    load = re.sub(r"\s+", " ", section(11))
+    assert "`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`" in load
+    assert (
+        f"the HTTP API's only route, `{names.API_ROUTE_KEY}`, as the app module's output "
+        f"`{names.APP_ASK_URL_OUTPUT}` gives it. The route uses `{names.API_AUTHORIZATION_TYPE}` "
+        f"authorization, so `load.py` signs every request with SigV4 (service "
+        f"`{names.API_SIGV4_SERVICE}`)" in load
+    )
+    spec = (ROOT / "openspec/changes/build-rollout-marshal/specs/assistant-api/spec.md").read_text()
+    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10 --url <api>`" in spec
+    assert "load.py --users" not in spec
+    assert (
+        "load.py --users"
+        not in (ROOT / "openspec/changes/build-rollout-marshal/design.md").read_text()
+    )
+
+
+def test_contract_c2():
+    """Gate 1's second contract change: the boundary rule, statuses, the promote rule."""
+    prose = re.sub(r"\s+", " ", section(4))
+    fields = ", ".join(f"`{f}`" for f in names.MCP_EXPERIMENT_FORBIDDEN_FIELDS[:-1])
+    assert (
+        f"an experiment create or update carrying {fields} or "
+        f"`{names.MCP_EXPERIMENT_FORBIDDEN_FIELDS[-1]}`" in prose
+    )
+    forbidden = names.FLAGSMITH_ADMIN_FORBIDDEN_PATHS
+    paths = ", ".join(f"`{p}`" for p in forbidden[:-1]) + f" and `{forbidden[-1]}`"
+    assert f"never DELETE, PUT or PATCH, and {paths} can never be built" in prose
+    assert set(names.FLAGSMITH_ADMIN_METHODS) == {"GET", "POST"}
+    assert f"The MCP allow-list leaves out `{names.MCP_EXCLUDED_TOOL}`" in prose
+    state = re.sub(r"\s+", " ", section(6))
+    assert (
+        f"Ended in Flagsmith means the experiment's status is `{names.EXPERIMENT_STATUS_ENDED}`; "
+        f"`{names.EXPERIMENT_STATUS_PAUSED}` is not ended." in state
+    )
+    assert names.EXPERIMENT_STATUS_ENDED in names.FLAGSMITH_EXPERIMENT_STATUSES
+    assert names.EXPERIMENT_STATUS_PAUSED in names.FLAGSMITH_EXPERIMENT_STATUSES
+    tools = json.loads((ROOT / "evidence/1.3-mcp-tools.json").read_text())
+
+    def status_enums(node):
+        if isinstance(node, dict):
+            status = node.get("status")
+            if isinstance(status, dict):
+                for part in [status, *status.get("allOf", [])]:
+                    if "enum" in part:
+                        yield tuple(part["enum"])
+            for value in node.values():
+                yield from status_enums(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from status_enums(value)
+
+    enums = set(status_enums(tools))
+    assert enums == {names.FLAGSMITH_EXPERIMENT_STATUSES}, enums
+    # The interval is the lift plus or minus 1.96 sd, and chance_to_win uses the same normal,
+    # so ci_low >= -0.05 means at least a 97.5 percent probability (design.md section 6).
+    from statistics import NormalDist
+
+    sample = json.loads((ROOT / "evidence/1.4-results-sample.json").read_text())
+    found = [
+        m["inference"][names.VARIANT_CHEAPER]
+        for m in sample["results"]["payload"]["metrics"]
+        if names.VARIANT_CHEAPER in m.get("inference", {})
+    ]
+    assert found
+    for inf in found:
+        lift, low, high = inf["lift"], inf["ci_low"], inf["ci_high"]
+        assert math.isclose((low + high) / 2, lift, abs_tol=1e-12)
+        sd = (high - low) / 2 / NormalDist().inv_cdf(0.975)
+        assert math.isclose(sd, lift / NormalDist().inv_cdf(inf["chance_to_win"]), rel_tol=1e-9)
+    assert "promote_min_prob_not_worse" not in names.PLAN_RECOMMENDATION_RULE_FIELDS
+    assert "prob_cheaper_not_worse" not in names.RESULTS_FIELDS
+    assert "topK" in names.FORBIDDEN_SAMPLING_PARAMETERS
+    spec = ROOT / "openspec/changes/build-rollout-marshal/specs/experiment-agent/spec.md"
+    assert (
+        "the lower bound of the 95 percent credible interval for the lift on `helpful_rate` is "
+        "at or above -0.05, and both guardrails pass" in spec.read_text()
+    )
+    sec7 = re.sub(r"\s+", " ", section(7))
+    assert f"`{names.AGENT_STACK}` creates it with the Bedrock, logging and Gateway grants" in sec7
+    assert f"export `{names.AGENT_RUNTIME_ROLE_EXPORT}`" in sec7
+    assert f"attaches inline policy `{names.AGENT_RUNTIME_TOOLS_POLICY}`" in sec7
+    assert (
+        f"exits {names.CLI_EXIT_OK} when its error is null, {names.CLI_EXIT_ERROR} when it "
+        f"carries an error code, and {names.CLI_EXIT_USAGE} for a usage error" in sec7
+    )
+
+
 def test_not_a_name_entries_still_exist_in_design():
     spans = {s for n in range(2, 12) for s in single_line_spans(section(n))}
     assert set(NOT_A_NAME) <= spans, "remove NOT_A_NAME entries design.md no longer has"
@@ -330,6 +538,8 @@ OTHER_SOURCES = {
     "OK": "signals spec ('changes to OK or INSUFFICIENT_DATA') and tasks.md 2.4",
     "INSUFFICIENT_DATA": "signals spec and tasks.md 2.4",
     names.IDENTITY_PATTERN: "section 4: 'user-001 to user-150'",
+    names.RUN_IDENTITY_PATTERN: "section 4: 'the run ID, a hyphen, then user-001 to user-150'",
+    "rprobe0000": "the run part of section 6's probe identity rprobe0000-user-001",
     "contracts/schemas/run_item.json": "section 7: contracts/schemas/ plus the name run_item",
     "contracts/schemas/judge_payload.json": "section 7: contracts/schemas/ plus judge_payload",
     "contracts/schemas/answer_request.json": "section 7: contracts/schemas/ plus answer_request",
@@ -413,7 +623,7 @@ def test_run_item_survives_a_dynamodb_round_trip():
 
     item = run_item(experiment_id=4321, metric_ids={"helpful_rate": 7})
     serialize, deserialize = TypeSerializer().serialize, TypeDeserializer().deserialize
-    with pytest.raises(TypeError):  # boto3 refuses raw floats: the plan has 1.1 and 0.95
+    with pytest.raises(TypeError):  # boto3 refuses raw floats: the plan has 1.1 and -0.05
         serialize(item)
     stored = {k: serialize(v) for k, v in dynamo.to_dynamo(item).items()}
     raw = {k: deserialize(v) for k, v in stored.items()}
@@ -608,7 +818,10 @@ def test_numbers_in_design_rules():
     assert f"at least {names.MIN_IDENTITIES_PER_VARIATION} identities" in prose
     assert f"probe is {names.PROBE_INVOKES} direct invokes" in prose
     assert f"at most {round(names.GUARDRAIL_MAX_LATENCY_RATIO * 100)} percent" in prose
-    assert f"at least {names.PROMOTE_MIN_PROB_NOT_WORSE}" in prose
+    assert (
+        "the rule asks for at least a 97.5 percent probability that the lift is at least -0.05"
+        in prose
+    )
     assert (
         "at or above minus 5 percent" in prose and names.PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER == -0.05
     )
@@ -890,7 +1103,6 @@ def plan(**overrides):
         },
         "recommendation_rule": {
             "after_incident": names.RECOMMEND_HOLD_RERUN,
-            "promote_min_prob_not_worse": names.PROMOTE_MIN_PROB_NOT_WORSE,
             "promote_min_helpful_lift_ci_lower": names.PROMOTE_MIN_HELPFUL_LIFT_CI_LOWER,
         },
     }
@@ -919,7 +1131,6 @@ def test_plan_built_from_names_validates():
         {
             "recommendation_rule": {
                 "after_incident": "promote",
-                "promote_min_prob_not_worse": 0.95,
                 "promote_min_helpful_lift_ci_lower": -0.05,
             }
         },
@@ -1029,7 +1240,6 @@ def results(**overrides):
     base = {
         "ready": True,
         "variations": {"current": dict(variation), "cheaper": dict(variation)},
-        "prob_cheaper_not_worse": None,
         "helpful_lift_ci_lower": -0.03,
     }
     return {**base, **overrides}
@@ -1049,7 +1259,6 @@ def test_results_validate():
             ready=False,
             variations={"current": empty, "cheaper": empty},
             helpful_lift_ci_lower=None,
-            prob_cheaper_not_worse=None,
         ),
     )
 
@@ -1057,7 +1266,7 @@ def test_results_validate():
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"prob_cheaper_not_worse": 1.5},
+        {"prob_cheaper_not_worse": None},
         {"ready": "yes"},
         {"variations": {"current": {}}},
         {"helpful_lift_ci_lower": "-5%"},
@@ -1103,7 +1312,7 @@ def test_bad_results_are_rejected(overrides):
 def judge_payload(**overrides):
     base = {
         "run_id": "r202611271530",
-        "identity": "user-042",
+        "identity": "r202611271530-user-042",
         "assigned": "cheaper",
         "served": "cheaper",
         "model_id": names.MODEL_CHEAPER,
@@ -1125,7 +1334,8 @@ def test_judge_payloads_validate():
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"identity": "user-151"},
+        {"identity": "rlive0230-user-151"},
+        {"identity": "user-042"},
         {"assigned": "control"},
         {"served": "current"},
         {"model_id": names.MODEL_JUDGE},
@@ -1143,7 +1353,7 @@ def test_schema_constants_match_names():
     invoke = contracts.load_schema("invoke")
     assert invoke["$defs"]["run_id"]["pattern"] == names.RUN_ID_PATTERN
     judge = contracts.load_schema("judge_payload")
-    assert judge["properties"]["identity"]["pattern"] == names.IDENTITY_PATTERN
+    assert judge["properties"]["identity"]["pattern"] == names.RUN_IDENTITY_PATTERN
     assert judge["properties"]["model_id"]["enum"] == [names.MODEL_CURRENT, names.MODEL_CHEAPER]
     run = contracts.load_schema("run_item")
     assert run["$defs"]["state"]["enum"] == list(names.STATES)
@@ -1601,7 +1811,7 @@ def test_answer_interface_matches_design():
         assert tuple(schema["required"]) == fields
         assert tuple(schema["properties"]) == fields
     request = contracts.load_schema("answer_request")
-    assert request["properties"]["identity"]["pattern"] == names.IDENTITY_PATTERN
+    assert request["properties"]["identity"]["pattern"] == names.RUN_IDENTITY_PATTERN
     response = contracts.load_schema("answer_response")
     assert response["properties"]["model_id"]["enum"] == [names.MODEL_CURRENT, names.MODEL_CHEAPER]
     valid("answer_request", {"question": names.PROBE_QUESTION, "identity": names.PROBE_IDENTITY})
@@ -1609,10 +1819,15 @@ def test_answer_interface_matches_design():
     for model in (names.MODEL_CURRENT, names.MODEL_CHEAPER):
         valid("answer_response", {**good, "model_id": model})
     for bad in (
-        {"question": "", "identity": "user-001"},
-        {"question": "x", "identity": "user-151"},
+        {"question": "", "identity": names.run_identity("rlive0230", 1)},
+        {"question": "x", "identity": "rlive0230-user-151"},
+        {"question": "x", "identity": names.IDENTITY_FIRST},
         {"question": "x"},
-        {"question": "x", "identity": "user-001", "run_id": "r202611271530"},
+        {
+            "question": "x",
+            "identity": names.run_identity("rlive0230", 1),
+            "run_id": "r202611271530",
+        },
     ):
         invalid("answer_request", bad)
     for bad in (
@@ -1629,7 +1844,8 @@ def test_answer_interface_matches_design():
         f"run in parallel, each asking `{names.PROBE_QUESTION}` as `{names.PROBE_IDENTITY}`."
         in probe
     )
-    assert names.PROBE_IDENTITY == names.IDENTITY_FIRST
+    assert names.PROBE_IDENTITY == names.run_identity(names.PROBE_RUN_ID, 1)
+    assert names.is_run_identity(names.PROBE_IDENTITY)
     assert "a reply that fails `answer_response` fails it" in probe
 
 
@@ -1683,8 +1899,9 @@ def test_results_definitions_match_design():
         "non-null `helpful_rate`, `mean_latency_ms` and `mean_cost_micro_usd`" in prose
     )
     assert "as a fraction (-0.05 is minus 5 percent)" in prose
-    assert "the win probability never goes in it" in prose
-    invalid("results", results(helpful_lift_ci_lower=-5.0))  # an unconverted percent
+    assert "it can fall below -1, because the interval is the lift plus or minus 1.96" in prose
+    valid("results", results(helpful_lift_ci_lower=-1.07))  # the judge hat's case, Gate 1
+    assert "prob_cheaper_not_worse" not in prose
     complete = contracts.load_schema("results")["$defs"]["complete_variation"]["properties"]
     assert complete["identities"] == {"minimum": names.MIN_IDENTITIES_PER_VARIATION}
     assert set(complete) == set(names.VARIATION_FIELDS)
@@ -1831,7 +2048,8 @@ PINNED_RULE_SENTENCES = (
     "and do not invoke `rm-judge`, so no `AnswerCostMicroUsd` or `AnswerHelpful` is emitted",
     "a missing flag or a failed read means off",
     # what the spikes found (task 1.4)
-    "and `flag.variant` is set, record the exposure with `track_exposure_event`.",
+    "the flag is enabled and `flag.variant` is set, record the exposure with "
+    "`track_exposure_event`, as the SDK's own `get_experiment_flag` would",
     "The SDK sends the value as a string, and Flagsmith aggregates it as a number (task 1.2)",
     "a buffer of one item drops events tracked in a row (task 1.2)",
     "Development and Production use v2 feature versioning: a feature's environment state changes "
@@ -1839,7 +2057,9 @@ PINNED_RULE_SENTENCES = (
     "or sends an experiment's status or rollout decision through MCP's experiment create or "
     "update tools",
     "The experiment's create carries its whole rollout block",
-    "Flagsmith has no primary-metric flag, so the agent attaches `helpful_rate` first.",
+    "The API has no primary-metric field, and whether the dashboard takes the first attached "
+    "metric as primary is untested, so the agent attaches `helpful_rate` first and task 5.1 "
+    "records which metric the dashboard shows as primary.",
     "in task 1.2 all events were in by about 2 minutes 15 seconds after the last was sent",
     "a refresh returns final results, as of the end (task 1.4)",
     "get-or-create the run's feature, options and experiment through the MCP server, and its "
@@ -1865,9 +2085,10 @@ def test_rule_sentences_are_pinned():
 
 def test_other_files_repeat_the_rules():
     review = re.sub(r"\s+", " ", (ROOT / "docs/REVIEW.md").read_text())
-    assert f"`AWS_PROFILE={names.REVIEW_PROFILE} aws sts get-caller-identity` shows the role" in (
+    assert f"`aws --profile {names.REVIEW_PROFILE} sts get-caller-identity` shows the role" in (
         review
     )
+    assert f"each with `--profile {names.REVIEW_PROFILE}`" in review
     assert f"`{names.REVIEW_ROLE}`" in review
     claude = re.sub(r"\s+", " ", (ROOT / "CLAUDE.md").read_text())
     assert (
@@ -1876,8 +2097,8 @@ def test_other_files_repeat_the_rules():
     )
     assert "An empty result means unknown, not zero" in claude
     assert (
-        "Task 1.3's usage reads returned nothing, so ask the human to read the Usage page after "
-        "each load" in claude
+        "The count lags by more than 25 minutes (Gate 1), so read it again later, or ask the "
+        "human to read the Usage page." in claude
     )
     spec = re.sub(
         r"\s+",
@@ -1946,6 +2167,17 @@ def test_console_script_once_the_cli_exists():
         pytest.skip("cli/ arrives with task 2.6; the lead adds the console script then")
     scripts = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"].get("scripts", {})
     assert scripts.get(names.CLI_NAME) == names.CLI_ENTRY_POINT
+    # Gate 1: an unpackaged project installs no console script, so run it for real.
+    import shutil
+    import subprocess
+
+    uv = shutil.which("uv")
+    if uv is None:
+        pytest.skip("uv is not on PATH")
+    done = subprocess.run(
+        [uv, "run", names.CLI_NAME, "--help"], cwd=ROOT, capture_output=True, text=True
+    )
+    assert done.returncode == names.CLI_EXIT_OK, done.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -2013,6 +2245,10 @@ def test_spike_findings_match_design():
 # Every tuple, list, dict or set constant names the test that ties it to its
 # source, so a new collection constant cannot land without one.
 TIED_BY = {
+    "FLAGSMITH_ADMIN_FORBIDDEN_PATHS": test_contract_c2,
+    "FLAGSMITH_ADMIN_METHODS": test_contract_c2,
+    "FLAGSMITH_EXPERIMENT_STATUSES": test_contract_c2,
+    "MCP_EXPERIMENT_FORBIDDEN_FIELDS": test_contract_c2,
     "FORBIDDEN_SAMPLING_PARAMETERS": test_list_constants_match_their_design_lists,
     "VARIANTS": test_list_constants_match_their_design_lists,
     "EVENTS": test_list_constants_match_their_design_lists,
@@ -2464,7 +2700,7 @@ GOOD_VARIATION = {
         ("run_item", lambda: run_item(experiment_id=-1)),
         ("run_item", lambda: run_item(prompt="")),
         ("plan", lambda: plan(summary="")),
-        ("results", lambda: results(prob_cheaper_not_worse=-0.2)),
+        ("results", lambda: results(prob_cheaper_not_worse=None)),
         (
             "results",
             lambda: results(
