@@ -12,7 +12,7 @@ data "aws_iam_policy_document" "scheduler_trust" {
 
     principals {
       type        = "Service"
-      identifiers = ["scheduler.amazonaws.com"]
+      identifiers = [local.names.SCHEDULER_SERVICE_PRINCIPAL]
     }
 
     condition {
@@ -50,8 +50,9 @@ resource "aws_iam_role_policy" "scheduler" {
 }
 
 # Every 2 minutes, from a run's launch to its terminal state, rm-tick sends the tick payload to
-# rm-invoker. The agent's schedule tool rewrites every field when it changes the state
-# (design.md section 7), so the schedule carries only the fields it needs: no description.
+# rm-invoker. The agent's schedule tool writes back every field GetSchedule returned, changing
+# only its state (design.md section 7), so the schedule carries only the fields it needs: no
+# description.
 resource "aws_scheduler_schedule" "tick" {
   name       = local.names.TICK_SCHEDULE
   group_name = local.names.TICK_SCHEDULE_GROUP

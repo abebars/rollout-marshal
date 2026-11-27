@@ -29,10 +29,11 @@ locals {
 }
 
 data "archive_file" "invoker" {
-  type             = "zip"
-  output_path      = "${path.module}/build/${local.names.INVOKER_FUNCTION}.zip"
-  output_file_mode = "0644"
+  type        = "zip"
+  output_path = "${path.module}/build/${local.names.INVOKER_FUNCTION}.zip"
 
+  # `source` blocks write MS-DOS entries with no Unix mode; output_file_mode applies only to
+  # source_dir/source_file (archive v2.8.1); after-apply step 2 proves Lambda can read them.
   dynamic "source" {
     for_each = local.invoker_files
     content {
