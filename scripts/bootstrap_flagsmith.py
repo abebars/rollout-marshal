@@ -87,12 +87,14 @@ def urllib_transport(method: str, url: str, headers: dict, body: object) -> tupl
 
 def path_of(url: object) -> str | None:
     """A list reply's `next` link as a path under the Admin API, or None when there is no
-    next page. A link to any other host is refused."""
+    next page. A link to any other host is a FlagsmithError, not Refused: it comes after
+    a script's writes (reset.py reads the list last), and Refused means nothing was
+    written."""
     if not url:
         return None
     parts, base = urllib.parse.urlsplit(str(url)), urllib.parse.urlsplit(API_BASE_URL)
     if (parts.scheme, parts.netloc) != (base.scheme, base.netloc):
-        raise Refused(f"a next page outside {API_BASE_URL}")
+        raise FlagsmithError(f"a next page outside {API_BASE_URL}")
     return parts.path + (f"?{parts.query}" if parts.query else "")
 
 

@@ -19,6 +19,7 @@ from contracts import names
 DEV_ID, PROD_ID = 119136, 119137
 DEV_KEY, PROD_KEY = "devEnvKeyForTests123", "prodEnvKeyForTests456"
 P = f"/api/v1/projects/{names.FLAGSMITH_PROJECT_ID}"
+EXPERIMENT_NEXT_CAP = 60  # more than reset.py's 50 pages
 
 
 class FakeFlagsmith:
@@ -32,6 +33,7 @@ class FakeFlagsmith:
         self.experiments: list[dict] = []
         self.fail: dict[tuple[str, str], int] = {}  # (method, path regex) -> status
         self.experiment_page_size = 0  # 0: one page; n: pages of n, linked by `next`
+        self.experiment_next: str | None = None  # the one page's `next`, when there are no pages
         self.usage_count = 150  # GET .../usage-data/total-count/
         self.results: dict[int, list[dict]] = {}  # experiment ID -> its results replies, in turn
         self.refreshes: list[int] = []
@@ -172,7 +174,13 @@ class FakeFlagsmith:
                 status = query.get("status", [None])[0]
                 found = [e for e in self.experiments if status in (None, e["status"])]
                 if not self.experiment_page_size:
-                    return 200, {"results": copy.deepcopy(found), "next": None}
+                    # A self-pointing `next` stops after EXPERIMENT_NEXT_CAP reads, so a
+                    # script with no page limit fails its test instead of hanging it.
+                    listed = sum(
+                        1 for m, p, _ in self.requests if m == "GET" and "/experiments/" in p
+                    )
+                    link = self.experiment_next if listed < EXPERIMENT_NEXT_CAP else None
+                    return 200, {"results": copy.deepcopy(found), "next": link}
                 page = int(query.get("page", ["1"])[0])
                 size = self.experiment_page_size
                 more = page * size < len(found)
