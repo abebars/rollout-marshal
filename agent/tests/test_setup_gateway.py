@@ -702,3 +702,76 @@ def test_the_role_may_invoke_rm_flagsmith_admin_and_no_other_function():
             "Resource": [ADMIN_ARN],
         }
     ]
+
+
+# CreateGatewayTarget's refusal one second after the role's policy was set (task 2.7's live run).
+NOT_YET = (
+    "Gateway execution role lacks permission to invoke Lambda function "
+    f"{ADMIN_ARN}. Update the permission and retry"
+)
+
+
+def _admin_create_params():
+    return {
+        "gatewayIdentifier": GATEWAY_ID,
+        "name": names.GATEWAY_TARGET_FLAGSMITH_ADMIN,
+        "description": ANY,
+        "targetConfiguration": sg.admin_target_configuration(),
+        "credentialProviderConfigurations": [{"credentialProviderType": "GATEWAY_IAM_ROLE"}],
+    }
+
+
+def _refused(stubs, message=NOT_YET):
+    stubs.control.add_client_error(
+        "create_gateway_target",
+        service_error_code="ValidationException",
+        service_message=message,
+        http_status_code=400,
+        expected_params=_admin_create_params(),
+    )
+
+
+def _run_counting_sleeps(clients):
+    sleeps: list[float] = []
+    summary = sg.run(clients, out=lambda _line: None, sleep=sleeps.append)
+    return summary, sleeps
+
+
+def test_the_admin_target_is_created_once_the_roles_new_policy_applies():
+    clients = _clients()
+    with Stubs(clients) as stubs:
+        _found_up_to_the_admin_target(stubs)
+        _admin_targets_listed(stubs, present=False)
+        _refused(stubs)
+        stubs.control.add_response(
+            "create_gateway_target", _admin_target_body(status="CREATING"), _admin_create_params()
+        )
+        _get_admin_target(stubs, status="READY")
+        summary, sleeps = _run_counting_sleeps(clients)
+        stubs.assert_done()
+    assert summary["created"] == [names.GATEWAY_TARGET_FLAGSMITH_ADMIN]
+    assert sleeps[0] == sg.POLL_SECONDS
+
+
+def test_a_policy_that_never_applies_stops_after_the_propagation_wait():
+    clients = _clients()
+    tries = sg.ROLE_PROPAGATION_SECONDS // sg.POLL_SECONDS + 1
+    with Stubs(clients) as stubs:
+        _found_up_to_the_admin_target(stubs)
+        _admin_targets_listed(stubs, present=False)
+        for _ in range(tries):
+            _refused(stubs)
+        with pytest.raises(Exception, match="lacks permission to invoke Lambda"):
+            _run_counting_sleeps(clients)
+        stubs.assert_done()
+
+
+def test_any_other_refusal_of_the_admin_target_is_not_retried():
+    clients = _clients()
+    with Stubs(clients) as stubs:
+        _found_up_to_the_admin_target(stubs)
+        _admin_targets_listed(stubs, present=False)
+        _refused(stubs, message="1 validation error detected: inlinePayload")
+        with pytest.raises(Exception, match="inlinePayload"):
+            _run_counting_sleeps(clients)
+        stubs.assert_done()

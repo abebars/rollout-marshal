@@ -16,7 +16,9 @@ Each piece is found by name and created only when missing, in this order:
 5. Lambda target ``flagsmith-admin`` for ``rm-flagsmith-admin`` (task 2.2), with the
    Gateway's service role as its outbound auth, the only kind a Lambda target takes. Its
    tool schema lists the function's five tools, each with its one-line description and
-   its arguments, from agent/flagsmith_admin/handler.py.
+   its arguments, from agent/flagsmith_admin/handler.py. CreateGatewayTarget checks the
+   role's invoke permission, so the create is retried while the policy set in step 2
+   propagates.
 
 A piece that exists but differs from the contract stops the run with an error for
 the human; nothing is changed to make it match. Run it with the human's credentials:
@@ -58,7 +60,7 @@ READY = "READY"
 FAILED_STATES = frozenset({"FAILED", "UPDATE_UNSUCCESSFUL", "SYNCHRONIZE_UNSUCCESSFUL", "DELETING"})
 WAIT_SECONDS = 300
 POLL_SECONDS = 5
-ROLE_PROPAGATION_SECONDS = 60  # a new IAM role can take a few seconds to be assumable
+ROLE_PROPAGATION_SECONDS = 60  # a new IAM role, or a role's new policy, takes seconds to apply
 
 DESCRIPTION = "Rollout Marshal (design.md section 7): Flagsmith MCP tools for rm_agent"
 ADMIN_DESCRIPTION = (
@@ -589,16 +591,37 @@ class Setup:
             self.would_create.append(name)
             self.say(f"would create target {name} -> {names.FLAGSMITH_ADMIN_FUNCTION}")
             return None
-        created = self.c.control.create_gateway_target(
-            gatewayIdentifier=gateway_id,
-            name=name,
-            description=ADMIN_DESCRIPTION,
-            targetConfiguration=admin_target_configuration(),
-            credentialProviderConfigurations=admin_credential_configuration(),
-        )
+        created = self._create_admin_target(gateway_id)
         self.created.append(name)
         self.say(f"created target {name} ({created['targetId']})")
         return self._wait_target(gateway_id, created, name)
+
+    def _create_admin_target(self, gateway_id: str) -> dict:
+        """CreateGatewayTarget checks that the Gateway's role may invoke the function. Step 2
+        set that policy moments before, and IAM takes a few seconds to apply it: task 2.7's
+        first run was refused this way one second after the policy was set. Retry only that
+        refusal, for up to ROLE_PROPAGATION_SECONDS."""
+        waited = 0
+        while True:
+            try:
+                return self.c.control.create_gateway_target(
+                    gatewayIdentifier=gateway_id,
+                    name=names.GATEWAY_TARGET_FLAGSMITH_ADMIN,
+                    description=ADMIN_DESCRIPTION,
+                    targetConfiguration=admin_target_configuration(),
+                    credentialProviderConfigurations=admin_credential_configuration(),
+                )
+            except Exception as exc:  # noqa: BLE001 - retry only a policy not yet applied
+                propagating = _error_code(exc) == "ValidationException" and (
+                    "lacks permission to invoke lambda" in str(exc).lower()
+                )
+                if not propagating or waited >= ROLE_PROPAGATION_SECONDS:
+                    raise
+                self.say(
+                    f"the role's invoke permission is not applied yet; again in {POLL_SECONDS} s"
+                )
+                self.sleep(POLL_SECONDS)
+                waited += POLL_SECONDS
 
 
 def run(
