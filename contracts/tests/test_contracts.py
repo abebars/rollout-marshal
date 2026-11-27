@@ -222,6 +222,11 @@ NOT_A_NAME = {
     "--profile rm-review": "the AWS CLI option and REVIEW_PROFILE, in the review-access rule",
     "AWS_PROFILE": "an AWS CLI environment variable the review-access rule warns about",
     "run_identity()": "helper in contracts.names; test_run_identities",
+    "is_run_identity()": "helper in contracts.names; test_run_identities",
+    "--run-id": "load.py's option, in section 4's identity rule",
+    "-user-": "the separator in a run identity, in section 4's identity rule",
+    "app/": "B's root package (design.md section 12)",
+    "import app": "the Python statement the entrypoint's name avoids",
     "agent/tests/": "a repo path (design.md section 12, A's agent/)",
     "codeLocation": "the AgentCore CLI's agentcore.json field",
     "contracts": "the repo's contracts package, linked into the code folder",
@@ -317,6 +322,12 @@ def test_run_identities():
     assert not names.is_run_identity(names.IDENTITY_FIRST)
     assert not names.is_run_identity(f"{run_id}-user-151")
     assert not names.is_run_identity(f"{run_id}-user-000")
+    assert not names.is_run_identity(f"{run_id}-user-001\n")
+    sec4 = re.sub(r"\s+", " ", section(4))
+    assert "| Identity format | the run ID, a hyphen, then `user-001` to `user-150`" in sec4
+    assert (
+        "with the pointer's `run_id` before `-user-`) gets a 400 before any Flagsmith call" in sec4
+    )
     with pytest.raises(ValueError):
         names.run_identity("live0230", 1)
     with pytest.raises(ValueError):
@@ -326,8 +337,8 @@ def test_run_identities():
     row = re.sub(r"\s+", " ", section(7))
     assert (
         f"so the code lives in `{names.AGENT_CODE_DIR}` (the CLI's `codeLocation` "
-        f"`{names.AGENT_CODE_LOCATION}`, entrypoint `{names.AGENT_ENTRYPOINT}`) as the package "
-        f"`{names.AGENT_PACKAGE}`" in row
+        f"`{names.AGENT_CODE_LOCATION}`, entrypoint `{names.AGENT_ENTRYPOINT}`, so no test's "
+        f"`import app` finds B's `app/`) as the package `{names.AGENT_PACKAGE}`" in row
     )
     pyproject = (ROOT / "pyproject.toml").read_text()
     assert f'pythonpath = [".", "{names.AGENT_CODE_DIR.rstrip("/")}"]' in pyproject
@@ -343,6 +354,55 @@ def test_run_identities():
         r"\s+", " ", (ROOT / "openspec/changes/build-rollout-marshal/tasks.md").read_text()
     )
     assert "`scripts/load.py --run-id <run_id> --users N --questions M --url <api>`" in tasks
+    assert "`run_identity(run_id, n)`" in tasks
+    code = names.AGENT_CODE_DIR
+    for path in ("rm_agent/state.py", "rm_agent/planner.py", "rm_agent/handlers.py"):
+        assert f"`{code}{path}`" in tasks
+    assert f"`{code}{names.AGENT_ENTRYPOINT}`" in tasks
+    assert (
+        f"`codeLocation` `{names.AGENT_CODE_LOCATION}`, entrypoint `{names.AGENT_ENTRYPOINT}`"
+        in tasks
+    )
+    assert f"`{code}rm_agent/tools/flagsmith.py`" in tasks
+    assert (
+        f"The rule is `{names.ALARM_RULE}`, the function's role `{names.INVOKER_ROLE}`, and "
+        f"`{names.TICK_SCHEDULE}` sits in the `{names.TICK_SCHEDULE_GROUP}` group with execution "
+        f"role `{names.SCHEDULER_ROLE}`" in tasks
+    )
+    assert "`lifecycle { ignore_changes = [state] }`" in tasks
+    assert "`rm-tick` (created disabled, with `lifecycle { ignore_changes = [state] }`" in tasks
+    assert (
+        "It adds `runtime/contracts` to `agent/conftest.py`'s `collect_ignore`, or pytest "
+        "collects the contracts suite twice through the symlink." in tasks
+    )
+    assert (
+        f"The runtime's role gets `iam:PassRole` on `{names.SCHEDULER_ROLE}`, with "
+        f"`iam:PassedToService` `{names.SCHEDULER_SERVICE_PRINCIPAL}`" in tasks
+    )
+    assert "`<run_id>1-user-001` and a trailing newline" in tasks
+    design = (ROOT / "openspec/changes/build-rollout-marshal/design.md").read_text()
+    assert "app.py" not in tasks and "app.py" not in design
+    sec4 = re.sub(r"\s+", " ", section(4))
+    assert (
+        "1. Read the active run pointer (section 6). With an active run, an `identity` that is "
+        "not one of that run's (`is_run_identity()`, with the pointer's `run_id` before "
+        "`-user-`) gets a 400 before any Flagsmith call, so a wrong `--run-id` cannot reuse an "
+        "old run's identities (Gate 1)." in sec4
+    )
+    sec7 = re.sub(r"\s+", " ", section(7))
+    assert (
+        "reads it with GetSchedule and writes back every field it returned that UpdateSchedule "
+        "takes (all but Arn, CreationDate and LastModificationDate), changing only its state. "
+        f"That passes `{names.SCHEDULER_ROLE}` to `{names.SCHEDULER_SERVICE_PRINCIPAL}`, so the "
+        "runtime's role needs pass-role on it (task 2.7)" in sec7
+    )
+    sec11 = re.sub(r"\s+", " ", section(11))
+    assert (
+        f"Each request is one JSON `answer_request` (`question`, `identity`) posted to `--url`, "
+        f"the full URL of the HTTP API's only route, `{names.API_ROUTE_KEY}`" in sec11
+    )
+    assert "from the shell's AWS credentials" in sec11
+    assert "A load never prints the URL. The shell's credentials need `execute-api:Invoke`" in sec11
     assert tasks.count("`load.py --run-id <run_id> --users 150") == 3
     assert "load.py --users" not in tasks
     load = re.sub(r"\s+", " ", section(11))
@@ -354,7 +414,7 @@ def test_run_identities():
         f"`{names.API_SIGV4_SERVICE}`)" in load
     )
     spec = (ROOT / "openspec/changes/build-rollout-marshal/specs/assistant-api/spec.md").read_text()
-    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10`" in spec
+    assert "`scripts/load.py --run-id <run_id> --users 150 --questions 10 --url <api>`" in spec
     assert "load.py --users" not in spec
     assert (
         "load.py --users"
