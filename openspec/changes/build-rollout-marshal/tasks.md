@@ -765,7 +765,7 @@ their tasks name, not against each other.
 
 ## 6. Workstream D: proof and submission
 
-- [ ] 6.1 **Time saved**
+- [x] 6.1 **Time saved** (PR #41 merged; the dashboard pass done by the lead agent at Ahmed's instruction)
   - Needs: 5.1. Files: `docs/time-saved.md`.
   - Do: list the manual dashboard steps to set up the same experiment.
     **Human** performs them once, timed, on scratch names only while no run
@@ -774,7 +774,7 @@ their tasks name, not against each other.
     with the review time shown inside it, comes from 5.1's e2e timestamps.
   - Pass: both numbers, the step list and the method are in the file.
 
-- [ ] 6.2 **README**
+- [x] 6.2 **README** (PR #41 merged; the README-only reader at Gate 4 named every simulated part)
   - Needs: 5.1, 6.1. Files: `README.md`.
   - Must contain: the problem; the architecture; setup steps a stranger
     can follow; how Flagsmith is used (MCP, Admin API, SDK,
@@ -786,7 +786,7 @@ their tasks name, not against each other.
   - Pass: a goldfish given only the README states what the project does
     and names every simulated part.
 
-- [ ] 6.3 **Video script and shot list**
+- [x] 6.3 **Video script and shot list** (PR #41 merged; approved by Ahmed 2026-11-27T21:42:17Z; it films the short run of docs/submission.md)
   - Needs: 5.2, 6.1. Files: `docs/video-script.md`.
   - Six beats: the ask, the plan and approval, the setup, the failure,
     the rollback and resume, the decision. Problem stated in the first 15
