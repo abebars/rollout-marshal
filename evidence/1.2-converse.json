@@ -1,0 +1,249 @@
+{
+  "region": "us-east-1",
+  "calls": [
+    {
+      "name": "current_effort_low",
+      "optional": false,
+      "request": {
+        "modelId": "us.anthropic.claude-fable-5-1",
+        "system": [
+          {
+            "text": "You are the support assistant for a fictional SaaS product. Answer the customer's question in at most 120 words."
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "text": "How do I reset my password?"
+              }
+            ]
+          }
+        ],
+        "inferenceConfig": {
+          "maxTokens": 2000
+        },
+        "additionalModelRequestFields": {
+          "output_config": {
+            "effort": "low"
+          }
+        }
+      },
+      "wall_ms": 5196.9,
+      "stop_reason": "end_turn",
+      "text": "To reset your password:\n\n1. Go to the login page and click **\"Forgot password?\"**\n2. Enter the email address linked to your account.\n3. Check your inbox for a reset link (it may take a minute—check spam if you don't see it).\n4. Click the link and enter your new password. It must be at least 8 characters and include a number or symbol.\n5. Log in with your new credentials.\n\nThe reset link expires after 30 minutes. If it expires, just request a new one.\n\nIf you're already logged in and want to change your password, go to **Settings → Security → Change Password**.\n\nStill having trouble? Let me know and I can help further.",
+      "content_blocks": [
+        "text"
+      ],
+      "usage": {
+        "inputTokens": 51,
+        "outputTokens": 197,
+        "totalTokens": 248,
+        "cacheReadInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "bedrock_latency_ms": 5072,
+      "request_id": "c438e2c3-2e8a-41ac-8739-2392ea4217cf",
+      "ok": true
+    },
+    {
+      "name": "cheaper_effort_low",
+      "optional": false,
+      "request": {
+        "modelId": "us.anthropic.claude-sonnet-5",
+        "system": [
+          {
+            "text": "You are the support assistant for a fictional SaaS product. Answer the customer's question in at most 120 words."
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "text": "How do I reset my password?"
+              }
+            ]
+          }
+        ],
+        "inferenceConfig": {
+          "maxTokens": 2000
+        },
+        "additionalModelRequestFields": {
+          "output_config": {
+            "effort": "low"
+          }
+        }
+      },
+      "wall_ms": 2790.6,
+      "stop_reason": "end_turn",
+      "text": "To reset your password:\n\n1. Go to the login page and click **\"Forgot Password?\"**\n2. Enter the email address associated with your account\n3. Check your inbox for a password reset link (check spam/junk if you don't see it within a few minutes)\n4. Click the link and create a new password\n5. Log in with your new password\n\nThe reset link typically expires after 30–60 minutes for security reasons, so if it stops working, just request a new one.\n\nIf you don't receive the email at all, double-check you're using the correct account email, or reach out to us and we can verify your account details and resend it.\n\nLet me know if you run into any issues!",
+      "content_blocks": [
+        "text"
+      ],
+      "usage": {
+        "inputTokens": 49,
+        "outputTokens": 194,
+        "totalTokens": 243,
+        "cacheReadInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "bedrock_latency_ms": 2782,
+      "request_id": "c4610ca0-ee83-4f8b-905e-64cf7229e311",
+      "ok": true
+    },
+    {
+      "name": "judge_thinking_disabled",
+      "optional": false,
+      "request": {
+        "modelId": "us.anthropic.claude-haiku-5-5",
+        "system": [
+          {
+            "text": "You grade one support answer for helpfulness. Reply with only JSON: {\"helpful\": true} or {\"helpful\": false}."
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "text": "Question: How do I reset my password?\nAnswer: Open Settings, choose Security, then Reset password, and follow the emailed link."
+              }
+            ]
+          }
+        ],
+        "inferenceConfig": {
+          "maxTokens": 200
+        },
+        "additionalModelRequestFields": {
+          "thinking": {
+            "type": "disabled"
+          }
+        }
+      },
+      "wall_ms": 533.8,
+      "stop_reason": "end_turn",
+      "text": "{\"helpful\": true}",
+      "content_blocks": [
+        "text"
+      ],
+      "usage": {
+        "inputTokens": 91,
+        "outputTokens": 10,
+        "totalTokens": 101,
+        "cacheReadInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "bedrock_latency_ms": 524,
+      "request_id": "eded1be9-22d2-4e6a-b54e-519afd19c828",
+      "ok": true
+    },
+    {
+      "name": "cheaper_thinking_disabled",
+      "optional": false,
+      "request": {
+        "modelId": "us.anthropic.claude-sonnet-5",
+        "system": [
+          {
+            "text": "You grade one support answer for helpfulness. Reply with only JSON: {\"helpful\": true} or {\"helpful\": false}."
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "text": "Question: How do I reset my password?\nAnswer: Open Settings, choose Security, then Reset password, and follow the emailed link."
+              }
+            ]
+          }
+        ],
+        "inferenceConfig": {
+          "maxTokens": 200
+        },
+        "additionalModelRequestFields": {
+          "thinking": {
+            "type": "disabled"
+          }
+        }
+      },
+      "notes": "Sonnet 5 with the judge's thinking-disabled request: it worked once, on one canned answer (reworded at Gate 1; the run recorded 'as a proven fallback')",
+      "wall_ms": 855.2,
+      "stop_reason": "end_turn",
+      "text": "{\"helpful\": true}",
+      "content_blocks": [
+        "text"
+      ],
+      "usage": {
+        "inputTokens": 90,
+        "outputTokens": 10,
+        "totalTokens": 100,
+        "cacheReadInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "bedrock_latency_ms": 845,
+      "request_id": "a02797d5-1c6a-41c9-be6c-1cadb25469cd",
+      "ok": true
+    },
+    {
+      "name": "current_thinking_disabled",
+      "optional": true,
+      "request": {
+        "modelId": "us.anthropic.claude-fable-5-1",
+        "system": [
+          {
+            "text": "You are the support assistant for a fictional SaaS product. Answer the customer's question in at most 120 words."
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "text": "How do I reset my password?"
+              }
+            ]
+          }
+        ],
+        "inferenceConfig": {
+          "maxTokens": 2000
+        },
+        "additionalModelRequestFields": {
+          "thinking": {
+            "type": "disabled"
+          }
+        }
+      },
+      "notes": "Fable 5.1 cannot disable thinking (AWS model card); one attempt for the 400",
+      "wall_ms": 312.2,
+      "error": {
+        "code": "ValidationException",
+        "message": "The model returned the following errors: \"thinking.type.disabled\" is not supported for this model. Use \"thinking.type.adaptive\" and \"output_config.effort\" to control thinking behavior.",
+        "http_status": 400,
+        "request_id": "64616466-0120-4dfa-a5fa-e62fbf6c6d13"
+      },
+      "ok": true
+    }
+  ],
+  "required_ok": true,
+  "action": "converse",
+  "started_at": "2026-11-26T22:24:48.993826+00:00",
+  "finished_at": "2026-11-26T22:24:58.703399+00:00",
+  "aws_request_id": "cb178152-4d19-425b-98f2-07ada030fe9b",
+  "function_name": "rm-spike-sdk",
+  "container": {
+    "id": "4e3de4e8f51f4fcc8a7235bdfa3c8a8b",
+    "invocation": 4
+  },
+  "versions": {
+    "python": "3.13.18",
+    "machine": "aarch64",
+    "flagsmith": "6.7.0",
+    "flagsmith-flag-engine": "11.1.2",
+    "requests": "2.34.2",
+    "urllib3": "2.8.0",
+    "boto3": "1.42.97",
+    "botocore": "1.42.97"
+  }
+}

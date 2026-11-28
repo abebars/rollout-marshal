@@ -1,0 +1,9 @@
+module.agent.aws_iam_role_policy.runtime_tools: Creating...
+module.agent.aws_iam_role_policy.runtime_tools: Creation complete after 0s [id=AgentCore-rm-default-ApplicationRuntimeRmAgentRunti-rwUuyzrobL7p:rm-agent-runtime-tools]
+
+Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+ask_url = <sensitive>
+review_role_arn = "arn:aws:iam::818928662830:role/rm-review-readonly"

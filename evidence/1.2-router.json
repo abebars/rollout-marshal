@@ -1,0 +1,2215 @@
+{
+  "feature": "spike_flag",
+  "aborted": null,
+  "client": {
+    "instance": "609a225c8ef340369b5c980a1440ff5e",
+    "evaluation": "remote",
+    "api_url": "https://edge.api.flagsmith.com/api/v1/",
+    "events_endpoint": "https://events.api.flagsmith.com/v1/events",
+    "max_buffer_items": 1000,
+    "flush_interval_seconds": 10.0
+  },
+  "assignments": {
+    "user-001": "cheaper",
+    "user-002": "current",
+    "user-003": "cheaper",
+    "user-004": "cheaper",
+    "user-005": "cheaper",
+    "user-006": "current",
+    "user-007": "current",
+    "user-008": "cheaper",
+    "user-009": "current",
+    "user-010": "cheaper",
+    "user-011": "cheaper",
+    "user-012": "cheaper",
+    "user-013": "cheaper",
+    "user-014": "current",
+    "user-015": "cheaper",
+    "user-016": "cheaper",
+    "user-017": "cheaper",
+    "user-018": "cheaper",
+    "user-019": "cheaper",
+    "user-020": "current",
+    "user-021": "current",
+    "user-022": "cheaper",
+    "user-023": "current",
+    "user-024": "current",
+    "user-025": "cheaper",
+    "user-026": "current",
+    "user-027": "current",
+    "user-028": "cheaper",
+    "user-029": "current",
+    "user-030": "cheaper",
+    "user-031": "current",
+    "user-032": "current",
+    "user-033": "cheaper",
+    "user-034": "current",
+    "user-035": "cheaper",
+    "user-036": "cheaper",
+    "user-037": "cheaper",
+    "user-038": "cheaper",
+    "user-039": "cheaper",
+    "user-040": "current",
+    "user-041": "cheaper",
+    "user-042": "current",
+    "user-043": "current",
+    "user-044": "cheaper",
+    "user-045": "cheaper",
+    "user-046": "current",
+    "user-047": "current",
+    "user-048": "cheaper",
+    "user-049": "current",
+    "user-050": "cheaper",
+    "user-051": "current",
+    "user-052": "current",
+    "user-053": "current",
+    "user-054": "cheaper",
+    "user-055": "cheaper",
+    "user-056": "current",
+    "user-057": "cheaper",
+    "user-058": "cheaper",
+    "user-059": "current",
+    "user-060": "cheaper",
+    "user-061": "current",
+    "user-062": "current",
+    "user-063": "current",
+    "user-064": "current",
+    "user-065": "cheaper",
+    "user-066": "current",
+    "user-067": "current",
+    "user-068": "current",
+    "user-069": "cheaper",
+    "user-070": "current",
+    "user-071": "current",
+    "user-072": "cheaper",
+    "user-073": "cheaper",
+    "user-074": "cheaper",
+    "user-075": "current",
+    "user-076": "cheaper",
+    "user-077": "current",
+    "user-078": "cheaper",
+    "user-079": "current",
+    "user-080": "current",
+    "user-081": "current",
+    "user-082": "current",
+    "user-083": "cheaper",
+    "user-084": "cheaper",
+    "user-085": "current",
+    "user-086": "cheaper",
+    "user-087": "current",
+    "user-088": "current",
+    "user-089": "current",
+    "user-090": "cheaper",
+    "user-091": "cheaper",
+    "user-092": "current",
+    "user-093": "cheaper",
+    "user-094": "current",
+    "user-095": "cheaper",
+    "user-096": "current",
+    "user-097": "current",
+    "user-098": "current",
+    "user-099": "current",
+    "user-100": "cheaper",
+    "user-101": "current",
+    "user-102": "current",
+    "user-103": "current",
+    "user-104": "current",
+    "user-105": "cheaper",
+    "user-106": "cheaper",
+    "user-107": "cheaper",
+    "user-108": "cheaper",
+    "user-109": "current",
+    "user-110": "current",
+    "user-111": "cheaper",
+    "user-112": "cheaper",
+    "user-113": "current",
+    "user-114": "current",
+    "user-115": "cheaper",
+    "user-116": "current",
+    "user-117": "cheaper",
+    "user-118": "current",
+    "user-119": "cheaper",
+    "user-120": "cheaper",
+    "user-121": "cheaper",
+    "user-122": "current",
+    "user-123": "cheaper",
+    "user-124": "current",
+    "user-125": "current",
+    "user-126": "cheaper",
+    "user-127": "cheaper",
+    "user-128": "current",
+    "user-129": "current",
+    "user-130": "cheaper",
+    "user-131": "current",
+    "user-132": "cheaper",
+    "user-133": "cheaper",
+    "user-134": "cheaper",
+    "user-135": "cheaper",
+    "user-136": "cheaper",
+    "user-137": "current",
+    "user-138": "cheaper",
+    "user-139": "current",
+    "user-140": "cheaper",
+    "user-141": "cheaper",
+    "user-142": "cheaper",
+    "user-143": "current",
+    "user-144": "cheaper",
+    "user-145": "cheaper",
+    "user-146": "current",
+    "user-147": "cheaper",
+    "user-148": "cheaper",
+    "user-149": "current",
+    "user-150": "cheaper"
+  },
+  "arm_counts": {
+    "cheaper": 78,
+    "current": 72
+  },
+  "not_in_experiment": [],
+  "unexpected_values": [],
+  "samples": {
+    "current": {
+      "identity": "user-002",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    "cheaper": {
+      "identity": "user-001",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    }
+  },
+  "variants_by_arm": {
+    "current": [
+      {
+        "variant": "control",
+        "count": 72
+      }
+    ],
+    "cheaper": [
+      {
+        "variant": "cheaper",
+        "count": 78
+      }
+    ]
+  },
+  "experiment_ids": [
+    807
+  ],
+  "enabled_counts": {
+    "true": 150
+  },
+  "exposures_tracked": 150,
+  "identity_requests": {
+    "count": 150,
+    "statuses": {
+      "200": 150
+    },
+    "max_elapsed_ms": 129.3
+  },
+  "event_posts": [
+    {
+      "status": 202,
+      "events": 150,
+      "elapsed_ms": 416.9
+    }
+  ],
+  "events_tracked": 150,
+  "events_delivered": 150,
+  "delivered_before_return": true,
+  "events_refused": false,
+  "instrumentation_unavailable": [],
+  "sdk_log": [],
+  "seconds": {
+    "identity_loop": 8.418,
+    "flush_events": 0.418
+  },
+  "identities": [
+    {
+      "identity": "user-001",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-002",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-003",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-004",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-005",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-006",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-007",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-008",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-009",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-010",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-011",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-012",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-013",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-014",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-015",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-016",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-017",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-018",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-019",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-020",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-021",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-022",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-023",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-024",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-025",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-026",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-027",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-028",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-029",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-030",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-031",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-032",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-033",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-034",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-035",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-036",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-037",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-038",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-039",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-040",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-041",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-042",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-043",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-044",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-045",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-046",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-047",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-048",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-049",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-050",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-051",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-052",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-053",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-054",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-055",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-056",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-057",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-058",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-059",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-060",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-061",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-062",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-063",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-064",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-065",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-066",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-067",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-068",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-069",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-070",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-071",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-072",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-073",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-074",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-075",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-076",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-077",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-078",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-079",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-080",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-081",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-082",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-083",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-084",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-085",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-086",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-087",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-088",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-089",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-090",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-091",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-092",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-093",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-094",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-095",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-096",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-097",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-098",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-099",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-100",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-101",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-102",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-103",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-104",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-105",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-106",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-107",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-108",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-109",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-110",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-111",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-112",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-113",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-114",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-115",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-116",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-117",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-118",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-119",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-120",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-121",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-122",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-123",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-124",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-125",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-126",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-127",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-128",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-129",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-130",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-131",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-132",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-133",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-134",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-135",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-136",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-137",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-138",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-139",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-140",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-141",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-142",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-143",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-144",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-145",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-146",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-147",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-148",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-149",
+      "enabled": true,
+      "value": "current",
+      "variant": "control",
+      "reason": "TARGETING_MATCH; segment=experiment-807-rollout",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    },
+    {
+      "identity": "user-150",
+      "enabled": true,
+      "value": "cheaper",
+      "variant": "cheaper",
+      "reason": "SPLIT; weight=50.0",
+      "experiment": {
+        "id": 807,
+        "name": "spike_sdk_join",
+        "in_experiment": true
+      },
+      "exposure_tracked": true
+    }
+  ],
+  "key_is_server_side": false,
+  "action": "router",
+  "started_at": "2026-11-26T22:24:08.303875+00:00",
+  "finished_at": "2026-11-26T22:24:18.088924+00:00",
+  "aws_request_id": "b002c34a-21aa-416e-a467-b9f31957f12f",
+  "function_name": "rm-spike-sdk",
+  "container": {
+    "id": "4e3de4e8f51f4fcc8a7235bdfa3c8a8b",
+    "invocation": 2
+  },
+  "versions": {
+    "python": "3.13.18",
+    "machine": "aarch64",
+    "flagsmith": "6.7.0",
+    "flagsmith-flag-engine": "11.1.2",
+    "requests": "2.34.2",
+    "urllib3": "2.8.0",
+    "boto3": "1.42.97",
+    "botocore": "1.42.97"
+  }
+}

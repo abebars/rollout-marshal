@@ -16,7 +16,9 @@ Read in this order before doing anything:
   `2026-11-29T02:00:00Z`.
 - Work only in AWS account `818928662830`, region `us-east-1`. Run
   `aws sts get-caller-identity` before any AWS write. If the account is
-  anything else, stop and tell the human.
+  anything else, stop and tell the human. The profile name
+  `abisb_IsbAdminsPS-818928662830` is Ahmed's; any credentials for this
+  account work the same.
 - Never print, log, commit or paste a secret value, access key or token.
   Check that a secret exists; never read it back to the conversation.
 - Never create IAM users or long-lived access keys. The human supplies
@@ -24,8 +26,14 @@ Read in this order before doing anything:
 - Every name and value comes from `design.md`. Do not invent or rename.
   If the design is wrong, open a contract-change pull request.
 - The agent never promotes a model, resumes traffic or launches an
-  experiment without the human's `approve`.
-- Do not send `temperature`, `top_p` or `top_k` to any Bedrock model.
+  experiment without the human's `approve`. This covers `rm_agent`'s runs.
+  A build agent starts only the scratch experiments a task names: 1.3's on
+  `assistant_model_rspike<HHMM>`, and those on run IDs `rlive<HHMM>` (2.2),
+  `rsmoke<HHMM>` (3.6) and `rfault<HHMM>` (4.3). Any other start needs the
+  human's yes. The human ends every experiment; no agent ends one or calls
+  an end-experiment endpoint.
+- Do not send `temperature`, `top_p` (Converse: `topP`) or `top_k` (`topK`) to any
+  Bedrock model.
 - Stay in your workstream's directories (design.md section 12).
 - Technical claims come from official documentation (docs.aws.amazon.com,
   docs.flagsmith.com) or from something you ran. If you could not verify
@@ -33,9 +41,11 @@ Read in this order before doing anything:
 
 ## Roles
 
-- **Lead (integration)**: one agent. Owns `dev`, `infra/` applies,
-  `contracts/`, the task board and the gates. Starts the workstream agents
-  and the goldfish reviewers. Does not write workstream code.
+- **Lead (integration)**: one agent. Owns `dev`, `infra/` applies (except
+  task 1.2's `infra/spike/`, design.md section 2), `contracts/`, this file
+  (each edit approved by the human), the task board and the gates. Starts
+  the workstream agents and the goldfish reviewers. Does not write
+  workstream code.
 - **Workstream agents A, B, C, D**: one each, in its own git worktree and
   branch `ws-<letter>/<task-id>-<slug>`. Implements one task at a time.
 - **Goldfish reviewers**: fresh agents with no history, started per review
@@ -61,10 +71,17 @@ Read in this order before doing anything:
 - A spike contradicts `design.md`.
 - Anything needs a secret, a sign-in, an approval, or a click in the
   Flagsmith dashboard.
-- Flagsmith request usage passes 35,000 (read through the API found in
-  task 1.3, or ask the human to read the Usage page after each load).
+- Flagsmith request usage passes 35,000. Read it after each load with
+  `uv run python agent/spike/admin_api.py get
+  /api/v1/organisations/41656/usage-data/total-count/`. The count lags by
+  more than 25 minutes (Gate 1), so read it again later, or ask the human
+  to read the Usage page.
 - The CloudWatch sum of `AnswerCostMicroUsd` passes 60,000,000 (60 US
-  dollars of answers; judging and the agent's own calls come on top).
+  dollars of answers; judging and the agent's own calls come on top). The
+  sum is the Sum for `Variant=current` plus the Sum for `Variant=cheaper`
+  since `2026-11-26T02:30:00Z` (statistic Sum, period 3600, all datapoints
+  added). An empty result means unknown, not zero: fix the query first.
+  Check it after every load.
 - Anything would touch an account other than `818928662830`.
 
 Ask with one specific question and the action you need. Keep working on

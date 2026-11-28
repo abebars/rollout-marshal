@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/answer_request.json",
+  "title": "Answer function request",
+  "description": "What rm-router and the agent's health probe send rm-answer-current and rm-answer-cheaper (design.md section 5).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "question",
+    "identity"
+  ],
+  "properties": {
+    "question": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^r[a-z]*[0-9]{4,12}-user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$"
+    }
+  }
+}

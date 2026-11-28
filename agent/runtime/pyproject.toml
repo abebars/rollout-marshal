@@ -1,0 +1,25 @@
+# Dependencies of the rm_agent runtime (tasks.md 2.7; design.md section 7). The AgentCore CLI
+# builds the CodeZip from this file and uv.lock beside it; this folder is the zip's root
+# (codeLocation "runtime", entrypoint main.py), with contracts/ through the symlink. Versions
+# match the repo's root environment, so the unit tests run the same Strands and AgentCore
+# code that the runtime does.
+[project]
+name = "rm-agent"
+version = "0.1.0"
+description = "Rollout Marshal's agent: rm_agent's action handlers on AgentCore Runtime."
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "bedrock-agentcore==1.28.0",
+    # MCPClient, for the Gateway's MCP session (main.py).
+    "strands-agents==1.67.0",
+    "boto3==1.44.12",
+    "botocore[crt]==1.44.12",
+    # SigV4 for the Gateway's AWS_IAM inbound auth (main.py).
+    "mcp-proxy-for-aws==2.0.0",
+    # The CLI starts the entrypoint under opentelemetry-instrument by default.
+    "aws-opentelemetry-distro~=0.21.0",
+]
+
+[tool.uv]
+# Not a package: the CLI copies this directory's files into the CodeZip as they are.
+package = false

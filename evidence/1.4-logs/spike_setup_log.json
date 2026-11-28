@@ -1,0 +1,121 @@
+[
+ {
+  "request": "GET /environments/?project=55601",
+  "body": null,
+  "status": 200,
+  "response": "{\"count\":2,\"next\":null,\"previous\":null,\"results\":[{\"id\":119136,\"uuid\":\"a1c5c197-85d0-4792-b5c6-7adbef87c39d\",\"name\":\"Development\",\"api_key\":\"<redacted>\",\"description\":null,\"project\":55601,\"minimum_change_request_approvals\":null,\"allow_client_traits\":true,\"banner_text\":null,\"banner_colour\":null,\"hide_disabled_flags\":null,\"use_mv_v2_evaluation\":true,\"use_identity_composite_key_for_hashing\":true,\"hide_sensitive_data\":false,\"use_v2_feature_versioning\":true,\"use_identity_overrides_in_local_eval\":true,\"is_creating\":false,\"metadata\":[]},{\"id\":119137,\"uuid\":\"43d9a91a-6e13-4c5b-a09b-575ecaa9913b\",\"name\":\"Production\",\"api_key\":\"<redacted>\",\"description\":null,\"project\":55601,\"minimum_change_request_approvals\":null,\"allow_client_traits\":true,\"banner_text\":null,\"banner_colour\":null,\"hide_disabled_flags\":null,\"use_mv_v2_evaluation\":true,\"use_identity_composite_key_for_hashing\":true,\"hide_sensitive_data\":false,\"use_v2_feature_versioning\":true,\"use_identity_overrides_in_local_eval\":true,\"is_creating\":false,\"metadata\":[]}]}"
+ },
+ {
+  "request": "GET /environments/<redacted>/warehouse-connections/",
+  "body": null,
+  "status": 200,
+  "response": "[{\"id\":11143,\"warehouse_type\":\"flagsmith\",\"status\":\"pending_connection\",\"status_detail\":null,\"name\":\"Flagsmith\",\"config\":null,\"created_at\":\"2026-11-23T23:02:30.287585Z\",\"total_events_received\":0,\"unique_events_count\":0,\"last_event_received_at\":null}]"
+ },
+ {
+  "request": "GET /projects/55601/features/?search=spike_flag",
+  "body": null,
+  "status": 200,
+  "response": "{\"count\":0,\"next\":null,\"previous\":null,\"results\":[]}"
+ },
+ {
+  "request": "POST /projects/55601/features/",
+  "body": {
+   "name": "spike_flag",
+   "type": "MULTIVARIATE",
+   "initial_value": "current",
+   "default_enabled": true,
+   "description": "Task 1.2 spike: SDK exposure and event join"
+  },
+  "status": 201,
+  "response": "{\"id\":306302,\"name\":\"spike_flag\",\"type\":\"MULTIVARIATE\",\"default_enabled\":true,\"initial_value\":\"current\",\"created_date\":\"2026-11-26T22:09:47.152795Z\",\"description\":\"Task 1.2 spike: SDK exposure and event join\",\"tags\":[],\"multivariate_options\":[],\"is_archived\":false,\"owners\":[],\"group_owners\":[],\"uuid\":\"a5fef5d9-bb5b-49fd-b570-ff3230183b8b\",\"project\":55601,\"environment_feature_state\":null,\"segment_feature_state\":null,\"num_segment_overrides\":0,\"num_identity_overrides\":null,\"is_num_identity_overrides_complete\":true,\"is_server_key_only\":false,\"last_modified_in_any_environment\":null,\"last_modified_in_current_environment\":null,\"metadata\":[]}"
+ },
+ {
+  "request": "GET /projects/55601/features/306302/mv-options/",
+  "body": null,
+  "status": 200,
+  "response": "{\"count\":0,\"next\":null,\"previous\":null,\"results\":[]}"
+ },
+ {
+  "request": "POST /projects/55601/features/306302/mv-options/",
+  "body": {
+   "feature": 306302,
+   "type": "unicode",
+   "string_value": "cheaper",
+   "default_percentage_allocation": 0,
+   "key": "cheaper"
+  },
+  "status": 201,
+  "response": "{\"id\":37532,\"uuid\":\"b6b8ba73-7b39-4428-896d-8095317886b6\",\"type\":\"unicode\",\"integer_value\":null,\"string_value\":\"cheaper\",\"boolean_value\":null,\"default_percentage_allocation\":0.0,\"key\":\"cheaper\",\"feature\":306302}"
+ },
+ {
+  "request": "GET /environments/<redacted>/experiment-metrics/",
+  "body": null,
+  "status": 200,
+  "response": "{\"count\":0,\"next\":null,\"previous\":null,\"results\":[]}"
+ },
+ {
+  "request": "POST /environments/<redacted>/experiment-metrics/",
+  "body": {
+   "name": "spike_metric",
+   "aggregation": "mean",
+   "direction": "up",
+   "definition": {
+    "version": 1,
+    "event": "spike_event"
+   }
+  },
+  "status": 201,
+  "response": "{\"id\":858,\"name\":\"spike_metric\",\"description\":\"\",\"aggregation\":\"mean\",\"direction\":\"up\",\"definition\":{\"version\":1,\"event\":\"spike_event\"},\"experiments\":[],\"created_at\":\"2026-11-26T22:09:48.785459Z\",\"updated_at\":\"2026-11-26T22:09:48.785468Z\"}"
+ },
+ {
+  "request": "GET /environments/<redacted>/experiments/",
+  "body": null,
+  "status": 200,
+  "response": "{\"count\":0,\"next\":null,\"previous\":null,\"results\":[],\"status_counts\":{\"created\":0,\"running\":0,\"paused\":0,\"completed\":0}}"
+ },
+ {
+  "request": "POST /environments/<redacted>/experiments/",
+  "body": {
+   "feature": 306302,
+   "name": "spike_sdk_join",
+   "hypothesis": "Task 1.2 spike: an outcome event sent by a second SDK client joins the exposure sent by the first, per identity; spike_metric differs by arm.",
+   "metrics": [
+    {
+     "metric": "858",
+     "expected_direction": "not_decrease"
+    }
+   ],
+   "experiment_rollout": {
+    "enabled": true,
+    "rollout_percentage": 100,
+    "feature_state_value": {
+     "type": "string",
+     "value": "current"
+    },
+    "multivariate_feature_state_values": [
+     {
+      "multivariate_feature_option": 37532,
+      "percentage_allocation": 50
+     }
+    ]
+   }
+  },
+  "status": 201,
+  "response": "{\"id\":807,\"feature\":306302,\"name\":\"spike_sdk_join\",\"hypothesis\":\"Task 1.2 spike: an outcome event sent by a second SDK client joins the exposure sent by the first, per identity; spike_metric differs by arm.\",\"status\":\"created\",\"created_at\":\"2026-11-26T22:09:49.344178Z\",\"updated_at\":\"2026-11-26T22:09:49.380849Z\",\"started_at\":null,\"ended_at\":null,\"rollout_decision\":null,\"rollout_variant\":null}"
+ },
+ {
+  "request": "POST /environments/<redacted>/experiments/807/start/",
+  "body": {
+   "name": "spike_sdk_join",
+   "hypothesis": "Task 1.2 spike: an outcome event sent by a second SDK client joins the exposure sent by the first, per identity; spike_metric differs by arm."
+  },
+  "status": 200,
+  "response": "{\"id\":807,\"feature\":{\"id\":306302,\"name\":\"spike_flag\",\"type\":\"MULTIVARIATE\",\"initial_value\":\"current\",\"multivariate_options\":[{\"id\":37532,\"uuid\":\"b6b8ba73-7b39-4428-896d-8095317886b6\",\"type\":\"unicode\",\"integer_value\":null,\"string_value\":\"cheaper\",\"boolean_value\":null,\"default_percentage_allocation\":0.0,\"key\":\"cheaper\"}]},\"name\":\"spike_sdk_join\",\"hypothesis\":\"Task 1.2 spike: an outcome event sent by a second SDK client joins the exposure sent by the first, per identity; spike_metric differs by arm.\",\"status\":\"running\",\"metrics\":[{\"id\":944,\"metric\":858,\"metric_name\":\"spike_metric\",\"aggregation\":\"mean\",\"direction\":\"up\",\"expected_direction\":\"not_decrease\",\"created_at\":\"2026-11-26T22:09:49.346620Z\"}],\"created_at\":\"2026-11-26T22:09:49.344178Z\",\"updated_at\":\"2026-11-26T22:09:49.883561Z\",\"started_at\":\"2026-11-26T22:09:49.880117Z\",\"ended_at\":null,\"rollout_decision\":null,\"rollout_variant\":null}"
+ },
+ {
+  "request": "GET /environments/<redacted>/experiments/807/",
+  "body": null,
+  "status": 200,
+  "response": "{\"id\":807,\"feature\":{\"id\":306302,\"name\":\"spike_flag\",\"type\":\"MULTIVARIATE\",\"initial_value\":\"current\",\"multivariate_options\":[{\"id\":37532,\"uuid\":\"b6b8ba73-7b39-4428-896d-8095317886b6\",\"type\":\"unicode\",\"integer_value\":null,\"string_value\":\"cheaper\",\"boolean_value\":null,\"default_percentage_allocation\":0.0,\"key\":\"cheaper\"}]},\"name\":\"spike_sdk_join\",\"hypothesis\":\"Task 1.2 spike: an outcome event sent by a second SDK client joins the exposure sent by the first, per identity; spike_metric differs by arm.\",\"status\":\"running\",\"metrics\":[{\"id\":944,\"metric\":858,\"metric_name\":\"spike_metric\",\"aggregation\":\"mean\",\"direction\":\"up\",\"expected_direction\":\"not_decrease\",\"created_at\":\"2026-11-26T22:09:49.346620Z\"}],\"experiment_rollout\":{\"enabled\":true,\"rollout_percentage\":100.0,\"feature_state_value\":{\"type\":\"string\",\"value\":\"current\"},\"multivariate_feature_state_values\":[{\"multivariate_feature_option\":37532,\"percentage_allocation\":50.0}],\"audience\":{\"match\":\"any\",\"segments\":[]}},\"created_at\":\"2026-11-26T22:09:49.344178Z\",\"updated_at\":\"2026-11-26T22:09:49.883561Z\",\"started_at\":\"2026-11-26T22:09:49.880117Z\",\"ended_at\":null,\"rollout_decision\":null,\"rollout_variant\":null}"
+ }
+]

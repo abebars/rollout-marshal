@@ -1,0 +1,112 @@
+{
+  "recorded_at": "2026-11-27T02:22:31+00:00",
+  "command": "uv run pytest -m live agent/tests/test_planner.py",
+  "calls": {
+    "plan": {
+      "request": {
+        "modelId": "us.anthropic.claude-sonnet-5",
+        "system": [
+          {
+            "text": "You plan an experiment that moves a customer support assistant from one Claude model on Amazon Bedrock to another.\n\nThe models:\n- us.anthropic.claude-fable-5-1: Claude Fable 5.1\n- us.anthropic.claude-sonnet-5: Claude Sonnet 5\n- us.anthropic.claude-haiku-5-5: Claude Haiku 5.5\n\nThe experiment is fixed, and the engineer's request cannot change it, whatever it asks:\n- identities are split 50/50 between the current model and the cheaper one;\n- helpful_rate is the primary metric, and mean_latency_ms and mean_cost_micro_usd are guardrails;\n- results count once each variation has at least 50 identities;\n- the latency alarm rm-cheaper-latency-p95 rolls the cheaper model back without approval;\n- promotion waits for the engineer to end the experiment and approve.\n\nRead the engineer's request and answer with one JSON object and nothing else:\n{\"move\": {\"from\": \"<model ID>\", \"to\": \"<model ID>\"}, \"hypothesis\": \"<one sentence>\", \"summary\": \"<a short paragraph>\"}\n\n- move: the model the request moves away from and the model it moves to, as model IDs from the list above. If the request names no move between two models on the list, move is null.\n- hypothesis: one testable sentence about the move, in terms of the metrics above.\n- summary: the plan in plain words for the engineer's approval, true to the fixed experiment above."
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "text": "Test moving the support assistant from Claude Fable 5.1 to Claude Sonnet 5.\nDon't let answer quality or latency slip."
+              }
+            ]
+          }
+        ],
+        "inferenceConfig": {
+          "maxTokens": 4000
+        },
+        "additionalModelRequestFields": {
+          "output_config": {
+            "effort": "low"
+          }
+        }
+      },
+      "response": {
+        "output": {
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "text": "{\"move\": {\"from\": \"us.anthropic.claude-fable-5-1\", \"to\": \"us.anthropic.claude-sonnet-5\"}, \"hypothesis\": \"Claude Sonnet 5 will match or exceed Claude Fable 5.1's helpful_rate without increasing mean_latency_ms or mean_cost_micro_usd beyond acceptable guardrail thresholds.\", \"summary\": \"We'll run a 50/50 split experiment between Claude Fable 5.1 (current) and Claude Sonnet 5 (cheaper), note that despite the naming, the fixed experiment design always treats the non-current model slot as the 'cheaper' arm per the setup, with helpful_rate as the primary success metric and mean_latency_ms and mean_cost_micro_usd tracked as guardrails to ensure no regression in quality or speed. Results will only be considered valid once both variations reach at least 50 identities each. The existing latency alarm (rm-cheaper-latency-p95) will auto-rollback the cheaper-side model if latency breaches thresholds, without needing approval. No promotion will happen automatically \u2014 once you end the experiment and review the helpful_rate, latency, and cost results, we'll need your explicit approval before promoting Claude Sonnet 5 as the new default.\"}"
+              }
+            ]
+          }
+        },
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 543,
+          "outputTokens": 431,
+          "totalTokens": 974,
+          "cacheReadInputTokens": 0,
+          "cacheWriteInputTokens": 0
+        },
+        "metrics": {
+          "latencyMs": 5023
+        }
+      },
+      "wall_seconds": 5.08,
+      "bedrock_request_id": "839bdbfa-04c7-48ec-a507-dc127e5b8773"
+    },
+    "report_length": {
+      "request": {
+        "modelId": "us.anthropic.claude-sonnet-5",
+        "system": [
+          {
+            "text": "You write the decision report for a model migration experiment on a customer support assistant. Write Markdown with these sections, in this order, each a level-two heading: Hypothesis, Setup, Timeline, Results, Guardrails, Incident, Known bias, Recommendation, Time taken. Use only the facts given. Write each section as one or two short paragraphs."
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "text": "{\"hypothesis\": \"Claude Sonnet 5 answers support questions as helpfully as Claude Fable 5.1, with no more latency and at lower cost.\", \"setup\": {\"current_model\": \"us.anthropic.claude-fable-5-1\", \"cheaper_model\": \"us.anthropic.claude-sonnet-5\", \"split\": \"50/50\", \"identities\": 150, \"answers\": 1500}, \"timeline\": [\"15:30 plan approved, experiment started\", \"15:42 latency alarm, cheaper model rolled back\", \"15:51 health probe passed, resume approved\", \"16:20 results ready\"], \"results\": {\"current\": {\"identities\": 75, \"helpful_rate\": 0.81, \"mean_latency_ms\": 5072, \"mean_cost_micro_usd\": 9100}, \"cheaper\": {\"identities\": 75, \"helpful_rate\": 0.8, \"mean_latency_ms\": 2782, \"mean_cost_micro_usd\": 2300}, \"helpful_lift_ci_lower\": -0.04}, \"guardrails\": {\"latency\": \"pass\", \"cost\": \"pass\"}, \"incident\": \"One rollback: an injected 10 s delay on the cheaper model for 6 minutes.\", \"known_bias\": \"Identities rolled back during the incident still count in the cheaper arm.\", \"recommendation\": \"hold, re-run\", \"time_taken\": \"50 minutes from the prompt to results ready\"}"
+              }
+            ]
+          }
+        ],
+        "inferenceConfig": {
+          "maxTokens": 4000
+        },
+        "additionalModelRequestFields": {
+          "output_config": {
+            "effort": "low"
+          }
+        }
+      },
+      "response": {
+        "output": {
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "text": "## Hypothesis\n\nClaude Sonnet 5 answers support questions as helpfully as Claude Fable 5.1, with no more latency and at lower cost.\n\n## Setup\n\nThe experiment compared the current model (us.anthropic.claude-fable-5-1) against the cheaper model (us.anthropic.claude-sonnet-5) using a 50/50 split across 150 identities and 1500 answers.\n\n## Timeline\n\nThe plan was approved and the experiment started at 15:30. A latency alarm triggered at 15:42, causing the cheaper model to be rolled back. A health probe passed at 15:51 and the resume was approved. Results were ready at 16:20.\n\n## Results\n\nEach arm had 75 identities. The current model achieved a helpful rate of 0.81, mean latency of 5072 ms, and mean cost of 9100 micro-USD. The cheaper model achieved a helpful rate of 0.80, mean latency of 2782 ms, and mean cost of 2300 micro-USD. The confidence interval lower bound for the helpful rate lift was -0.04, indicating the cheaper model's helpfulness cannot yet be confirmed as non-inferior.\n\n## Guardrails\n\nBoth the latency and cost guardrails passed.\n\n## Incident\n\nOne rollback occurred due to an injected 10-second delay on the cheaper model, lasting 6 minutes.\n\n## Known bias\n\nIdentities that were rolled back during the incident are still counted in the cheaper arm, which may distort the cheaper model's measured performance.\n\n## Recommendation\n\nHold and re-run the experiment to obtain a cleaner comparison unaffected by the incident.\n\n## Time taken\n\n50 minutes elapsed from the initial prompt to results being ready."
+              }
+            ]
+          }
+        },
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 588,
+          "outputTokens": 572,
+          "totalTokens": 1160,
+          "cacheReadInputTokens": 0,
+          "cacheWriteInputTokens": 0
+        },
+        "metrics": {
+          "latencyMs": 5500
+        }
+      },
+      "wall_seconds": 5.52,
+      "bedrock_request_id": "7a8db6dd-64f5-46b6-87f3-406c463cacc3"
+    }
+  }
+}

@@ -1,0 +1,817 @@
+{
+  "event": "spike_event",
+  "client": {
+    "instance": "42670dfa4b384bbaac4fc0173ea73c61",
+    "evaluation": "remote",
+    "api_url": "https://edge.api.flagsmith.com/api/v1/",
+    "events_endpoint": "https://events.api.flagsmith.com/v1/events",
+    "max_buffer_items": 1000,
+    "flush_interval_seconds": 10.0
+  },
+  "expected": {
+    "current": {
+      "identities": 72,
+      "sum": 14,
+      "mean": 0.19444444444444445
+    },
+    "cheaper": {
+      "identities": 78,
+      "sum": 63,
+      "mean": 0.8076923076923077
+    }
+  },
+  "identity_requests": {
+    "count": 0,
+    "statuses": {},
+    "max_elapsed_ms": null
+  },
+  "event_posts": [
+    {
+      "status": 202,
+      "events": 150,
+      "elapsed_ms": 423.8
+    }
+  ],
+  "events_tracked": 150,
+  "events_delivered": 150,
+  "delivered_before_return": true,
+  "events_refused": false,
+  "instrumentation_unavailable": [],
+  "sdk_log": [],
+  "seconds": {
+    "track_loop": 0.002,
+    "flush_events": 0.425
+  },
+  "sent": [
+    {
+      "identity": "user-001",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-002",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-003",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-004",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-005",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-006",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-007",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-008",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-009",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-010",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-011",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-012",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-013",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-014",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-015",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-016",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-017",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-018",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-019",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-020",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-021",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-022",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-023",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-024",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-025",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-026",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-027",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-028",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-029",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-030",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-031",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-032",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-033",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-034",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-035",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-036",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-037",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-038",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-039",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-040",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-041",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-042",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-043",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-044",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-045",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-046",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-047",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-048",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-049",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-050",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-051",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-052",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-053",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-054",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-055",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-056",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-057",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-058",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-059",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-060",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-061",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-062",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-063",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-064",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-065",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-066",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-067",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-068",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-069",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-070",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-071",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-072",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-073",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-074",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-075",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-076",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-077",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-078",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-079",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-080",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-081",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-082",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-083",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-084",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-085",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-086",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-087",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-088",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-089",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-090",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-091",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-092",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-093",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-094",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-095",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-096",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-097",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-098",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-099",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-100",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-101",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-102",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-103",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-104",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-105",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-106",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-107",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-108",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-109",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-110",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-111",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-112",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-113",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-114",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-115",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-116",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-117",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-118",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-119",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-120",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-121",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-122",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-123",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-124",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-125",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-126",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-127",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-128",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-129",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-130",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-131",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-132",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-133",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-134",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-135",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-136",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-137",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-138",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-139",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-140",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-141",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-142",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-143",
+      "arm": "current",
+      "value": 1
+    },
+    {
+      "identity": "user-144",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-145",
+      "arm": "cheaper",
+      "value": 0
+    },
+    {
+      "identity": "user-146",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-147",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-148",
+      "arm": "cheaper",
+      "value": 1
+    },
+    {
+      "identity": "user-149",
+      "arm": "current",
+      "value": 0
+    },
+    {
+      "identity": "user-150",
+      "arm": "cheaper",
+      "value": 1
+    }
+  ],
+  "key_is_server_side": false,
+  "action": "judge",
+  "started_at": "2026-11-26T22:24:35.362323+00:00",
+  "finished_at": "2026-11-26T22:24:35.961904+00:00",
+  "aws_request_id": "3fada28a-8f17-481b-bf9e-e563e9294ee6",
+  "function_name": "rm-spike-sdk",
+  "container": {
+    "id": "4e3de4e8f51f4fcc8a7235bdfa3c8a8b",
+    "invocation": 3
+  },
+  "versions": {
+    "python": "3.13.18",
+    "machine": "aarch64",
+    "flagsmith": "6.7.0",
+    "flagsmith-flag-engine": "11.1.2",
+    "requests": "2.34.2",
+    "urllib3": "2.8.0",
+    "boto3": "1.42.97",
+    "botocore": "1.42.97"
+  }
+}

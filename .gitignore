@@ -17,6 +17,8 @@ htmlcov/
 # Terraform: state lives in S3. Never commit local state, plans or variable
 # files (variable files can hold values that must not be public).
 .terraform/
+# terraform init or test inside a module writes its own lock file; only infra/'s is kept.
+infra/modules/**/.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfplan
@@ -36,3 +38,10 @@ override.tf.json
 
 # Lambda build output
 *.zip
+
+# AgentCore CLI project (agent/): its CDK app and npm packages
+node_modules/
+cdk.out/
+
+# Agent worktrees that Claude Code creates for the workstream agents
+.claude/worktrees/

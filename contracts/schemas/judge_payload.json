@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/judge_payload.json",
+  "title": "Judge payload",
+  "description": "What rm-router hands rm-judge in its async invoke (design.md section 5). The router sends it only while a run is active, so run_id is always set. assigned is the experiment feature's value for the identity (current or cheaper), not flag.variant; served is the variant actually served (current when the kill switch is off).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "identity",
+    "assigned",
+    "served",
+    "model_id",
+    "question",
+    "answer",
+    "input_tokens",
+    "output_tokens",
+    "latency_ms"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "pattern": "^r[a-z]*[0-9]{4,12}$" },
+    "identity": {
+      "type": "string",
+      "pattern": "^r[a-z]*[0-9]{4,12}-user-(00[1-9]|0[1-9][0-9]|1[0-4][0-9]|150)$"
+    },
+    "assigned": { "enum": ["current", "cheaper"] },
+    "served": { "enum": ["current", "cheaper"] },
+    "model_id": { "enum": ["us.anthropic.claude-fable-5-1", "us.anthropic.claude-sonnet-5"] },
+    "question": { "type": "string", "minLength": 1 },
+    "answer": { "type": "string" },
+    "input_tokens": { "type": "integer", "minimum": 0 },
+    "output_tokens": { "type": "integer", "minimum": 0 },
+    "latency_ms": { "type": "number", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "served": { "const": "current" } } },
+      "then": { "properties": { "model_id": { "const": "us.anthropic.claude-fable-5-1" } } }
+    },
+    {
+      "if": { "properties": { "served": { "const": "cheaper" } } },
+      "then": { "properties": { "model_id": { "const": "us.anthropic.claude-sonnet-5" } } }
+    }
+  ]
+}

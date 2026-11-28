@@ -1,0 +1,139 @@
+{
+  "run_id": "r202611271927",
+  "outcome": "failed",
+  "reason": "timed out after 25 min waiting for AWAITING_RESUME. The resume request needs the 6-minute fault over, the alarm back to OK (about 7 min 20 s after the start of its last breaching minute; evidence/4.3-fis.md), then a tick (every 2 min) whose probe passes. `uv run marshal status r202611271927` says why not yet.",
+  "last_status": "ROLLED_BACK",
+  "prompt": "Test moving the support assistant from Claude Fable 5.1 to Claude Sonnet 5.",
+  "load_size": {
+    "users": 150,
+    "questions": 10
+  },
+  "timestamps": {
+    "start_sent": "2026-11-27T19:26:55.219682Z",
+    "plan_returned": "2026-11-27T19:27:02.822231Z",
+    "approve_seen": "2026-11-27T19:39:35.873514Z",
+    "running": "2026-11-27T19:40:48.780249Z"
+  },
+  "seen": [
+    {
+      "at": "2026-11-27T19:27:02.822231Z",
+      "state": "PLANNED",
+      "pending": null
+    },
+    {
+      "at": "2026-11-27T19:39:35.873514Z",
+      "state": "PLANNED",
+      "pending": "RUNNING"
+    },
+    {
+      "at": "2026-11-27T19:40:48.780249Z",
+      "state": "RUNNING",
+      "pending": null
+    },
+    {
+      "at": "2026-11-27T19:44:21.704402Z",
+      "state": "RUNNING",
+      "pending": "ROLLED_BACK"
+    },
+    {
+      "at": "2026-11-27T19:44:51.650469Z",
+      "state": "ROLLED_BACK",
+      "pending": null
+    }
+  ],
+  "history": [
+    {
+      "actor": "engineer",
+      "at": "2026-11-27T19:27:02.774912Z",
+      "from": null,
+      "reason": "start",
+      "to": "PLANNED"
+    },
+    {
+      "actor": "engineer",
+      "at": "2026-11-27T19:40:46.915427Z",
+      "from": "PLANNED",
+      "reason": "tick, resuming PLANNED -> RUNNING",
+      "to": "RUNNING"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-27T19:44:43.812160Z",
+      "from": "RUNNING",
+      "reason": "alarm",
+      "to": "ROLLED_BACK"
+    }
+  ],
+  "history_states": [
+    "PLANNED",
+    "RUNNING",
+    "ROLLED_BACK"
+  ],
+  "history_matches_pass": false,
+  "answers_sent": 1500,
+  "load": {
+    "command": "scripts/load.py --run-id r202611271927 --users 150 --questions 10 --url <not shown>",
+    "started_at": "2026-11-27T19:40:48.792984Z",
+    "exit_code": 1,
+    "signalled": [],
+    "sent": 1500,
+    "ok": 1498,
+    "failed": 2,
+    "output": [
+      "load: 1500 requests, 150 users x 10 questions of run r202611271927, at most 10 at a time",
+      "failed: gaierror x2",
+      "sent=1500 ok=1498 failed=2"
+    ],
+    "log": "<tmp>/rm-e2e-logs"
+  },
+  "fault": {
+    "command": "scripts/inject_fault.sh",
+    "started_at": "2026-11-27T19:40:48.801988Z",
+    "exit_code": 0,
+    "signalled": [],
+    "experiment_id": "EXPexuJkDpQyAKEj4e",
+    "output": [
+      "inject_fault: template rm-delay-cheaper is EXTB2oxga85m1Pyax",
+      "inject_fault: experiment EXPexuJkDpQyAKEj4e started at 2026-11-27T19:40:50Z (state initiating)",
+      "inject_fault: 2026-11-27T19:40:50Z state initiating",
+      "inject_fault: 2026-11-27T19:41:06Z state running",
+      "inject_fault: 2026-11-27T19:41:21Z state running",
+      "inject_fault: 2026-11-27T19:41:37Z state running",
+      "inject_fault: 2026-11-27T19:41:52Z state running",
+      "inject_fault: 2026-11-27T19:42:07Z state running",
+      "inject_fault: 2026-11-27T19:42:23Z state running",
+      "inject_fault: 2026-11-27T19:42:38Z state running",
+      "inject_fault: 2026-11-27T19:42:54Z state running",
+      "inject_fault: 2026-11-27T19:43:09Z state running",
+      "inject_fault: 2026-11-27T19:43:25Z state running",
+      "inject_fault: 2026-11-27T19:43:40Z state running",
+      "inject_fault: 2026-11-27T19:43:55Z state running",
+      "inject_fault: 2026-11-27T19:44:11Z state running",
+      "inject_fault: 2026-11-27T19:44:26Z state running",
+      "inject_fault: 2026-11-27T19:44:42Z state running",
+      "inject_fault: 2026-11-27T19:44:57Z state running",
+      "inject_fault: 2026-11-27T19:45:12Z state running",
+      "inject_fault: 2026-11-27T19:45:28Z state running",
+      "inject_fault: 2026-11-27T19:45:43Z state running",
+      "inject_fault: 2026-11-27T19:45:59Z state running",
+      "inject_fault: 2026-11-27T19:46:14Z state running",
+      "inject_fault: 2026-11-27T19:46:30Z state running",
+      "inject_fault: 2026-11-27T19:46:45Z state running",
+      "inject_fault: 2026-11-27T19:47:00Z state running",
+      "inject_fault: experiment EXPexuJkDpQyAKEj4e ended at 2026-11-27T19:47:16Z: completed (FIS start 2026-11-27T19:40:50.314000+00:00, end 2026-11-27T19:47:02.390000+00:00: Experiment completed.)"
+    ],
+    "log": "<tmp>/rm-e2e-logs"
+  },
+  "state": "ROLLED_BACK",
+  "incidents": [
+    {
+      "started_at": "2026-11-27T19:44:43.812120Z"
+    }
+  ],
+  "report_key": null,
+  "report": null,
+  "notified": {
+    "2#ROLLED_BACK": "6f987ad0-bef3-5125-b18b-1953611844fc"
+  },
+  "run_item_error": null
+}

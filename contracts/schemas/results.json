@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/results.json",
+  "title": "Experiment results",
+  "description": "The results shape the agent's tools use (design.md section 7). Task 2.2 maps Flagsmith's response onto it, starting from task 1.4's sample and finished against the response recorded in task 3.6. Rates are fractions from 0 to 1; helpful_lift_ci_lower is the lower bound of the 95 percent credible interval for the relative lift (cheaper - current) / current on helpful_rate, as a fraction (-0.05 is minus 5 percent). ready is computed: true exactly when both variations have at least 50 identities and non-null helpful_rate, mean_latency_ms and mean_cost_micro_usd.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ready", "variations", "helpful_lift_ci_lower"],
+  "properties": {
+    "ready": { "type": "boolean" },
+    "variations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current", "cheaper"],
+      "properties": {
+        "current": { "$ref": "#/$defs/variation" },
+        "cheaper": { "$ref": "#/$defs/variation" }
+      }
+    },
+    "helpful_lift_ci_lower": {
+      "description": "Can fall below -1: the interval is the lift plus or minus 1.96 standard deviations.",
+      "oneOf": [{ "type": "null" }, { "type": "number" }]
+    }
+  },
+  "if": {
+    "properties": {
+      "variations": {
+        "properties": {
+          "current": { "$ref": "#/$defs/complete_variation" },
+          "cheaper": { "$ref": "#/$defs/complete_variation" }
+        }
+      }
+    }
+  },
+  "then": { "properties": { "ready": { "const": true } } },
+  "else": { "properties": { "ready": { "const": false } } },
+  "$defs": {
+    "complete_variation": {
+      "description": "A predicate for the ready rule, used only inside if: at least 50 identities and every mean non-null.",
+      "properties": {
+        "identities": { "minimum": 50 },
+        "helpful_rate": { "type": "number" },
+        "mean_latency_ms": { "type": "number" },
+        "mean_cost_micro_usd": { "type": "number" }
+      }
+    },
+    "variation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identities", "helpful_rate", "mean_latency_ms", "mean_cost_micro_usd"],
+      "properties": {
+        "identities": { "type": "integer", "minimum": 0 },
+        "helpful_rate": {
+          "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0, "maximum": 1 }]
+        },
+        "mean_latency_ms": {
+          "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }]
+        },
+        "mean_cost_micro_usd": {
+          "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }]
+        }
+      }
+    }
+  }
+}

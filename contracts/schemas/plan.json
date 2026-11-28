@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/abebars/rollout-marshal/contracts/schemas/plan.json",
+  "title": "Experiment plan",
+  "description": "The run item's plan: hypothesis, metrics, split and stop rules (design.md section 6). The model writes hypothesis and summary; every other value is injected from contracts.names, so the const values below fail any plan whose numbers came from the prompt (tasks.md 2.3). Field names are set by task 1.1 and approved at its gate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "hypothesis",
+    "summary",
+    "current_model",
+    "cheaper_model",
+    "primary_metric",
+    "guardrail_metrics",
+    "split",
+    "min_identities_per_variation",
+    "stop_rules",
+    "guardrails",
+    "recommendation_rule"
+  ],
+  "properties": {
+    "hypothesis": {
+      "description": "Written by the model.",
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "description": "Written by the model: the plan in plain words for the approval message.",
+      "type": "string",
+      "minLength": 1
+    },
+    "current_model": { "const": "us.anthropic.claude-fable-5-1" },
+    "cheaper_model": { "const": "us.anthropic.claude-sonnet-5" },
+    "primary_metric": { "const": "helpful_rate" },
+    "guardrail_metrics": { "const": ["mean_latency_ms", "mean_cost_micro_usd"] },
+    "split": {
+      "description": "Percent of identities per variation.",
+      "const": { "current": 50, "cheaper": 50 }
+    },
+    "min_identities_per_variation": { "const": 50 },
+    "stop_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rollback_alarm", "results_embargo_seconds", "promote_requires_experiment_ended"],
+      "properties": {
+        "rollback_alarm": {
+          "description": "The run rolls back without approval when this alarm is in ALARM.",
+          "const": "rm-cheaper-latency-p95"
+        },
+        "results_embargo_seconds": {
+          "description": "No results are read for this long after first_running_at.",
+          "const": 600
+        },
+        "promote_requires_experiment_ended": {
+          "description": "Promotion needs the experiment ended in Flagsmith and the engineer's approve.",
+          "const": true
+        }
+      }
+    },
+    "guardrails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_latency_ratio", "max_cost_ratio"],
+      "properties": {
+        "max_latency_ratio": {
+          "description": "cheaper mean_latency_ms / current mean_latency_ms must be at most this.",
+          "const": 1.1
+        },
+        "max_cost_ratio": {
+          "description": "cheaper mean_cost_micro_usd / current mean_cost_micro_usd must be at most this.",
+          "const": 1.0
+        }
+      }
+    },
+    "recommendation_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "after_incident",
+        "promote_min_helpful_lift_ci_lower"
+      ],
+      "properties": {
+        "after_incident": { "const": "hold, re-run" },
+        "promote_min_helpful_lift_ci_lower": {
+          "description": "The promote rule's floor for the lower bound of the 95 percent credible interval for the lift on helpful_rate. A fraction of relative lift: -0.05 is minus 5 percent.",
+          "const": -0.05
+        }
+      }
+    }
+  }
+}
