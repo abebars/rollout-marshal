@@ -52,19 +52,23 @@ Run `r202611271927` (`evidence/5.1-e2e.md`). `scripts/e2e.py` printed four UTC t
 | it saw the approve | 19:39:35.87Z | the launch claimed, 12 min 33 s after the plan returned |
 | the run reached `RUNNING` | 19:40:48.78Z | 72.9 s after the approve was seen |
 
-From those, with seconds truncated:
+`e2e.py` polls every 10 s, so the approve-seen time lags the approve by up to one poll, and up
+to 10 s of the launch counts in the wait. By the runtime's log, this launch took 77.5 s.
+
+From the four timestamps, with seconds truncated:
 
 - **`marshal start` to `RUNNING`** is `RUNNING` minus `start` sent: 13:53.
-- **The plan waiting for approval** is the approve seen minus the plan returned: 12:33. Ahmed
-  typed `marshal approve r202611271927 launch` at about 19:39:30Z, and `e2e.py` saw the
-  launch claimed at its next poll.
+- **The plan waiting for approval** is the approve seen minus the plan returned: 12:33.
+  Ahmed's `marshal approve r202611271927 launch` was submitted at 19:39:26.7Z, and reached
+  the agent at about 19:39:29.4Z. `e2e.py` saw the launch claimed at its next poll.
 - **Rollout Marshal's own work** is the rest: 1:20, that is 7.6 s to plan and 72.9 s to
   launch.
 
 The launch's 72.9 s includes a failure and a retry:
 
-- The approve's first `start_experiment` failed with a client-side `TimeoutError`, while
-  `rm-flagsmith-admin` started cold (6.4 s).
+- The approve's `start_experiment` failed with a `TimeoutError`, in a warm 4,012 ms invoke of
+  `rm-flagsmith-admin` at 19:40:10Z. The cold 6,410 ms invoke before it succeeded (Init
+  172 ms).
 - The agent released its claim, as design.md section 6 has it, and the next tick finished
   the launch at 19:40:46Z.
 - The cause is not settled (finding 2 in `evidence/5.1-e2e.md`).
@@ -81,11 +85,14 @@ Run `r202611272042` (`evidence/5.2/r202611272042.md`), with no code change since
 | it saw the approve | 20:49:18.86Z | the launch claimed, 6 min 43 s after the plan returned |
 | the run reached `RUNNING` | 20:49:51.54Z | 32.7 s after the approve was seen |
 
+`e2e.py` polls every 10 s, so the approve-seen time lags the approve by up to one poll, and up
+to 10 s of the launch counts in the wait. By the runtime's log, this launch took 37.9 s.
+
 So, to the nearest second:
 
 - **`marshal start` to `RUNNING`:** 7:22.
-- **The plan waiting for approval:** 6:43. Ahmed typed `marshal approve r202611272042 launch`
-  at about 20:49:15Z.
+- **The plan waiting for approval:** 6:43. Ahmed's `marshal approve r202611272042 launch` was
+  submitted at 20:49:06.8Z, and reached the agent at 20:49:09.6Z.
 - **Rollout Marshal's own work:** 0:39, that is 6.6 s to plan and 32.7 s to launch.
 
 ## What the agent does in that time

@@ -20,7 +20,9 @@ rolls back on its own, and asks a human before every other change.**
   recommendation comes from fixed rules, and the agent never ends an experiment.
 
 Built by team Built Not Theorized for the Toggle Wars hackathon (Flagsmith and WeMakeDevs),
-Track 2, "AI Agents and Feature Flags". Demo video: [[6.4: video URL]].
+Track 2, "AI Agents and Feature Flags". Demo video: [[6.4: video URL]]. The video records one
+new short run, 150 users x 2 questions, screen-recorded as it ran. The two full runs below are
+the measured record.
 
 **Who is who.** Ahmed is the human on the team, and plays the engineer. "The lead agent" is the
 AI coding agent, a Claude Code session, that led this build and ran both full runs; it is not
@@ -61,12 +63,13 @@ metric attached.
   of it: 7.6 s to plan and 72.9 s to launch in the first run, whose first experiment start
   timed out and was retried by the next tick (the `rm-tick` schedule wakes the agent every 2
   minutes); 6.6 s and 32.7 s in the second. Where the wait ends comes from `scripts/e2e.py`'s
-  status polls, every 10 s, so up to about 10 s of each launch counts in the wait.
+  status polls, every 10 s, so up to about 10 s of each launch counts in the wait. By the
+  runtime's log, the launches took 77.5 s and 37.9 s.
 - **What the runs showed.** Flagsmith's dashboard favoured the cheaper model both times, at 66
   and 80 percent winner probability. Rollout Marshal's report said `hold, re-run`, because each
-  run had an incident. The rollback, not Flagsmith, skewed the dashboard's sample: in the second
-  run, only 256 of the cheaper arm's 690 answers came from Claude Sonnet 5, and the current
-  model served the rest while the kill switch was off.
+  run had an incident. The rollback, not Flagsmith, skewed the dashboard's sample: Claude
+  Sonnet 5 served only 153 of the cheaper arm's 740 answers in the first run, and 256 of 690 in
+  the second. The current model served the rest while the kill switch was off.
 
 How each was measured, and what neither number counts: [docs/time-saved.md](docs/time-saved.md).
 
@@ -91,53 +94,61 @@ loop from one prompt.
 
 Run `r202611272042` went from `marshal start` to `HELD` in 22 min 37 s. `scripts/e2e.py` drove
 it: it sent the start, read the run's status every 10 s, and started the load and the fault. By
-the lead agent's account, Ahmed typed the three commands at the approval points.
+the lead agent's account, Ahmed typed the three commands at the approval points. In the
+diagram, AWS is the assistant (`rm-router` and `rm-judge`), FIS, the alarm, the `rm-tick`
+schedule with `rm-invoker`, and S3.
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Eng as Engineer
-  participant Driver as scripts/e2e.py
+  participant Eng as Engineer and scripts/e2e.py
   participant CLI as marshal CLI
   participant Agent as rm_agent
   participant FS as Flagsmith
-  participant App as Assistant, rm-router and rm-judge
-  participant Sig as Alarm and tick, through rm-invoker
+  participant AWS as AWS
   participant Mail as Incident email
-  Driver->>CLI: marshal start with the prompt, then marshal status every 10 s
+  Eng->>CLI: e2e.py sends marshal start,<br/>then marshal status every 10 s
   CLI->>Agent: start
   Agent-->>CLI: the plan, PLANNED, 6.6 s later
   Note over Eng,Agent: Approval point 1, launch
-  Eng->>CLI: marshal approve run_id launch
+  Eng->>CLI: the engineer types<br/>marshal approve run_id launch
   CLI->>Agent: approve launch
-  Agent->>FS: kill switch on, the run's flag, 3 metrics and the experiment, then start it
+  Agent->>AWS: the rm-tick schedule on
+  Agent->>FS: kill switch on, the run's flag,<br/>3 metrics and the experiment,<br/>then its start
   Agent-->>CLI: RUNNING
-  Driver->>App: load.py with 150 users, then inject_fault.sh
-  App->>FS: identity flags, exposures and outcome events
-  Note over App: FIS slows every cheaper answer by 10 s, for 6 min
-  App->>Sig: AnswerLatencyMs, its p95 for the cheaper arm over 10000 ms
-  Sig->>Agent: alarm enters ALARM, 3 min 24.5 s into the fault
+  Eng->>AWS: e2e.py starts load.py, 150 users x 10,<br/>then inject_fault.sh
+  AWS->>FS: each answer's identity request,<br/>exposure and 3 outcome events
+  Note over AWS: FIS slows every cheaper<br/>answer by 10 s, for 6 min
+  AWS->>Agent: the p95 latency alarm enters ALARM,<br/>3 min 24.5 s into the fault
   rect rgba(255, 99, 71, 0.15)
-    Note over Agent,FS: Automatic rollback, no human asked
-    Agent->>FS: kill switch assistant_cheaper_enabled off
-    Agent->>Mail: rolled back, the incident note through SNS
+    Note over Agent,AWS: Automatic rollback, no human asked
+    Agent-xFS: kill switch off fails, as a<br/>list_project_features call<br/>times out. The claim is released
+    AWS->>Agent: the next tick, at 20:53:54Z
+    Agent->>FS: kill switch off,<br/>assistant_cheaper_enabled
+    Agent->>Mail: rolled back, the incident note through SNS,<br/>58 s after ALARM
   end
-  Sig->>Agent: a tick every 2 min, until the alarm is OK and the probe passes
+  AWS->>Agent: a tick every 2 min, until the alarm is OK<br/>and a probe of 5 calls passes
   Agent->>Mail: ready to resume, 7 min 45 s after the rollback
   Note over Eng,Agent: Approval point 2, resume
-  Eng->>CLI: marshal approve run_id resume
+  Eng->>CLI: the engineer types<br/>marshal approve run_id resume
   CLI->>Agent: approve resume
   Agent->>FS: kill switch on
-  Agent->>FS: on a tick, refresh and read the results
+  Agent-->>CLI: RUNNING
+  AWS->>Agent: a tick
+  Agent->>FS: refresh and read the results
+  Agent->>AWS: the report, to S3
   Agent->>Mail: results ready, the report says hold, re-run
   Note over Eng,Agent: Approval point 3, promotion, declined here
-  Eng->>CLI: marshal decline run_id
-  CLI->>Agent: decline, the run is HELD
-  Note over Eng,FS: The experiment is ended in the dashboard, never by rm_agent
+  Eng->>CLI: the engineer types<br/>marshal decline run_id
+  CLI->>Agent: decline
+  Agent->>AWS: the rm-tick schedule off
+  Agent-->>CLI: HELD
+  Note over Eng,FS: The lead agent ends experiment 1503<br/>in the dashboard, with Roll out control,<br/>under Ahmed's delegation.<br/>rm_agent never ends an experiment
 ```
 
-The alarm's own attempt at the rollback timed out on a Flagsmith call, so the next tick
-finished it, 58 s after the alarm.
+The rollback took the release-and-resume path. The alarm's own invocation failed on a Flagsmith
+timeout and released its claim, and the next tick did the whole rollback, 58 s after the alarm
+([What the runs found](#what-the-runs-found)).
 
 Step by step:
 
@@ -159,9 +170,11 @@ Step by step:
 7. **The report.** When each arm has at least 50 identities and Flagsmith's results are in, the
    agent writes a report to S3 and sends it, with a recommendation made by fixed rules.
 8. **The decision.** To hold: `marshal decline <run_id>`, then end the experiment in the
-   Flagsmith dashboard, since a hold leaves it running. To promote: end the experiment in the
-   dashboard, then `marshal approve <run_id> promotion`, which sets `assistant_default_model`
-   to `cheaper` for everyone.
+   Flagsmith dashboard with "Roll out control", since a hold leaves it running. To promote: end
+   the experiment in the dashboard, choosing "Roll out a variant: cheaper", then
+   `marshal approve <run_id> promotion`, which sets `assistant_default_model` to `cheaper` for
+   everyone. No run has been promoted
+   ([The three approval points](#the-three-approval-points)).
 
 The plan, as `marshal start` printed it in that run
 ([evidence/5.2/e2e-log.txt](evidence/5.2/e2e-log.txt)). The model wrote the summary after
@@ -204,8 +217,13 @@ makes alone is the rollback.
 | --- | --- | --- |
 | `marshal approve <run_id> launch` | after `marshal start`, while the run is `PLANNED` | It sets up the experiment in Flagsmith and starts it |
 | `marshal approve <run_id> resume` | after a rollback, once the alarm is out of ALARM and the probe has passed: the run is `AWAITING_RESUME` | It checks the alarm and probes again, then turns the kill switch back on. If the alarm is in ALARM again, it answers "Not now" and changes nothing; if the probe fails, the run goes back to `ROLLED_BACK` |
-| `marshal approve <run_id> promotion` | after the report, while the run is `RESULTS_READY` | Only once the engineer has ended the experiment in Flagsmith, it sets `assistant_default_model` to `cheaper`; before that, it is refused with `EXPERIMENT_NOT_ENDED`. If the alarm is in ALARM, it rolls back instead |
+| `marshal approve <run_id> promotion` | after the report, while the run is `RESULTS_READY` | Only once the experiment is ended in Flagsmith, it sets `assistant_default_model` to `cheaper`; before that, it is refused with `EXPERIMENT_NOT_ENDED`. If the alarm is in ALARM, it rolls back instead |
 
+- **No run has been promoted.** The promotion transition and its `EXPERIMENT_NOT_ENDED` guard
+  are covered by unit tests, in `agent/tests/test_handlers.py`. Its Flagsmith write is a v2
+  feature version, as the kill switch's is. Task 2.2's live test covered that write on a
+  scratch feature: it set `spike_default_model` to `cheaper` and back
+  (`agent/tests/test_flagsmith_tools.py`, [evidence/2.2-live.md](evidence/2.2-live.md)).
 - **An approve names its step.** If the run now waits for something else (an alarm moved it,
   say), the approve is refused with `ILLEGAL_IN_STATE` and nothing changes.
 - **What an approve proves.** It is a `marshal` call made with AWS credentials that may invoke
@@ -220,9 +238,10 @@ makes alone is the rollback.
 
 Beyond the three approvals, four rules hold for every run:
 
-- **`rm_agent` never ends an experiment.** Ending one is the engineer's step, in the Flagsmith
-  dashboard, and promotion waits for it. Its tools cannot do it
-  ([How Flagsmith is used](#how-flagsmith-is-used)).
+- **Rollout Marshal never ends an experiment.** Ending one is a click in the Flagsmith
+  dashboard, outside Rollout Marshal, and promotion waits for it. In this build the lead agent
+  clicked it, under Ahmed's delegation ([Who did what](#who-did-what)). `rm_agent`'s tools
+  cannot do it ([How Flagsmith is used](#how-flagsmith-is-used)).
 - **One run at a time.** `marshal start` is refused with `RUN_ACTIVE` while a run is active.
 - **Secrets stay in Secrets Manager and AgentCore Identity.** They are read at run time and
   never printed.
@@ -366,7 +385,7 @@ Experimentation.
 | **Admin API**, through a Lambda | `rm_agent`, through `rm-flagsmith-admin` | the three metrics; the experiment's start, results and status |
 | **Admin API**, directly | `scripts/bootstrap_flagsmith.py`, `seed_experiment.py`, `reset.py` | the two permanent features; a test run without the agent; the reset between runs |
 | **Python SDK** | `rm-router` and `rm-judge` | one identity request, one exposure and three outcome events per answer |
-| **Experimentation** | the experiment, and the engineer in the dashboard | the 50/50 split, the three metrics, results per arm, and the end of each experiment |
+| **Experimentation** | the experiment, and the dashboard, where it is ended outside Rollout Marshal | the 50/50 split, the three metrics, results per arm, and the end of each experiment |
 
 - **The MCP server**, `https://mcp.flagsmith.com`, with the organisation API key that
   AgentCore Identity holds. The agent may call 11 of its tools: `list_environments`,
@@ -401,7 +420,9 @@ Experimentation.
   invocation, join the router's exposures per identity. An early spike showed it on a test
   experiment ([evidence/1.4-spike-experiment.md](evidence/1.4-spike-experiment.md)).
 - **The budget.** One identity request per answer, against the Free plan's 50,000 API
-  requests a month.
+  requests a month. In a run, each answer also sends an exposure and three outcome events.
+  Flagsmith's docs do not list event calls as billable; this was not observed
+  ([design.md](openspec/changes/build-rollout-marshal/design.md) section 13).
 - **What the agent never does in Flagsmith:** end, pause or roll out an experiment, or change
   an experiment's feature while it runs. At the tool boundary, its MCP allow-list above leaves
   out `update_experiment` and every delete tool, an experiment create that carries a status
@@ -425,15 +446,18 @@ the report's prose.
 - **The rule:**
   - any incident during the run: `hold, re-run`;
   - otherwise `promote`, only if the lower bound of Flagsmith's 95 percent credible interval
-    for the lift on `helpful_rate` is at or above minus 5 percent and both guardrails pass.
-    That is at least a 97.5 percent probability that the lift is at least minus 5 percent;
+    for the relative lift on `helpful_rate` is at or above minus 5 percent (-0.05) and both
+    guardrails pass. That is at least a 97.5 percent probability that the lift is at least
+    minus 5 percent;
   - otherwise `hold`.
 - **What to expect.** No run has recommended `promote`. Every planned run injects the fault,
   so the rule says `hold, re-run` after each one, as it did in both full runs.
 
 Each report is at `s3://rm-reports-818928662830/runs/<run_id>/report.md`, with nine sections:
 Hypothesis, Setup, Timeline, Results, Guardrails, Incident, Known bias, Recommendation and Time
-taken.
+taken. The bucket blocks public access, so the two full runs' reports are attached as written
+to S3: [evidence/5.1/report-r202611271927.md](evidence/5.1/report-r202611271927.md) and
+[evidence/5.2/report-r202611272042.md](evidence/5.2/report-r202611272042.md).
 
 ## The two full runs
 
@@ -454,11 +478,12 @@ and ended `HELD`. Each had the history `PLANNED`, `RUNNING`, `ROLLED_BACK`, `AWA
 | Resumed, on the engineer's approval | 20:32:52Z | 21:03:00Z |
 | Results ready: the report written to S3 and sent | 20:34:39Z | 21:04:20Z |
 | `HELD`, on the engineer's decline | 20:35:20Z | 21:05:06Z |
-| The load | 1,500 sent, 1,498 answered | 1,500 sent, 1,500 answered |
+| The load | 1,500 sent, 1,498 answered (two name lookups failed on the lead agent's machine) | 1,500 sent, 1,500 answered |
 | `scripts/e2e.py` | drove it to `ROLLED_BACK`; the lead agent finished it with `marshal status` reads | drove it from `start` to `HELD`, and exited 0 |
 
-The reports, the second one as written to S3 in
-[evidence/5.2/report-r202611272042.md](evidence/5.2/report-r202611272042.md):
+The two reports, attached as written to S3 under `runs/<run_id>/report.md`, are
+[evidence/5.1/report-r202611271927.md](evidence/5.1/report-r202611271927.md) and
+[evidence/5.2/report-r202611272042.md](evidence/5.2/report-r202611272042.md). Their results:
 
 | Run | Arm | Identities | `helpful_rate` | `mean_latency_ms` | `mean_cost_micro_usd` |
 | --- | --- | --- | --- | --- | --- |
@@ -475,19 +500,21 @@ The reports, the second one as written to S3 in
   above the roughly 2,700 per answer that Claude Sonnet 5's answers alone averaged in an
   earlier smoke run ([evidence/3.6-app-smoke.md](evidence/3.6-app-smoke.md)).
 - **Helpfulness is at its ceiling.** `helpful_rate` is near 1 in both arms of both runs. The
-  lower bound of the 95 percent credible interval for its lift was about minus 0.45 percent
-  both times, above the rule's bar of minus 5 percent. That is not evidence that the two
-  models are equally helpful, and the runs held anyway, because each had an incident and the
-  latency guardrail failed.
+  lower bound of the 95 percent credible interval for its lift was about -0.0045 both times,
+  a relative lift of -0.45 percent. That is above the rule's bar of minus 5 percent (-0.05).
+  It is not evidence that the two models are equally helpful, and the runs held anyway,
+  because each had an incident and the latency guardrail failed.
 - **Flagsmith's dashboard pointed the other way**, both times.
   - Its experiment page read "66% Winner Probability Confirmed" in the first run and "80%
     Winner Probability Confirmed" in the second, each with "Consider rolling out cheaper to
     all users". Its "Complete experiment" dialog pre-selected "Roll out a variant: cheaper".
-  - The rollback skewed its sample ([Known biases](#known-biases)): in the second run, Claude
-    Fable 5.1 served most of the cheaper arm's answers while the kill switch was off. So the
-    banner compared mostly the current model with itself.
-  - Rollout Marshal's report said `hold, re-run`. Each run was held, and each experiment was
-    ended with "Roll out control" to match.
+    These page readings are the lead agent's, from the browser.
+  - Both banners read samples the rollback skewed ([Known biases](#known-biases)). Claude
+    Sonnet 5 served only 153 of the cheaper arm's 740 answers in the first run, and 256 of 690
+    in the second; Claude Fable 5.1 served the rest while the kill switch was off. So both
+    banners compared mostly Claude Fable 5.1 with itself.
+  - Rollout Marshal's report said `hold, re-run`. Each run was held, and the lead agent ended
+    each experiment with "Roll out control" to match.
 
 ### Who did what
 
@@ -498,8 +525,8 @@ The reports, the second one as written to S3 in
   with "Roll out control", under Ahmed's delegation, again by its account. It also did the
   dashboard pass that [The numbers](#the-numbers) times.
 - **One refused attempt.** Before the first full run, the lead agent tried once to run
-  `marshal approve` itself, for a start that never launched. Claude Code's auto mode, which
-  screens the commands that agent runs, refused it before anything was sent.
+  `marshal approve` itself, on `r202611271018`, a start that never launched. Claude Code's auto
+  mode, which screens the commands that agent runs, refused it before anything was sent.
 
 ### What the runs found
 
@@ -508,13 +535,20 @@ The reports, the second one as written to S3 in
   failed until a fix was deployed mid-run
   ([evidence/5.1-probe-otel.md](evidence/5.1-probe-otel.md)). The second run used the fixed
   runtime, and its probe passed on the first tick after the alarm cleared.
-- **Two Flagsmith timeouts.** In the first run, the launch's experiment start failed with a
-  `TimeoutError`, most likely a Flagsmith request past its 4 s limit; that is an inference,
-  since payloads are not logged. In the second, the rollback's kill-switch call timed out on
-  Flagsmith's MCP server. Each time the agent released its claim, and the next tick finished
-  the change. Neither cause is settled.
-- **Three earlier starts never launched.** Twice, nobody approved the launch within
-  `scripts/e2e.py`'s 30-minute wait; then an SSO session expired.
+- **Two Flagsmith timeouts.** Each one failed an effect. Both times the agent released its
+  claim, and the next tick finished the change.
+  - In the first run, the launch's `start_experiment` failed with a `TimeoutError`, in a warm
+    invoke of `rm-flagsmith-admin`. Most likely one Flagsmith request ran past its 4 s limit;
+    that is an inference, since payloads are not logged
+    ([evidence/5.1-e2e.md](evidence/5.1-e2e.md), finding 2).
+  - In the second, the alarm's rollback effect, `set_kill_switch`, failed on a Flagsmith MCP
+    `list_project_features` call that timed out (`ReadTimeout`). The next tick did the whole
+    rollback, 58 s after ALARM
+    ([evidence/5.2/r202611272042.md](evidence/5.2/r202611272042.md), finding 1).
+  - So two of the four Flagsmith-heavy effects seen live, two launches and two rollbacks,
+    needed a tick's retry. Neither cause is settled.
+- **Three earlier starts never launched.** `scripts/e2e.py`'s 30-minute wait for the launch
+  approval ran out twice (it now takes `--pause-minutes`), then an SSO session expired.
 
 ## What is simulated
 
@@ -557,16 +591,17 @@ A rollback biases the results in two ways. Each report names both
    served it.
 
 Both pull the cheaper arm's numbers toward the current model's: its cost reads too high, and a
-comparison of quality compares the current model partly with itself. In run `r202611272042`,
-Claude Sonnet 5 served only 256 of the cheaper arm's 690 answers. This is why the rule says
-`hold, re-run` after any incident.
+comparison of quality compares the current model partly with itself. Claude Sonnet 5 served
+only 153 of the cheaper arm's 740 answers in run `r202611271927`, and 256 of 690 in run
+`r202611272042`. This is why the rule says `hold, re-run` after any incident.
 
 ## Limitations
 
-- **No run has recommended `promote`.** Every planned run injects the fault, so the rule says
-  `hold, re-run`. The `promote` branch, and the promotion itself (the `EXPERIMENT_NOT_ENDED`
-  check and setting `assistant_default_model` to `cheaper`), have only unit tests; neither has
-  run live.
+- **No run has recommended `promote`, and none has been promoted.** Every planned run injects
+  the fault, so the rule says `hold, re-run`. The `promote` branch, the promotion transition
+  and its `EXPERIMENT_NOT_ENDED` guard have unit tests only; the promotion's Flagsmith write ran
+  live only on a scratch feature, in task 2.2
+  ([The three approval points](#the-three-approval-points)).
 - **Helpfulness is at its ceiling**, so these runs cannot show whether the two models are
   equally helpful ([The two full runs](#the-two-full-runs)).
 - **An approval is not tied to a person**
@@ -644,6 +679,16 @@ make test
 group. `make test` runs the unit tests; tests marked `live`, which call AWS and Flagsmith, are
 left out.
 
+After any change to `agent/runtime/uv.lock`, also run:
+
+```sh
+make test-runtime
+```
+
+It runs `agent/tests/test_untraced_invokes.py` against the agent runtime's own pinned
+dependencies. Two of its tests run the OpenTelemetry instrumentation the runtime ships, the code
+that broke the first run's probe; `make test` skips those two.
+
 ### 2. Secrets
 
 Two secrets go in Secrets Manager, in us-east-1. Pasting each value at the prompt keeps it out
@@ -683,8 +728,9 @@ Region, so it applies to the account's Bedrock requests in us-east-1
 It prints one `ok` or `FAIL` line per check: the UTC time; the account; the data retention
 mode; both secrets, by their metadata only; one Bedrock Converse call per model; the AgentCore
 and FIS APIs; Lambda concurrency; and the tools. It exits 1 if any check fails, but no later
-step reads its result. Its `gh` line checks push rights on this repository, so a stranger's
-says `FAIL`; that is expected, and blocks nothing.
+step reads its result. Its `gh` line checks push rights on this repository. Without push rights
+to the repo, the `gh` line is `FAIL` and `make preflight` exits 1; that line does not block the
+deploy.
 
 ### 4. Deploy
 
@@ -794,15 +840,16 @@ uv run marshal status <run_id>
 uv run marshal approve <run_id> resume
 
 # After the results-ready note, which carries the report: either hold, then end the
-# experiment in the Flagsmith dashboard, since a hold leaves it running
+# experiment in the Flagsmith dashboard with "Roll out control", since a hold leaves it running
 uv run marshal decline <run_id>
-# or end the experiment in the Flagsmith dashboard, then promote
+# or end the experiment in the Flagsmith dashboard with "Roll out a variant: cheaper", then promote
 uv run marshal approve <run_id> promotion
 ```
 
 - `scripts/reset.py` puts the resting state back: no active run, `rm-tick` off, the kill switch
   on and `assistant_default_model` at `current`. It refuses while a run is still active,
-  unless given `--force`, and lists any experiment still running, for the engineer to end.
+  unless given `--force`, and lists any experiment still running, to be ended in the Flagsmith
+  dashboard.
 - `marshal start` prints the run's ID on its `run:` line. Every `marshal` command exits 0 when
   the response has no error, 1 when it carries an error code or the call fails, and 2 on a
   usage error.
