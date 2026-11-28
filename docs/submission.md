@@ -10,7 +10,7 @@ Owner: Ahmed. The lead keeps this checklist.
 - [ ] **The video is recorded,** on one new short run, following "Recording the run" below. Ahmed chose a short run at 22:28:26Z.
 - [ ] **The run's record** is in `evidence/6.4/`, and the video script's placeholders are filled from it (the lead).
 - [ ] **The video is uploaded,** and its URL replaces the README's `[[6.4: video URL]]`. The README's opening draft comment is deleted.
-- [ ] **That URL-only change reaches `main`:** a pull request into `dev`, then `dev` merged to `main`. Gate 4's approval covers a change that only fills the URL and deletes the comment.
+- [ ] **The post-recording change reaches `main`:** the README's video URL, its draft comment deleted, `evidence/6.4/` and the filled video script, in one pull request into `dev`. One goldfish reviews it as a per-task review (docs/REVIEW.md); then `dev` merges to `main`, with Ahmed's yes for that merge.
 - [ ] **The entry is submitted** on WeMakeDevs, Track 2, with the repo URL and the video URL.
 
 ## Recording the run
@@ -24,7 +24,7 @@ Each step, from the repo root, with the SSO profile in 818928662830:
 3. **Approve, decline:** type each command `e2e.py` prints, in a second terminal: `uv run marshal approve <run_id> launch`, then `uv run marshal approve <run_id> resume`, then `uv run marshal decline <run_id>`. The run recommends `hold, re-run`.
 4. **End the experiment** in the Flagsmith dashboard, on camera. The "Complete experiment" dialog pre-selects the cheaper variant: change it to **Roll out control**.
 5. **Stop lines** (CLAUDE.md): run the two commands `e2e.py`'s summary prints, `uv run python evidence/3.6-scripts/smoke_reads.py cost …` and `… usage`.
-6. **The record:** the lead saves the run's history, its four timestamps, the report key and the SNS IDs in `evidence/6.4/<run_id>.md`, as 5.2's record does. It then fills the video script's `[[rec: …]]` placeholders.
+6. **The record:** the lead saves the run's history, its four timestamps, the report key and the SNS IDs in `evidence/6.4/<run_id>.md`, as 5.2's record does. It also saves the alarm's OK → ALARM and ALARM → OK times, read with `aws cloudwatch describe-alarm-history --region us-east-1 --alarm-name rm-cheaper-latency-p95 --history-item-type StateUpdate --start-date <the run's start> --end-date <its end>`, as 5.2's row 15 did. It then fills the video script's `[[rec: …]]` placeholders.
 
 ## Open items for Ahmed (none blocks the submission)
 1. **The quoted chat words.** Confirm or correct the words of his that `evidence/gate-2-review.md` quotes, with one comment on PR #36.
