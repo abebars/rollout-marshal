@@ -184,8 +184,8 @@ The dashboard differed from the step list in five ways:
      that status on the dashboard, not through the Admin API.
    - That end was done under the same instruction. Otherwise CLAUDE.md has the human end
      every experiment.
-   - `assistant_model_rmanual0851` and experiment 1172 go on the cleanup list in
-     `evidence/gate-1-review.md`.
+   - `assistant_model_rmanual0851` and experiment 1172 are on the cleanup list's additions in
+     `evidence/gate-2-review.md`.
 
 The pass sent no traffic. The router reads only the active run's feature (design.md
 section 4), and with no active run it reads `assistant_default_model`. So the scratch

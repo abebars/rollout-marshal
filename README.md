@@ -14,7 +14,9 @@ rolls back on its own, and asks a human before every other change.**
   through Flagsmith's Admin API.
 - **It rolls back without asking.** When the p95 latency alarm on the cheaper arm fires, it
   turns a kill switch off, so every user gets the current model, and sends an incident note.
-  In the two full runs, the rollback came 26 s and 58 s after the alarm.
+  Every run is a test: 150 synthetic users send the traffic, and AWS Fault Injection Service
+  slows the cheaper model's answers on purpose ([What is simulated](#what-is-simulated)). In
+  the two full runs, the rollback came 26 s and 58 s after the alarm.
 - **A human approves the rest.** Launch, resume and promotion each wait for `marshal approve`;
   the rollback is the only change to live traffic it makes without asking. The report's
   recommendation comes from fixed rules, and the agent never ends an experiment.
@@ -239,8 +241,8 @@ makes alone is the rollback.
 Beyond the three approvals, four rules hold for every run:
 
 - **Rollout Marshal never ends an experiment.** Ending one is a click in the Flagsmith
-  dashboard, outside Rollout Marshal, and promotion waits for it. In this build the lead agent
-  clicked it, under Ahmed's delegation ([Who did what](#who-did-what)). `rm_agent`'s tools
+  dashboard, outside Rollout Marshal, and promotion waits for it. In the two full runs the lead
+  agent clicked it, under Ahmed's delegation ([Who did what](#who-did-what)). `rm_agent`'s tools
   cannot do it ([How Flagsmith is used](#how-flagsmith-is-used)).
 - **One run at a time.** `marshal start` is refused with `RUN_ACTIVE` while a run is active.
 - **Secrets stay in Secrets Manager and AgentCore Identity.** They are read at run time and
@@ -545,8 +547,8 @@ The two reports, attached as written to S3 under `runs/<run_id>/report.md`, are
     `list_project_features` call that timed out (`ReadTimeout`). The next tick did the whole
     rollback, 58 s after ALARM
     ([evidence/5.2/r202611272042.md](evidence/5.2/r202611272042.md), finding 1).
-  - So two of the four Flagsmith-heavy effects seen live, two launches and two rollbacks,
-    needed a tick's retry. Neither cause is settled.
+  - So in the two full runs, two of the four Flagsmith-heavy effects, two launches and two
+    rollbacks, needed a tick's retry. Neither cause is settled.
 - **Three earlier starts never launched.** `scripts/e2e.py`'s 30-minute wait for the launch
   approval ran out twice (it now takes `--pause-minutes`), then an SSO session expired.
 
@@ -606,10 +608,10 @@ only 153 of the cheaper arm's 740 answers in run `r202611271927`, and 256 of 690
   equally helpful ([The two full runs](#the-two-full-runs)).
 - **An approval is not tied to a person**
   ([The three approval points](#the-three-approval-points)).
-- **Two Flagsmith timeouts are unexplained**, one in each run
+- **Two Flagsmith timeouts are unexplained**, one in each full run
   ([What the runs found](#what-the-runs-found)).
-- **The incident emails were not checked.** The runs' records hold an SNS message ID for each
-  note, not the emails' arrival.
+- **The full runs' incident emails were not checked.** Their records hold an SNS message ID for
+  each note, not the emails' arrival.
 - **The setup has not been run in one go**, from an empty account or with changed IDs
   ([Set it up](#set-it-up)).
 
@@ -641,8 +643,9 @@ first.
   ([evidence/5.1-e2e.md](evidence/5.1-e2e.md),
   [evidence/5.2/r202611272042.md](evidence/5.2/r202611272042.md)). On average an answer cost
   13,531.3 micro-USD on Claude Fable 5.1 and 2,708.5 on Claude Sonnet 5 (US$0.0135 and
-  US$0.0027). This whole build's answers came to US$40.81, for 3,601 answers sent. Judging and
-  the agent's own calls come on top.
+  US$0.0027). By the end of the second full run, this build's answers came to US$40.81, for
+  3,601 answers sent; the video's short run sends 300 more. Judging and the agent's own calls
+  come on top.
 
 ### The IDs this repo pins
 
@@ -727,10 +730,10 @@ Region, so it applies to the account's Bedrock requests in us-east-1
 
 It prints one `ok` or `FAIL` line per check: the UTC time; the account; the data retention
 mode; both secrets, by their metadata only; one Bedrock Converse call per model; the AgentCore
-and FIS APIs; Lambda concurrency; and the tools. It exits 1 if any check fails, but no later
-step reads its result. Its `gh` line checks push rights on this repository. Without push rights
-to the repo, the `gh` line is `FAIL` and `make preflight` exits 1; that line does not block the
-deploy.
+and FIS APIs; Lambda concurrency; and the tools. If any check fails, `scripts/preflight.sh`
+exits 1 (make then reports `Error 1`), but no later step reads its result. Its `gh` line checks
+push rights on this repository. Without push rights to the repo, the `gh` line is `FAIL`, so
+preflight exits 1; that line does not block the deploy.
 
 ### 4. Deploy
 
@@ -866,7 +869,17 @@ secrets and the two account-wide settings: CloudWatch Transaction Search, and th
 retention mode. [evidence/gate-2-review.md](evidence/gate-2-review.md),
 [evidence/5.1-e2e.md](evidence/5.1-e2e.md) and
 [evidence/5.2/r202611272042.md](evidence/5.2/r202611272042.md) add the runs' Flagsmith objects
-and `rm-runs` items. None of them lists SSM parameter `/rm/agent-runtime-arn`.
+and `rm-runs` items. Those lists leave out two steps:
+
+- **Empty the reports bucket first.** Before `terraform destroy`, empty
+  `rm-reports-<your account ID>`, which holds each run's report: the destroy fails on a bucket
+  that is not empty.
+- **Delete the SSM parameter.** `agent/scripts/deploy_agent.py` wrote `/rm/agent-runtime-arn`
+  outside Terraform, so the destroy leaves it:
+  `aws ssm delete-parameter --region us-east-1 --name /rm/agent-runtime-arn`.
+
+[docs/submission.md](docs/submission.md), under "After judging: cleanup", lists both for this
+build, with the Flagsmith objects of the video's run.
 
 ## Repository layout
 
@@ -883,7 +896,7 @@ Each part of the system has its own directory (design.md section 12):
 | `contracts/` | every shared name (`names.py`) and the JSON schemas |
 | `openspec/changes/build-rollout-marshal/` | the proposal, the design (the contract every name comes from), the specs and the task board |
 | `evidence/` | what each task ran, with its commands and their output |
-| `docs/` | time saved, the video script and the review protocol |
+| `docs/` | time saved, the video script, the submission checklist and the review protocol |
 
 ## More
 

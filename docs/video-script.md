@@ -12,11 +12,14 @@ ends on the two timed numbers.
   - The two full runs, `r202611271927` and `r202611272042`, are the measured record
     (`evidence/5.1-e2e.md`, `evidence/5.2/r202611272042.md`). The recorded run is not one of
     them.
-  - Each `[[rec: …]]` below is a value from the recorded run. Ahmed or the lead fills it from
-    that run's `e2e.py` output and `evidence/6.4/`, before the cut. The table under "Filling
-    the placeholders" says where each comes from.
-  - The video cuts between beats and keeps a UTC clock in shot (`scripts/e2e.py`'s
-    timestamps, or the shell prompt's), so each cut shows how much time passed.
+  - Each `[[rec: …]]` below is a value from the recorded run. The lead fills it from that
+    run's `e2e.py` output and `evidence/6.4/`, before the cut (`docs/submission.md`, step 6).
+    The table under "Filling the placeholders" says where each comes from.
+  - The video cuts between beats and keeps a UTC clock in every shot, so each cut shows how
+    much time passed. In a terminal shot it is `scripts/e2e.py`'s timestamps. In a shot of
+    the AWS console, the email client or the Flagsmith dashboard, keep a small window beside
+    it running `while :; do date -u +%H:%M:%SZ; sleep 1; done`, or the `e2e.py` terminal:
+    those screens may show local time.
   - Nothing is re-enacted, and nothing is sped up without a caption saying so.
   - If an effect fails and the next tick finishes it, as two of the four Flagsmith-heavy
     effects did in the full runs, the video shows that as it happened, with a caption.
@@ -25,14 +28,15 @@ ends on the two timed numbers.
     experiment's page.
   - The "Complete experiment" dialog cannot be opened again once the experiment is ended,
     so show it, and the page's banner, only if they were captured at the time.
-- **The numbers on the end card** are the two full runs', from `docs/time-saved.md`. The
-  recorded run does not change them:
-  - the dashboard pass, about 2:18 with one metric attached. An AI agent clicked it through
-    in Chrome at Ahmed's instruction, and the card says so: it was not a person;
-  - Rollout Marshal's own work, about 0:39 to 1:20 with all three metrics: 0:39 in
-    `r202611272042`, and 1:20 in `r202611271927`, which included a failed experiment start
-    that the next tick retried. The plan's wait for the engineer's approval, 6:43 and 12:33,
-    is shown apart.
+- **The numbers on the end card** are `docs/time-saved.md`'s, from one dashboard pass and the
+  two full runs. The recorded run does not change them:
+  - the dashboard pass, about 2:18 with one metric attached, timed once on its own scratch
+    run, `rmanual0851`, not in either full run. An AI agent clicked it through in Chrome at
+    Ahmed's instruction, and the card says so: it was not a person;
+  - Rollout Marshal's own work in the two full runs, about 0:39 to 1:20 with all three
+    metrics: 0:39 in `r202611272042`, and 1:20 in `r202611271927`, which included a failed
+    experiment start that the next tick retried. The plan's wait for the engineer's approval,
+    6:43 and 12:33, is shown apart.
 - **The recommendation** on screen and in the voiceover is the one the recorded run's report
   states. No run has recommended `promote`. Every planned run injects the fault, so by design
   each recommends `hold, re-run`, as both full runs did. The video claims no promote.
@@ -52,6 +56,10 @@ ends on the two timed numbers.
   - the assistant API's URL, `ask_url`: `e2e.py` finds it itself and prints `<not shown>`
     in its place;
   - any Flagsmith key: keep the SDK Keys page and the organisation's API keys closed;
+  - the browser's address bar on any Flagsmith page. The Admin API's paths carry the
+    environment's key (`evidence/1.3-flagsmith-agent-spike.md`), and the dashboard's
+    addresses may too: that was not checked. Hide the browser's toolbar, or crop or blur the
+    bar;
   - AWS credentials.
 - **Screens:**
   - two terminals with a large font: the recorded one, where `e2e.py` runs, and a second for
@@ -168,28 +176,34 @@ Voiceover:
 
 | Time | On screen |
 | --- | --- |
-| 2:22 to 2:31 | Email client: "Rollout Marshal [[rec: run ID]]: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation. The scroll ends on the bold **`hold, re-run`** and the rule paragraph under it, which code wrote. The model-written paragraph after them stays out of shot: in both full runs' reports it understated the failed latency guardrail. If `helpful_rate` is near 1 in both arms, caption: "`helpful_rate` is near 1 in both arms: not evidence that the models are equally helpful". |
-| 2:31 to 2:37 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval, and the page's banner: [[rec: the banner's text]]. Caption: "The rollback skewed this sample: cheaper-arm users got the current model while the kill switch was off". |
+| 2:22 to 2:31 | Email client: "Rollout Marshal [[rec: run ID]]: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation. The email carries the report's Markdown as written, so the scroll ends on the line `**hold, re-run**` and the rule paragraph under it, which code wrote. The model-written paragraph after them stays out of shot: in both full runs' reports it understated the failed latency guardrail. If `helpful_rate` is near 1 in both arms, caption: "`helpful_rate` is near 1 in both arms: not evidence that the models are equally helpful". |
+| 2:31 to 2:37 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval, and the page's banner: [[rec: the banner's text]]. Only if the rollback skewed this sample ("Filling the placeholders"), caption: "[[rec: the cheaper arm's answers by model]]. While the kill switch was off, the cheaper arm got the current model". |
 | 2:37 to 2:40 | Second terminal: `uv run marshal decline [[rec: run ID]]`. Then `e2e.py`'s line `HELD: Run [[rec: run ID]] is held`. |
 | 2:40 to 2:44 | Flagsmith dashboard, on camera: End Experiment. The "Complete experiment" dialog pre-selects [[rec: the dialog's pre-selection]]; "Roll out control" is chosen, and the page then reads "Control rolled out to everyone". |
-| 2:44 to 2:57 | End card, three lines: "Flagsmith dashboard, clicked through in Chrome by an AI agent: about 2:18, one metric"; "Rollout Marshal's own work: about 0:39 to 1:20, all three metrics"; and "From the two full runs, whose plans also waited 6:43 and 12:33 for the engineer's approval". |
+| 2:44 to 2:57 | End card, three lines: "Flagsmith dashboard, one timed pass clicked through in Chrome by an AI agent: about 2:18, one metric"; "Rollout Marshal's own work in the two full runs: about 0:39 to 1:20, all three metrics"; and "In those runs, the plans also waited 6:43 and 12:33 for the engineer's approval". |
 
 Voiceover:
 
-> Flagsmith's dashboard says [[rec: the banner, in words]]. The report says: hold, re-run,
-> because the run had an incident.
+> The report says: hold, re-run, because the run had an incident. Flagsmith's dashboard says
+> [[rec: the banner, in words]].
 >
-> I hold it, and the experiment is ended in Flagsmith, never by Rollout Marshal.
+> I hold it. The experiment is ended in Flagsmith, never by Rollout Marshal.
 >
-> In our two full runs, an AI agent clicking this setup through Flagsmith's dashboard took
-> about two minutes eighteen, with one metric. Rollout Marshal's own work took thirty-nine
-> seconds to a minute twenty, with all three, besides the time its plan waited for my
-> approval.
+> In one timed pass, an AI agent clicking this setup through Flagsmith's dashboard took about
+> two minutes eighteen, with one metric. In our two full runs, Rollout Marshal's own work took
+> thirty-nine seconds to a minute twenty, with all three, besides its wait for my approval.
 
 ## Filling the placeholders
 
 Each comes from the recorded run. The run's record in `evidence/6.4/` holds its history, its
-four timestamps, the report key and the SNS IDs (`docs/submission.md`, step 6).
+four timestamps, the report key and the SNS IDs (`docs/submission.md`, step 6). `e2e.py` does
+not record the alarm's times, so the lead adds them to the record from one read after the run,
+as 5.2 did (`evidence/5.2/r202611272042.md`, row 15):
+
+```sh
+aws cloudwatch describe-alarm-history --region us-east-1 --alarm-name rm-cheaper-latency-p95 \
+  --history-item-type StateUpdate --start-date <the run's start, UTC> --end-date <its end, UTC>
+```
 
 | Placeholder | From |
 | --- | --- |
@@ -197,15 +211,25 @@ four timestamps, the report key and the SNS IDs (`docs/submission.md`, step 6).
 | `[[rec: plan, seconds after the start]]` | `e2e.py`'s `start sent` and `plan returned` timestamps |
 | `[[rec: RUNNING, seconds after the approve was seen]]` | `e2e.py`'s `approve seen` and `RUNNING` timestamps |
 | `[[rec: fault start, UTC]]` | `inject_fault.sh`'s `started at` line |
-| `[[rec: ALARM, UTC]]`, `[[rec: ALARM, after the fault started]]` and its words | the alarm's history in `evidence/6.4/`, against FIS's start, which `inject_fault.sh`'s last line gives |
+| `[[rec: ALARM, UTC]]`, `[[rec: ALARM, after the fault started]]` and its words | the alarm's OK to ALARM entry in that read, against FIS's start, which `inject_fault.sh`'s last line gives |
 | `[[rec: rollback, after the fault started, in words]]` | the run's `ROLLED_BACK` entry, against FIS's start |
-| `[[rec: OK, UTC]]` | the alarm's history |
+| `[[rec: OK, UTC]]` | the alarm's ALARM to OK entry in that read |
 | `[[rec: resume request, after the rollback]]` | the run's `AWAITING_RESUME` and `ROLLED_BACK` entries |
 | `[[rec: the banner's text]]`, `[[rec: the banner, in words]]` | the experiment page, as recorded |
+| `[[rec: the cheaper arm's answers by model]]` | "Claude Sonnet 5 served N of the cheaper arm's M answers". N is the `cheaper` count from `uv run python evidence/3.6-scripts/smoke_reads.py seen --since <the run's RUNNING time>`, read after the run: the router's answer invokes, by the model it served. M is the cheaper arm's identities in the report, times 2 |
 | `[[rec: the dialog's pre-selection]]` | the "Complete experiment" dialog, as recorded |
+
+The 2:31 caption on the cheaper arm's answers goes in only if M minus N is more than the
+load's failed requests (`load.py`'s `failed=` count); otherwise drop it. At 150 x 2, few of the
+cheaper arm's answers may come after the rollback: task 4.3's 150 x 2 load ended about a minute
+after its alarm (`evidence/4.3-fis.md`), and the full runs' rollbacks came 26 s and 58 s after
+the alarm.
 
 ## Before recording
 
+- A fresh `aws sso login` for the SSO profile, just before the reset. `e2e.py` reads the run's
+  status every 10 s to the end, and stops after five failed reads in a row: `r202611271535`
+  stopped that way when its session expired (`evidence/5.1-e2e.md`).
 - `scripts/reset.py` ended with "no experiment is running" (`docs/submission.md`, step 1).
 - `evidence/6.4/` exists and holds no `record.json`: `--record` needs its folder, and refuses
   an existing file (step 2).
@@ -213,9 +237,11 @@ four timestamps, the report key and the SNS IDs (`docs/submission.md`, step 6).
 
 ## Before the cut
 
-- Every `[[rec: …]]` is filled.
+- Every `[[rec: …]]` is filled. The one exception is the 2:31 caption on the cheaper arm's
+  answers, which stays in only if its numbers bear it out (above).
 - The recorded run's report is read, and its recommendation is the one in beat 6. If it is
   not `hold, re-run`, beat 6 changes to match.
 - The end card's numbers match `docs/time-saved.md`.
-- Nothing from "Never on screen" appears, in any frame.
+- Nothing from "Never on screen" appears, in any frame, the address bar on Flagsmith pages
+  included.
 - The cut runs 3:00 or less.
