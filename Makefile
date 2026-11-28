@@ -1,9 +1,10 @@
 # Rollout Marshal developer commands. Python runs through uv on Python 3.13.
-.PHONY: help install test lint fmt preflight names-json build
+.PHONY: help install test test-runtime lint fmt preflight names-json build
 
 help:
 	@echo "make install    create .venv (Python 3.13) with every dependency group"
 	@echo "make test       unit tests; live tests are excluded (run them with: uv run pytest -m live)"
+	@echo "make test-runtime the probe tests against the agent runtime's own pinned dependencies; after any change to agent/runtime/uv.lock"
 	@echo "make lint       ruff check, ruff format --check, terraform fmt -check"
 	@echo "make fmt        apply ruff fixes and formatting, and terraform fmt"
 	@echo "make preflight  scripts/preflight.sh: one ok or FAIL line per check"
@@ -15,6 +16,11 @@ install:
 
 test:
 	uv run pytest
+
+# The two tests that run the shipped opentelemetry-instrumentation-botocore skip in the root
+# environment; this runs them against agent/runtime's own lock (evidence/5.1-probe-otel.md).
+test-runtime:
+	uv run --project agent/runtime --frozen --with pytest python -m pytest agent/tests/test_untraced_invokes.py
 
 lint:
 	uv run ruff check .
