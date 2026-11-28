@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rollout Marshal walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: an airfield at night. One 16:9 stage, the system drawn as ground positions,
+   the caption strip below works like a marshal's call-out for the current beat. Single dark theme by choice (screen recording). */
+:root{
+  color-scheme: dark;
+  --tarmac:#172029;
+  --apron:#202c38;
+  --apron-2:#28374660;
+  --paint:#3d5063;
+  --text:#edf1f5;
+  --muted:#9aaaba;
+  --wand:#f6c443;      /* human decisions */
+  --taxi:#5cb8ff;      /* agent and data flow */
+  --fault:#ff6f61;     /* injected fault, alarm */
+  --clear:#5fd6a0;     /* healthy / on */
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Barlow","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--tarmac);color:var(--text);font-family:var(--body);display:flex;flex-direction:column;overflow:hidden}
+
+header{display:flex;align-items:baseline;gap:20px;padding:18px 32px 6px;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(26px,2.6vw,44px);letter-spacing:.01em;margin:0;line-height:1}
+.tag{color:var(--muted);font-size:clamp(14px,1.15vw,20px);flex:1;min-width:200px}
+.team{font-family:var(--display);font-weight:500;font-size:clamp(14px,1.1vw,19px);color:var(--muted)}
+.fs{font:500 14px var(--body);color:var(--muted);background:none;border:1px solid var(--paint);border-radius:6px;padding:6px 12px;cursor:pointer}
+.fs:hover{color:var(--text);border-color:var(--muted)}
+button:focus-visible{outline:2px solid var(--taxi);outline-offset:2px}
+
+.stage{flex:1;min-height:0;padding:0 24px}
+.stage figure{margin:0;height:100%}
+.stage svg{display:block;width:100%;height:100%}
+
+footer{padding:10px 32px 18px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.call{display:flex;gap:22px;align-items:center;min-height:86px}
+.num{font-family:var(--display);font-weight:700;font-size:clamp(44px,4.4vw,76px);line-height:.9;color:var(--wand);min-width:1.1em;font-variant-numeric:tabular-nums}
+.call h2{font-family:var(--display);font-weight:600;font-size:clamp(22px,2vw,34px);margin:0 0 4px;line-height:1.05;text-wrap:balance}
+.call p{margin:0;font-size:clamp(15px,1.25vw,21px);line-height:1.35;color:#cfd8e1;max-width:75ch}
+.rail{display:flex;gap:6px;flex-wrap:wrap}
+.rail button{flex:1 1 110px;text-align:left;font:500 clamp(12px,.95vw,16px) var(--body);color:var(--muted);background:var(--apron);border:0;border-top:3px solid var(--paint);padding:8px 10px 9px;cursor:pointer;border-radius:0 0 6px 6px}
+.rail button:hover{color:var(--text)}
+.rail button[aria-current="step"]{color:var(--text);border-top-color:var(--wand);background:#2a3847}
+.rail .k{font-family:var(--display);font-weight:600;margin-right:6px;color:inherit}
+.hint{color:var(--muted);font-size:13px}
+body.clean .hint, body.clean .fs{visibility:hidden}
+
+/* ---------- diagram ---------- */
+svg text{font-family:var(--body);fill:var(--text)}
+.n > rect.box{fill:var(--apron);stroke:var(--paint);stroke-width:1.5}
+.n .t{font-family:var(--display);font-weight:600;font-size:23px}
+.n .s{font-size:15px;fill:var(--muted)}
+.n .m{font-family:var(--mono);font-size:13.5px}
+.n .v{font-family:var(--body);font-weight:600;font-size:14px;text-anchor:end}
+.n, .e{transition:opacity .35s ease}
+.n.off, .e.off{opacity:.2}
+.n.on > rect.box{stroke:var(--taxi);stroke-width:2}
+#n-human.on > rect.box{stroke:var(--wand)}
+#n-agent > rect.box{fill:#1f3346}
+#n-agent.on > rect.box{stroke-width:3}
+
+.inner{fill:#172029;stroke:var(--paint);stroke-width:1.2}
+.row{fill:#172029;stroke:var(--paint);stroke-width:1}
+.row.hot{stroke:var(--taxi);fill:#1b3044}
+.row.hot.bad{stroke:var(--fault);fill:#3a2226}
+.v.ok{fill:var(--clear)} .v.bad{fill:var(--fault)} .v.dim{fill:var(--muted)}
+.inner.bad{stroke:var(--fault);fill:#3a2226}
+.inner.hot{stroke:var(--taxi)}
+
+.gate rect{fill:#172029;stroke:var(--paint);stroke-width:1.2}
+.gate text{font-size:14px;font-weight:500;fill:var(--muted);text-anchor:middle}
+.gate.hot rect{fill:var(--wand);stroke:var(--wand)}
+.gate.hot text{fill:#1b1a12;font-weight:600}
+
+.chip{fill:#172029;stroke:var(--paint)}
+.chiptext{font-family:var(--mono);font-size:15px;font-weight:500;text-anchor:middle;fill:var(--taxi)}
+.chiptext.bad{fill:var(--fault)} .chiptext.wait{fill:var(--wand)} .chiptext.ok{fill:var(--clear)}
+
+.e path{fill:none;stroke:var(--paint);stroke-width:2;marker-end:url(#m-dim)}
+.e text{font-size:15px;fill:var(--muted)}
+.e text.sub{font-family:var(--mono);font-size:12.5px}
+.e.lit[data-tone="flow"] path,.e.on[data-tone="flow"] path{stroke:var(--taxi);marker-end:url(#m-flow)}
+.e.lit[data-tone="human"] path,.e.on[data-tone="human"] path{stroke:var(--wand);marker-end:url(#m-human)}
+.e.lit[data-tone="alert"] path,.e.on[data-tone="alert"] path{stroke:var(--fault);marker-end:url(#m-alert)}
+.e.on text,.e.lit text{fill:var(--text)}
+.e.on path{stroke-width:3;stroke-dasharray:10 8;animation:run 1s linear infinite}
+@keyframes run{to{stroke-dashoffset:-18}}
+@media (prefers-reduced-motion:reduce){.e.on path{animation:none;stroke-dasharray:none}.n,.e{transition:none}}
+
+@media (max-width:820px){
+  html,body{height:auto}
+  body{overflow:auto}
+  .stage{overflow-x:auto;padding:0 16px}
+  .stage svg{min-width:900px;height:auto}
+  header,footer{padding-left:16px;padding-right:16px}
+  .call{align-items:flex-start}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Rollout Marshal</h1>
+  <div class="tag">An agent that runs your model migration experiment, with Flagsmith as the controls</div>
+  <div class="team">Built Not Theorized</div>
+  <button class="fs" id="fs" type="button">Full screen</button>
+</header>
+
+<div class="stage">
+<figure>
+<svg viewBox="0 0 1600 760" role="img" aria-label="Rollout Marshal architecture: you approve, the agent runs a Flagsmith experiment on a support assistant, a CloudWatch alarm wakes the agent to roll back, and results come back as a decision report." preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <marker id="m-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#3d5063"/></marker>
+    <marker id="m-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5cb8ff"/></marker>
+    <marker id="m-human" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#f6c443"/></marker>
+    <marker id="m-alert" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#ff6f61"/></marker>
+  </defs>
+
+  <!-- edges -->
+  <g class="e" id="e-h2a" data-tone="human"><path d="M280 340H518"/><text x="399" y="326" text-anchor="middle">start, approve, decline</text></g>
+  <g class="e" id="e-a2h" data-tone="flow"><path d="M520 425H282"/><text x="399" y="450" text-anchor="middle">plan, incident email, report</text></g>
+  <g class="e" id="e-cmd" data-tone="flow"><path d="M640 300V90H1098"/><text x="870" y="76" text-anchor="middle">creates flag, experiment, metrics; flips the kill switch</text><text class="sub" x="870" y="112" text-anchor="middle">Flagsmith MCP + Admin API</text></g>
+  <g class="e" id="e-res" data-tone="flow"><path d="M1100 180H740V298"/><text x="920" y="166" text-anchor="middle">experiment results</text></g>
+  <g class="e" id="e-cust" data-tone="flow"><path d="M1030 440H1118"/></g>
+  <g class="e" id="e-ask" data-tone="flow"><path d="M1130 300V222"/><text x="1142" y="256">which model for</text><text x="1142" y="275">this customer?</text></g>
+  <g class="e" id="e-ev" data-tone="flow"><path d="M1340 300V222"/><text x="1352" y="256">helpful, latency,</text><text x="1352" y="275">cost per answer</text></g>
+  <g class="e" id="e-met" data-tone="alert"><path d="M1220 580V638"/><text x="1232" y="615">latency metrics</text></g>
+  <g class="e" id="e-al" data-tone="alert"><path d="M1100 685H1042"/></g>
+  <g class="e" id="e-wake" data-tone="alert"><path d="M800 640V462"/><text x="812" y="560">wakes the agent</text></g>
+  <g class="e" id="e-state" data-tone="flow"><path d="M640 460V638"/><text x="652" y="604">saves each step</text></g>
+  <g class="e" id="e-rep" data-tone="flow"><path d="M560 460V550H390V638"/><text x="402" y="538">writes the report</text></g>
+  <g class="e" id="e-fis" data-tone="alert"><path d="M1470 640V514"/><text x="1482" y="615">adds delay</text></g>
+
+  <!-- you -->
+  <g class="n" id="n-human">
+    <rect class="box" x="40" y="300" width="240" height="170" rx="10"/>
+    <text class="t" x="58" y="336">You</text>
+    <text class="s" x="58" y="360">at the marshal CLI</text>
+    <g class="gate" id="g-launch"><rect x="54" y="412" width="68" height="34" rx="6"/><text x="88" y="434">Launch</text></g>
+    <g class="gate" id="g-resume"><rect x="128" y="412" width="68" height="34" rx="6"/><text x="162" y="434">Resume</text></g>
+    <g class="gate" id="g-promote"><rect x="202" y="412" width="68" height="34" rx="6"/><text x="236" y="434">Promote</text></g>
+    <text class="s" x="58" y="398">Your three decisions</text>
+  </g>
+
+  <!-- agent -->
+  <g class="n" id="n-agent">
+    <rect class="box" x="520" y="300" width="340" height="160" rx="10"/>
+    <text class="t" x="540" y="338" style="font-size:30px">Rollout Marshal</text>
+    <text class="s" x="540" y="364">Agent on Bedrock AgentCore Runtime</text>
+    <rect class="chip" x="540" y="394" width="300" height="42" rx="6"/>
+    <text class="chiptext" id="state" x="690" y="421">state: PLANNED</text>
+  </g>
+
+  <!-- flagsmith -->
+  <g class="n" id="n-fs">
+    <rect class="box" x="1100" y="40" width="460" height="180" rx="10"/>
+    <text class="t" x="1120" y="74">Flagsmith</text>
+    <text class="s" x="1540" y="73" text-anchor="end">flags, experiment, results</text>
+    <rect class="row" id="r1" x="1116" y="92" width="428" height="34" rx="5"/>
+    <text class="m" x="1128" y="114">assistant_model_&lt;run&gt;</text><text class="v dim" id="v1" x="1532" y="114">current / cheaper, 50:50</text>
+    <rect class="row" id="r2" x="1116" y="132" width="428" height="34" rx="5"/>
+    <text class="m" x="1128" y="154">assistant_cheaper_enabled</text><text class="v ok" id="v2" x="1532" y="154">cheaper model ON</text>
+    <rect class="row" id="r3" x="1116" y="172" width="428" height="34" rx="5"/>
+    <text class="m" x="1128" y="194">assistant_default_model</text><text class="v dim" id="v3" x="1532" y="194">current</text>
+  </g>
+
+  <!-- customers -->
+  <g class="n" id="n-cust">
+    <rect class="box" x="900" y="416" width="130" height="48" rx="24"/>
+    <text x="965" y="446" text-anchor="middle" style="font-size:16px;font-weight:500">Customers</text>
+  </g>
+
+  <!-- app -->
+  <g class="n" id="n-app">
+    <rect class="box" x="1100" y="300" width="460" height="280" rx="10"/>
+    <text class="t" x="1120" y="336">Support assistant</text>
+    <text class="s" x="1120" y="359">the app under test, on AWS Lambda</text>
+    <rect class="inner" x="1120" y="410" width="120" height="60" rx="6"/>
+    <text x="1180" y="446" text-anchor="middle" style="font-size:16px;font-weight:500">Router</text>
+    <path d="M1240 430L1318 408M1240 450L1318 484" fill="none" stroke="#3d5063" stroke-width="1.5"/>
+    <rect class="inner" id="b-cur" x="1320" y="380" width="220" height="56" rx="6"/>
+    <text class="s" x="1334" y="402">Current</text><text x="1334" y="424" style="font-size:16px;font-weight:500">Claude Fable 5.1</text>
+    <rect class="inner" id="b-chp" x="1320" y="456" width="220" height="56" rx="6"/>
+    <text class="s" id="l-chp" x="1334" y="478">Cheaper</text><text x="1334" y="500" style="font-size:16px;font-weight:500">Claude Sonnet 5</text>
+    <rect class="inner" x="1120" y="528" width="280" height="38" rx="6"/>
+    <text x="1134" y="552" style="font-size:14.5px">Judge: Claude Haiku 5.5</text>
+  </g>
+
+  <!-- bottom row -->
+  <g class="n" id="n-s3"><rect class="box" x="280" y="640" width="220" height="90" rx="10"/><text class="t" x="298" y="678">Decision report</text><text class="s" x="298" y="704">Amazon S3</text></g>
+  <g class="n" id="n-ddb"><rect class="box" x="540" y="640" width="200" height="90" rx="10"/><text class="t" x="558" y="678">Run state</text><text class="s" x="558" y="704">Amazon DynamoDB</text></g>
+  <g class="n" id="n-wake"><rect class="box" x="770" y="640" width="270" height="90" rx="10"/><text class="t" x="786" y="678">EventBridge + Lambda</text><text class="s" x="786" y="704">alarm events, 2-minute check</text></g>
+  <g class="n" id="n-alarm"><rect class="box" x="1100" y="640" width="240" height="90" rx="10"/><text class="t" x="1118" y="678">CloudWatch alarm</text><text class="s" x="1118" y="704">cheaper model p95 latency</text></g>
+  <g class="n" id="n-fis"><rect class="box" x="1380" y="640" width="180" height="90" rx="10"/><text class="t" x="1398" y="678">AWS FIS</text><text class="s" x="1398" y="704">fault injection</text></g>
+</svg>
+<figcaption style="position:absolute;left:-9999px">You approve, the agent runs the experiment in Flagsmith, AWS signals wake it to roll back, and the result returns as a decision report.</figcaption>
+</figure>
+</div>
+
+<footer>
+  <div class="call" aria-live="polite">
+    <div class="num" id="num">1</div>
+    <div><h2 id="title"></h2><p id="text"></p></div>
+  </div>
+  <nav class="rail" id="rail" aria-label="Walkthrough steps"></nav>
+  <div class="hint">Right arrow or space for the next step, left arrow to go back, 1 to 7 to jump, H hides this line.</div>
+</footer>
+
+<script>
+const ALLN=["human","agent","fs","cust","app","s3","ddb","wake","alarm","fis"];
+const ALLE=["h2a","a2h","cmd","res","cust","ask","ev","met","al","wake","state","rep","fis"];
+const steps=[
+ {k:"The job",t:"Swapping the model behind a support assistant",
+  p:"A cheaper model saves money on every answer, but only if quality and speed hold. Proving that means an experiment, someone watching it, and a fast way back. Rollout Marshal does the watching.",
+  all:true,state:["state: idle",""],gates:[]},
+ {k:"Ask and approve",t:"One sentence in, a plan out",
+  p:"You say what to test and what must not slip. The agent writes the plan and stops. Nothing launches until you type approve.",
+  n:["human","agent","ddb"],e:["h2a","a2h","state"],state:["state: PLANNED","wait"],gates:["launch"]},
+ {k:"Set up in Flagsmith",t:"The agent builds the experiment",
+  p:"It creates the flag, the 50:50 split, the three metrics and the experiment. Each customer gets one model, and every answer reports whether it helped, how long it took and what it cost.",
+  n:["agent","fs","app","cust"],e:["cmd","cust","ask","ev"],state:["state: RUNNING","ok"],gates:[],rows:["r1","r2"]},
+ {k:"Fault and rollback",t:"The cheaper model slows down",
+  p:"We inject delay with AWS FIS. The latency alarm fires, EventBridge wakes the agent, and it flips the kill switch in Flagsmith: cheaper model off. Every customer is back on the current model, and you get an incident email.",
+  n:["fis","app","alarm","wake","agent","fs","human","ddb"],e:["fis","met","al","wake","cmd","a2h","state"],state:["state: ROLLED_BACK","bad"],gates:[],rows:["r2"],kill:false,bad:true},
+ {k:"Resume",t:"Coming back needs a yes",
+  p:"When the alarm clears, the agent asks before it does anything. You approve, it turns the cheaper model back on and the experiment carries on.",
+  n:["human","agent","fs","app"],e:["a2h","h2a","cmd"],state:["state: AWAITING_RESUME","wait"],gates:["resume"],rows:["r2"]},
+ {k:"Results and decision",t:"A recommendation, then your call",
+  p:"The agent reads the experiment results from Flagsmith and writes a decision report with a recommendation to promote or hold. Promotion changes the default model flag, and only after you approve.",
+  n:["fs","agent","s3","human"],e:["res","rep","a2h","h2a"],state:["state: RESULTS_READY","ok"],gates:["promote"],rows:["r3"]},
+ {k:"What stays human",t:"Three decisions are yours",
+  p:"Launch, resume and promote. Everything between them, the setup, the watching, the rollback and the write-up, is the agent working through Flagsmith on AWS.",
+  all:true,state:["state: PROMOTED or HELD","ok"],gates:["launch","resume","promote"]}
+];
+const $=id=>document.getElementById(id);
+const rail=$("rail");
+steps.forEach((s,i)=>{const b=document.createElement("button");b.type="button";b.innerHTML='<span class="k">'+(i+1)+'</span>'+s.k;b.addEventListener("click",()=>go(i));rail.appendChild(b);});
+let cur=0;
+function go(i){
+  cur=Math.max(0,Math.min(steps.length-1,i));const s=steps[cur];
+  $("num").textContent=cur+1;$("title").textContent=s.t;$("text").textContent=s.p;
+  [...rail.children].forEach((b,j)=>{if(j===cur)b.setAttribute("aria-current","step");else b.removeAttribute("aria-current");});
+  ALLN.forEach(id=>{const el=$("n-"+id);const on=s.all||s.n.includes(id);el.classList.toggle("on",!s.all&&on);el.classList.toggle("off",!on);});
+  ALLE.forEach(id=>{const el=$("e-"+id);const on=!s.all&&s.e.includes(id);el.classList.toggle("on",on);el.classList.toggle("lit",!!s.all);el.classList.toggle("off",!s.all&&!on);});
+  const st=$("state");st.textContent=s.state[0];st.setAttribute("class","chiptext "+s.state[1]);
+  ["launch","resume","promote"].forEach(g=>$("g-"+g).classList.toggle("hot",s.gates.includes(g)));
+  ["r1","r2","r3"].forEach(r=>{$(r).setAttribute("class","row"+((s.rows||[]).includes(r)?" hot":"")+(r==="r2"&&s.kill===false?" bad":""));});
+  const v2=$("v2");const off=s.kill===false;v2.textContent=off?"cheaper model OFF":"cheaper model ON";v2.setAttribute("class","v "+(off?"bad":"ok"));
+  $("b-chp").setAttribute("class","inner"+(s.bad?" bad":""));
+  $("l-chp").textContent=s.bad?"Cheaper, slowed, no traffic":"Cheaper";
+  $("v3").textContent=cur===5?"changes if you promote":"current";
+}
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight"||e.key===" "||e.key==="PageDown"){e.preventDefault();go(cur+1);}
+  else if(e.key==="ArrowLeft"||e.key==="PageUp"){e.preventDefault();go(cur-1);}
+  else if(/^[1-7]$/.test(e.key)){go(+e.key-1);}
+  else if(e.key==="h"||e.key==="H"){document.body.classList.toggle("clean");}
+});
+$("fs").addEventListener("click",()=>{try{(document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()).catch(()=>{});}catch(_){}});
+go(0);
+</script>
+</body>
+</html>
