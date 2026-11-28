@@ -12,9 +12,9 @@ ends on the two timed numbers.
   - The two full runs, `r202611271927` and `r202611272042`, are the measured record
     (`evidence/5.1-e2e.md`, `evidence/5.2/r202611272042.md`). The recorded run is not one of
     them.
-  - Each `[[rec: …]]` below is a value from the recorded run. The lead fills it from that
-    run's `e2e.py` output and `evidence/6.4/`, before the cut (`docs/submission.md`, step 6).
-    The table under "Filling the placeholders" says where each comes from.
+  - The recorded run is `r202611280335` (2026-11-28, 03:35Z to 03:52Z). The values below
+    are filled from its record, `evidence/6.4/r202611280335.md`. The table under "Filling
+    the placeholders" says where each comes from.
   - The video cuts between beats and keeps a UTC clock in every shot, so each cut shows how
     much time passed. In a terminal shot it is `scripts/e2e.py`'s timestamps. In a shot of
     the AWS console, the email client or the Flagsmith dashboard, keep a small window beside
@@ -107,13 +107,13 @@ Voiceover:
 
 | Time | On screen |
 | --- | --- |
-| 0:27 to 0:40 | Terminal: the plan `e2e.py` printed. Run `[[rec: run ID]]`, state `PLANNED`, the plan in its message (the hypothesis, primary metric `helpful_rate`, guardrails `mean_latency_ms` and `mean_cost_micro_usd`, the 50/50 split, the stop rules), and awaiting `launch`. Then `e2e.py`'s pause, with the command to type. |
+| 0:27 to 0:40 | Terminal: the plan `e2e.py` printed. Run `r202611280335`, state `PLANNED`, the plan in its message (the hypothesis, primary metric `helpful_rate`, guardrails `mean_latency_ms` and `mean_cost_micro_usd`, the 50/50 split, the stop rules), and awaiting `launch`. Then `e2e.py`'s pause, with the command to type. |
 | 0:40 to 0:47 | Flagsmith dashboard: the features list, searched for the run's ID. Nothing is there yet. |
-| 0:47 to 0:57 | Second terminal: the engineer types `uv run marshal approve [[rec: run ID]] launch`. Caption: "An approve names its step: launch, resume or promotion". |
+| 0:47 to 0:57 | Second terminal: the engineer types `uv run marshal approve r202611280335 launch`. Caption: "An approve names its step: launch, resume or promotion". |
 
 Voiceover:
 
-> In [[rec: plan, seconds after the start]] seconds it returns a plan. The model wrote the
+> In 8 seconds it returns a plan. The model wrote the
 > hypothesis; the metrics, the split and the stop rules come from code.
 >
 > Flagsmith has nothing for this run yet: nothing changes until I approve. My approval names
@@ -123,8 +123,8 @@ Voiceover:
 
 | Time | On screen |
 | --- | --- |
-| 0:57 to 1:05 | Terminal: `e2e.py`'s lines `approve seen: …`, then `RUNNING: run [[rec: run ID]] is running`, [[rec: RUNNING, seconds after the approve was seen]] s later. |
-| 1:05 to 1:13 | Flagsmith dashboard: feature `assistant_model_[[rec: run ID]]`, value `current`, one variation `cheaper`. |
+| 0:57 to 1:05 | Terminal: `e2e.py`'s lines `approve seen: …`, then `RUNNING: run r202611280335 is running`, 53 s later. |
+| 1:05 to 1:13 | Flagsmith dashboard: feature `assistant_model_r202611280335`, value `current`, one variation `cheaper`. |
 | 1:13 to 1:22 | Flagsmith dashboard: the experiment, running. Rollout 100 percent, split 50/50, metrics `helpful_rate`, `mean_latency_ms` and `mean_cost_micro_usd`, with `helpful_rate` shown as primary. |
 
 Voiceover:
@@ -137,9 +137,9 @@ Voiceover:
 
 | Time | On screen |
 | --- | --- |
-| 1:22 to 1:32 | Terminal, with nothing typed: `e2e.py`'s own lines as it starts the load and the fault, `started scripts/load.py --run-id [[rec: run ID]] --users 150 --questions 2 --url <not shown> (pid …)` and `started scripts/inject_fault.sh (pid …)`, then the load's first line. |
-| 1:32 to 1:40 | Same terminal: `[fault] inject_fault: experiment … started at [[rec: fault start, UTC]]`, then its `state running` lines. |
-| 1:40 to 1:52 | Cut, with the UTC clock in shot: the CloudWatch alarm `rm-cheaper-latency-p95` in ALARM, in the AWS console. It entered ALARM at [[rec: ALARM, UTC]], [[rec: ALARM, after the fault started]] into the fault. Then `e2e.py`'s next status line, with the rollback claimed (`RUNNING -> ROLLED_BACK pending`) or done (`ROLLED_BACK`). |
+| 1:22 to 1:32 | Terminal, with nothing typed: `e2e.py`'s own lines as it starts the load and the fault, `started scripts/load.py --run-id r202611280335 --users 150 --questions 2 --url <not shown> (pid …)` and `started scripts/inject_fault.sh (pid …)`, then the load's first line. |
+| 1:32 to 1:40 | Same terminal: `[fault] inject_fault: experiment … started at 2026-11-28T03:36:30Z`, then its `state running` lines. |
+| 1:40 to 1:52 | Cut, with the UTC clock in shot: the CloudWatch alarm `rm-cheaper-latency-p95` in ALARM, in the AWS console. It entered ALARM at 03:39:17Z, 2 min 47 s into the fault. Then `e2e.py`'s next status line, with the rollback claimed (`RUNNING -> ROLLED_BACK pending`) or done (`ROLLED_BACK`). |
 
 Voiceover:
 
@@ -149,22 +149,22 @@ Voiceover:
 > Then the driver breaks the cheaper one on purpose. AWS Fault Injection Service adds ten
 > seconds to every answer it gives, for six minutes.
 >
-> [[rec: ALARM, after the fault started, in words]] in, the p95 latency alarm on the cheaper
+> Under three minutes in, the p95 latency alarm on the cheaper
 > arm fires.
 
 ## Beat 5: the rollback and resume (1:52 to 2:22)
 
 | Time | On screen |
 | --- | --- |
-| 1:52 to 2:00 | Email client: the message "Rollout Marshal [[rec: run ID]]: rolled back", with the incident note. The To line is blurred. |
+| 1:52 to 2:00 | Email client: the message "Rollout Marshal r202611280335: rolled back", with the incident note. The To line is blurred. |
 | 2:00 to 2:05 | Flagsmith dashboard: `assistant_cheaper_enabled` is off. |
 | 2:05 to 2:09 | Terminal: `e2e.py`'s line `status: ROLLED_BACK`. |
-| 2:09 to 2:15 | Cut, clock in shot: the email "Rollout Marshal [[rec: run ID]]: ready to resume", [[rec: resume request, after the rollback]] after the rollback. The alarm had gone back to OK at [[rec: OK, UTC]]. |
-| 2:15 to 2:22 | Second terminal: `uv run marshal approve [[rec: run ID]] resume`. Then `e2e.py`'s line `RUNNING again: run [[rec: run ID]] is resumed`. |
+| 2:09 to 2:15 | Cut, clock in shot: the email "Rollout Marshal r202611280335: ready to resume", 6 min 42 s after the rollback. The alarm had gone back to OK at 03:46:17Z. |
+| 2:15 to 2:22 | Second terminal: `uv run marshal approve r202611280335 resume`. Then `e2e.py`'s line `RUNNING again: run r202611280335 is resumed`. |
 
 Voiceover:
 
-> Nobody asked it to. [[rec: rollback, after the fault started, in words]] into the fault, the
+> Nobody asked it to. Just over three minutes into the fault, the
 > run is rolled back: the kill switch is off, so every user gets the current model, and the
 > agent has sent me what it saw and did. That is the only change to traffic it makes without
 > me.
@@ -176,16 +176,16 @@ Voiceover:
 
 | Time | On screen |
 | --- | --- |
-| 2:22 to 2:31 | Email client: "Rollout Marshal [[rec: run ID]]: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation. The email carries the report's Markdown as written, so the scroll ends on the line `**hold, re-run**` and the rule paragraph under it, which code wrote. The model-written paragraph after them stays out of shot: in both full runs' reports it understated the failed latency guardrail. If `helpful_rate` is near 1 in both arms, caption: "`helpful_rate` is near 1 in both arms: not evidence that the models are equally helpful". |
-| 2:31 to 2:37 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval, and the page's banner: [[rec: the banner's text]]. Only if the rollback skewed this sample ("Filling the placeholders"), caption: "[[rec: the cheaper arm's answers by model]]. While the kill switch was off, the cheaper arm got the current model". |
-| 2:37 to 2:40 | Second terminal: `uv run marshal decline [[rec: run ID]]`. Then `e2e.py`'s line `HELD: Run [[rec: run ID]] is held`. |
-| 2:40 to 2:44 | Flagsmith dashboard, on camera: End Experiment. The "Complete experiment" dialog pre-selects [[rec: the dialog's pre-selection]]; "Roll out control" is chosen, and the page then reads "Control rolled out to everyone". |
+| 2:22 to 2:31 | Email client: "Rollout Marshal r202611280335: results ready". Scroll the report through Results, Guardrails, Incident and Known bias to the Recommendation. The email carries the report's Markdown as written, so the scroll ends on the line `**hold, re-run**` and the rule paragraph under it, which code wrote. The model-written paragraph after them stays out of shot: in both full runs' reports it understated the failed latency guardrail. If `helpful_rate` is near 1 in both arms, caption: "`helpful_rate` is near 1 in both arms: not evidence that the models are equally helpful". |
+| 2:31 to 2:37 | Flagsmith dashboard: the experiment's results, the lift on `helpful_rate` with its 95 percent credible interval, and the page's banner, as recorded. Its numbers, from Flagsmith's results for experiment 1523: `cheaper` has a 76 percent chance to win on `helpful_rate`, with a lift of +0.9 percent. The rollback skewed this sample ("Filling the placeholders"), so caption: "Claude Sonnet 5 served 131 of the cheaper arm's 164 answers. While the kill switch was off, the cheaper arm got the current model". |
+| 2:37 to 2:40 | Second terminal: `uv run marshal decline r202611280335`. Then `e2e.py`'s line `HELD: Run r202611280335 is held`. |
+| 2:40 to 2:44 | Flagsmith dashboard, on camera: End Experiment, then "Complete experiment". In this recording the dialog was completed with **Roll out a variant: cheaper**, its pre-selection in both full runs, not with "Roll out control". Flagsmith records `rollout_decision` `variant`, option `cheaper` (`evidence/6.4/r202611280335.md`, finding 1). Caption: "That rollout is on this run's own flag. Customers stay on Claude Fable 5.1: `assistant_default_model` is still `current`, and Rollout Marshal changes it only on `approve … promotion`". |
 | 2:44 to 2:57 | End card, three lines: "Flagsmith dashboard, one timed pass clicked through in Chrome by an AI agent: about 2:18, one metric"; "Rollout Marshal's own work in the two full runs: about 0:39 to 1:20, all three metrics"; and "In those runs, the plans also waited 6:43 and 12:33 for the engineer's approval". |
 
 Voiceover:
 
 > The report says: hold, re-run, because the run had an incident. Flagsmith's dashboard says
-> [[rec: the banner, in words]].
+> the cheaper model has about a three-in-four chance of being more helpful.
 >
 > I hold it. The experiment is ended in Flagsmith, never by Rollout Marshal.
 >
@@ -205,25 +205,26 @@ aws cloudwatch describe-alarm-history --region us-east-1 --alarm-name rm-cheaper
   --history-item-type StateUpdate --start-date <the run's start, UTC> --end-date <its end, UTC>
 ```
 
-| Placeholder | From |
-| --- | --- |
-| `[[rec: run ID]]` | `e2e.py`'s `run:` line |
-| `[[rec: plan, seconds after the start]]` | `e2e.py`'s `start sent` and `plan returned` timestamps |
-| `[[rec: RUNNING, seconds after the approve was seen]]` | `e2e.py`'s `approve seen` and `RUNNING` timestamps |
-| `[[rec: fault start, UTC]]` | `inject_fault.sh`'s `started at` line |
-| `[[rec: ALARM, UTC]]`, `[[rec: ALARM, after the fault started]]` and its words | the alarm's OK to ALARM entry in that read, against FIS's start, which `inject_fault.sh`'s last line gives |
-| `[[rec: rollback, after the fault started, in words]]` | the run's `ROLLED_BACK` entry, against FIS's start |
-| `[[rec: OK, UTC]]` | the alarm's ALARM to OK entry in that read |
-| `[[rec: resume request, after the rollback]]` | the run's `AWAITING_RESUME` and `ROLLED_BACK` entries |
-| `[[rec: the banner's text]]`, `[[rec: the banner, in words]]` | the experiment page, as recorded |
-| `[[rec: the cheaper arm's answers by model]]` | "Claude Sonnet 5 served N of the cheaper arm's M answers". N is the `cheaper` count from `uv run python evidence/3.6-scripts/smoke_reads.py seen --since <the run's RUNNING time>`, read after the run: the router's answer invokes, by the model it served. M is the cheaper arm's identities in the report, times 2 |
-| `[[rec: the dialog's pre-selection]]` | the "Complete experiment" dialog, as recorded |
+| Value | Filled with | From |
+| --- | --- | --- |
+| Run ID | `r202611280335` | `e2e.py`'s `run:` line |
+| Plan, seconds after the start | 8 (8.5 s) | `e2e.py`'s `start sent` (03:35:04.225Z) and `plan returned` (03:35:12.705Z) timestamps |
+| RUNNING, seconds after the approve was seen | 53 (52.9 s) | `e2e.py`'s `approve seen` (03:35:35.795Z) and `RUNNING` (03:36:28.712Z) timestamps |
+| Fault start, UTC | 2026-11-28T03:36:30Z | `inject_fault.sh`'s `started at` line. FIS's own start, in its last line, is 03:36:30.565Z |
+| ALARM, UTC, and after the fault started | 03:39:17Z; 2 min 47 s; "under three minutes" | the alarm's OK to ALARM entry in that read (03:39:17.422Z), against FIS's start |
+| Rollback, after the fault started | "just over three minutes" (3 min 12.7 s) | the run's `ROLLED_BACK` entry (03:39:43.249Z), against FIS's start |
+| OK, UTC | 03:46:17Z | the alarm's ALARM to OK entry in that read (03:46:17.420Z) |
+| Resume request, after the rollback | 6 min 42 s | the run's `AWAITING_RESUME` (03:46:25.723Z) and `ROLLED_BACK` entries |
+| The banner | its numbers, not its wording: `cheaper` has a 76 percent chance to win on `helpful_rate`, with a lift of +0.9 percent | Flagsmith's results for experiment 1523 (`admin_api.py results 1523`, as of 03:50:37Z). The lead did not see the page; its wording is in the recording |
+| The cheaper arm's answers by model | "Claude Sonnet 5 served 131 of the cheaper arm's 164 answers" | N = 131, the `cheaper` count from `uv run python evidence/3.6-scripts/smoke_reads.py seen --since 2026-11-28T03:36:19Z`, read after the run (the router's answer invokes, by the model it served). M = 164, the cheaper arm's 82 identities in the report, times 2 |
+| The dialog | completed with **Roll out a variant: cheaper** | the experiment's `rollout_decision` (`variant`) and option 38420 (`cheaper`), read with `admin_api.py status 1523` |
 
 The 2:31 caption on the cheaper arm's answers goes in only if M minus N is more than the
 load's failed requests (`load.py`'s `failed=` count); otherwise drop it. At 150 x 2, few of the
 cheaper arm's answers may come after the rollback: task 4.3's 150 x 2 load ended about a minute
 after its alarm (`evidence/4.3-fis.md`), and the full runs' rollbacks came 26 s and 58 s after
-the alarm.
+the alarm. In the recorded run, M minus N is 33 (164 minus 131) and `failed=0`, so the
+caption stays.
 
 ## Before recording
 
@@ -237,8 +238,8 @@ the alarm.
 
 ## Before the cut
 
-- Every `[[rec: …]]` is filled. The one exception is the 2:31 caption on the cheaper arm's
-  answers, which stays in only if its numbers bear it out (above).
+- Every recorded value is filled, from `evidence/6.4/r202611280335.md`. The 2:31 caption on
+  the cheaper arm's answers stays in: its numbers bear it out (above).
 - The recorded run's report is read, and its recommendation is the one in beat 6. If it is
   not `hold, re-run`, beat 6 changes to match.
 - The end card's numbers match `docs/time-saved.md`.

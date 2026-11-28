@@ -1,6 +1,3 @@
-<!-- Draft (task 6.2). The one remaining placeholder, [[6.4: video URL]], is Ahmed's, after he
-records. Delete this comment once it is filled. -->
-
 # Rollout Marshal
 
 **An AI agent that runs a Bedrock model migration as a Flagsmith experiment from one prompt,
@@ -9,7 +6,7 @@ rolls back on its own, and asks a human before every other change.**
 ![How Rollout Marshal works](docs/assets/walkthrough.gif)
 
 *A run in seven steps. To step through it with the arrow keys, download
-[docs/assets/walkthrough.html](docs/assets/walkthrough.html) and open it in a browser. Demo video: [[6.4: video URL]].*
+[docs/assets/walkthrough.html](docs/assets/walkthrough.html) and open it in a browser.*
 
 ## What it does
 
